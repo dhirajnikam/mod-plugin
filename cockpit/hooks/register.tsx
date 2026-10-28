@@ -147,7 +147,13 @@ export const register: Register = on => {
   // Subagents the model or anyone else starts show in the Agents tab
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
-    if ('agentId' in r && r.agentId) await trackAgent($, { id: r.agentId, name: e.subagentType, type: e.subagentType, task: e.description, prompt: e.prompt })
+    if ('agentId' in r && r.agentId) {
+      const id = r.agentId
+      await trackAgent($, { id, name: e.subagentType, type: e.subagentType, task: e.description, prompt: e.prompt })
+      // A tester Cockpit started itself: its id is known here, whether or not the spawn call hands it back
+      const key = e.description === 'Positive tester' ? 'pos' : e.description === 'Negative tester' ? 'neg' : null
+      if (key) await set($, s => (s.testers[key].status === 'running' && !s.testers[key].agentId ? { testers: { ...s.testers, [key]: { ...s.testers[key], agentId: id } } } : {}))
+    }
     return r
   }).catch(($, e, next) => next(e))
 

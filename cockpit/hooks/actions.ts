@@ -204,13 +204,15 @@ export async function runTester($: $, key: 'pos' | 'neg') {
   const touched = [...new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path))].slice(-12)
   const prompt = `${TESTER_PROMPTS[key]}\n\nTask: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}\n\nEnd your answer with one line per test case, exactly:\nCASE PASS <case name>\nCASE FAIL <case name> :: <what went wrong>`
   const name = key === 'pos' ? 'Positive tester' : 'Negative tester'
+  // Running before the spawn: the agent.spawn hook may record the agent's id on it while the spawn settles
+  await setTester($, key, { status: 'running', cases: [], startedAt: await $.clock.now() })
   const r = await $.agent.spawn({ prompt, description: name, subagentType: 'general-purpose' }).catch(e => ({ deny: String(e) }))
   if ('deny' in r && r.deny) {
     await setTester($, key, { status: 'error', cases: [], note: r.deny })
     return toast($, `${name} could not start: ${r.deny}`)
   }
   const agentId = 'agentId' in r ? r.agentId : undefined
-  await setTester($, key, { status: 'running', cases: [], startedAt: await $.clock.now(), ...(agentId ? { agentId } : {}) })
+  if (agentId) await set($, s => ({ testers: { ...s.testers, [key]: { ...s.testers[key], agentId } } }))
   if (agentId) await trackAgent($, { id: agentId, name, type: key === 'pos' ? 'Tester +' : 'Tester −', task: TESTER_PROMPTS[key].split('.')[0] ?? name, prompt })
   await set($, st => ({ reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'] }))
   await toast($, `Started the ${name.toLowerCase()}`)

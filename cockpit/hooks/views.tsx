@@ -494,7 +494,7 @@ export function Agents($: $, v: V) {
               <Button key={`agb-${a.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openAgent: open ? '' : a.id } }))}>
                 <Text color={live ? t.accent : a.status === 'done' ? t.lo : t.faint}>● </Text>
                 <Text color={t.text}>{a.name}</Text>
-                <Text color={t.dim}>{`  ${a.type}  `}</Text>
+                <Text color={t.dim}>{a.type !== a.name ? `  ${a.type}  ` : '  '}</Text>
                 <Text color={live ? t.deep : t.dim}>{`[${{ running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' }[a.status]}] ${open ? '⌄' : '›'}`}</Text>
               </Button>
               <Text color={t.dim}>{cut(a.task, w * 2)}</Text>
