@@ -1,0 +1,6 @@
+{
+  "name": "cockpit",
+  "version": "0.1.0",
+  "description": "Cockpit: progress, context, judges, testers, agents and git, around the prompt and in a side pane",
+  "types": "./types/index.d.ts"
+}

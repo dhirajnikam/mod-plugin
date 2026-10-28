@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/classical-edb1d531-7a39-42d6-8a16-bfdcbd3b7c72/styles.css">
+<script src="_ds/classical-edb1d531-7a39-42d6-8a16-bfdcbd3b7c72/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);}
+a{color:var(--color-accent-700);}
+a:hover{color:var(--color-accent-900);}
+[data-theme]{color-scheme:light;}
+[data-theme="white"]{--color-bg:#ffffff;--color-surface:#f6f6f6;--color-text:#111111;--color-accent:#9a6a22;--color-divider:rgba(17,17,17,.14);
+--color-neutral-100:#f4f4f4;--color-neutral-200:#e9e9e9;--color-neutral-300:#d6d6d6;--color-neutral-400:#b8b8b8;--color-neutral-500:#999999;--color-neutral-600:#737373;--color-neutral-700:#555555;--color-neutral-800:#3a3a3a;--color-neutral-900:#222222;
+--color-accent-100:#fbf1e2;--color-accent-200:#f4dfbd;--color-accent-300:#e6c28a;--color-accent-400:#cfa159;--color-accent-500:#b4833a;--color-accent-600:#9a6a22;--color-accent-700:#7a5214;--color-accent-800:#573a0c;--color-accent-900:#38260b;}
+[data-theme="black"]{color-scheme:dark;--color-bg:#0b0b0b;--color-surface:#131313;--color-text:#e8e6e3;--color-accent:#d4a35a;--color-divider:rgba(232,230,227,.14);--shadow-md:0 6px 24px rgba(0,0,0,.6);
+--color-neutral-100:#1a1a1a;--color-neutral-200:#232323;--color-neutral-300:#323232;--color-neutral-400:#4a4a4a;--color-neutral-500:#6b6b6b;--color-neutral-600:#929292;--color-neutral-700:#b4b4b4;--color-neutral-800:#d2d2d2;--color-neutral-900:#ececec;
+--color-accent-100:#2a1f10;--color-accent-200:#3d2c14;--color-accent-300:#6b4e22;--color-accent-400:#a07a3c;--color-accent-500:#c4934c;--color-accent-600:#d4a35a;--color-accent-700:#e3bd80;--color-accent-800:#efd3a6;--color-accent-900:#f8e8cc;}
+[data-theme="solarized"]{color-scheme:dark;--color-bg:#002b36;--color-surface:#04313d;--color-text:#eee8d5;--color-accent:#b58900;--color-divider:rgba(238,232,213,.14);--shadow-md:0 6px 24px rgba(0,0,0,.45);
+--color-neutral-100:#073642;--color-neutral-200:#0d3f4c;--color-neutral-300:#1c4f5b;--color-neutral-400:#3b6470;--color-neutral-500:#586e75;--color-neutral-600:#839496;--color-neutral-700:#a3afae;--color-neutral-800:#cfcbbd;--color-neutral-900:#eee8d5;
+--color-accent-100:#1d3b2c;--color-accent-200:#33442a;--color-accent-300:#6a5a10;--color-accent-400:#8f7400;--color-accent-500:#a68000;--color-accent-600:#b58900;--color-accent-700:#d9b03a;--color-accent-800:#ebcc6a;--color-accent-900:#f6e4a6;}
+[data-theme="nord"]{color-scheme:dark;--color-bg:#2e3440;--color-surface:#333a47;--color-text:#eceff4;--color-accent:#88c0d0;--color-divider:rgba(236,239,244,.14);--shadow-md:0 6px 24px rgba(0,0,0,.4);
+--color-neutral-100:#363d4b;--color-neutral-200:#3b4252;--color-neutral-300:#434c5e;--color-neutral-400:#4c566a;--color-neutral-500:#616e88;--color-neutral-600:#8a94a8;--color-neutral-700:#aeb6c6;--color-neutral-800:#d8dee9;--color-neutral-900:#eceff4;
+--color-accent-100:#2f4150;--color-accent-200:#36505f;--color-accent-300:#4a6f80;--color-accent-400:#6a9fb0;--color-accent-500:#7fb3c3;--color-accent-600:#88c0d0;--color-accent-700:#a8d4e0;--color-accent-800:#c6e3eb;--color-accent-900:#e2f1f5;}
+[data-font="mono"]{--font-body:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--font-heading:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+@keyframes pm-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pm-toast{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+@keyframes pm-spin{to{transform:rotate(360deg)}}
+@keyframes pm-pulse{50%{opacity:.45}}
+@keyframes pm-seat{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
+@keyframes pm-sheen{from{background-position:-120px 0}to{background-position:220px 0}}
+</style>
+</helmet>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0b0b0b"></rect><circle cx="50" cy="50" r="20" fill="none" stroke="#d4a35a" stroke-width="5" stroke-dasharray="90 200" transform="rotate(-90 50 50)"></circle><circle cx="50" cy="50" r="20" fill="none" stroke="#333" stroke-width="5" stroke-dasharray="0 90 200"></circle></svg></template>
+<div data-theme="{{ theme }}" data-font="{{ font }}" style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);transition:background .3s,color .3s;">
+<div style="max-width:1280px;margin:0 auto;padding:32px 24px 48px;display:flex;flex-direction:column;gap:18px;">
+
+  <header style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;">
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+      <h1 style="margin:0;font-family:var(--font-heading);font-weight:400;font-size:34px;line-height:1;">Powerhouse</h1>
+      <span style="font-size:13px;color:var(--color-neutral-600);">a Claude Code mod</span>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <sc-for list="{{ themes }}" as="th" hint-placeholder-count="5">
+          <button title="{{ th.label }}" data-theme-id="{{ th.id }}" onClick="{{ setTheme }}" style="all:unset;cursor:pointer;width:20px;height:20px;border-radius:50%;overflow:hidden;display:flex;box-shadow:0 0 0 1.5px {{ th.ring }};border:2px solid var(--color-bg);transition:box-shadow .2s;">
+            <span style="flex:1;background:{{ th.bg }};"></span><span style="flex:1;background:{{ th.ac }};"></span>
+          </button>
+        </sc-for>
+      </div>
+      <span class="tag tag-neutral" style="font-variant-numeric:tabular-nums;">{{ runLabel }}</span>
+      <button class="btn btn-secondary" onClick="{{ replay }}">↺ Replay</button>
+    </div>
+  </header>
+
+  <div style="border:1px solid var(--color-divider);border-radius:var(--radius-lg);background:var(--color-surface);box-shadow:var(--shadow-md);overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:9px 16px;border-bottom:1px solid var(--color-divider);font-size:12px;color:var(--color-neutral-600);font-variant-numeric:tabular-nums;">
+      <span>~/projects/api</span>
+      <span style="display:flex;gap:14px;"><span>⎇ {{ branch }}</span><span>{{ modeLabel }}</span></span>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;">
+      <div style="flex:1.7 1 480px;min-width:0;position:relative;display:flex;flex-direction:column;gap:12px;padding:18px;">
+        {{ toastEl }}
+        <div ref="{{ feedRef }}" style="height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;">
+          <sc-for list="{{ feed }}" as="it" hint-placeholder-count="3">
+            <div style="animation:pm-in .45s ease both;">
+              <sc-if value="{{ it.isUser }}">
+                <div style="padding:10px 14px;background:var(--color-neutral-100);border-radius:var(--radius-md);display:flex;gap:10px;line-height:1.5;"><span style="color:var(--color-accent-700);">›</span><span>{{ it.text }}</span></div>
+              </sc-if>
+              <sc-if value="{{ it.isAsst }}">
+                <div style="padding:4px 2px;display:flex;gap:10px;line-height:1.6;text-wrap:pretty;"><span style="color:var(--color-accent);font-size:10px;padding-top:5px;">●</span><span>{{ it.text }}</span></div>
+              </sc-if>
+              <sc-if value="{{ it.isFiles }}">
+                <div onClick="{{ openFiles }}" style="cursor:pointer;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:7px 12px;border:1px dashed var(--color-accent-300);border-radius:var(--radius-md);font-size:13px;transition:background .15s;" style-hover="background:var(--color-accent-100)">
+                  <span style="display:flex;gap:8px;min-width:0;"><span style="color:var(--color-accent-700);">◇</span><span>{{ it.text }}</span></span>
+                  <span style="color:var(--color-accent-700);font-variant-numeric:tabular-nums;">{{ it.diff }} →</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isJudge }}">
+                <div data-id="{{ it.id }}" onClick="{{ pickDecision }}" style="cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:7px 12px;border:1px solid var(--color-accent-300);border-radius:var(--radius-md);font-size:13px;transition:background .15s;" style-hover="background:var(--color-accent-100)">
+                  <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><span style="color:var(--color-accent-700);">⚖</span><span>{{ it.text }}</span>
+                    <span style="display:flex;gap:3px;">
+                      <sc-for list="{{ it.seats }}" as="s" hint-placeholder-count="3">
+                        <span style="width:7px;height:7px;border-radius:50%;border:1px solid {{ s.bc }};background:{{ s.bg }};transition:background .3s;"></span>
+                      </sc-for>
+                    </span>
+                  </span>
+                  <span style="color:var(--color-accent-800);font-variant-numeric:tabular-nums;">{{ it.status }}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isAsk }}">
+                <div style="padding:14px;border:1px solid var(--color-accent);border-radius:var(--radius-md);display:flex;flex-direction:column;gap:10px;">
+                  <span style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700);">Claude is asking · complexity {{ it.score }}/10</span>
+                  <span style="font-family:var(--font-heading);font-size:20px;font-weight:500;">{{ it.q }}</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    <sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="2">
+                      <button class="btn btn-secondary" data-id="{{ o.id }}" data-opt="{{ o.label }}" onClick="{{ answer }}">{{ o.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isTests }}">
+                <div onClick="{{ openTests }}" style="cursor:pointer;display:flex;flex-direction:column;gap:5px;padding:8px 12px;border:1px solid var(--color-accent-300);border-radius:var(--radius-md);font-size:13px;transition:background .15s;" style-hover="background:var(--color-accent-100)">
+                  <sc-for list="{{ it.rows }}" as="tr" hint-placeholder-count="2">
+                    <div style="display:flex;justify-content:space-between;gap:8px;"><span style="display:flex;gap:8px;"><span style="color:{{ tr.ic }};">{{ tr.icon }}</span><span>{{ tr.name }}</span></span><span style="font-variant-numeric:tabular-nums;color:{{ tr.sc }};">{{ tr.status }}</span></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isAgent }}">
+                <div onClick="{{ openAgents }}" style="cursor:pointer;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:7px 12px;border:1px dashed var(--color-accent-300);border-radius:var(--radius-md);font-size:13px;transition:background .15s;" style-hover="background:var(--color-accent-100)">
+                  <span style="display:flex;gap:8px;"><span style="color:var(--color-accent-700);">⧉</span><span>{{ it.text }}</span></span>
+                  <span style="color:var(--color-accent-800);">{{ it.status }}</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isCommit }}">
+                <div onClick="{{ openGit }}" style="cursor:pointer;display:flex;flex-wrap:wrap;gap:8px;padding:7px 12px;border:1px solid var(--color-accent-300);border-radius:var(--radius-md);font-size:13px;" style-hover="background:var(--color-accent-100)">
+                  <span style="color:var(--color-accent-700);">⎇</span><span>{{ it.text }}</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:0 4px;font-size:14px;">
+          <span style="display:flex;gap:10px;align-items:center;">
+            <span style="display:inline-block;color:var(--color-accent);animation:pm-spin 2.4s linear infinite;">✻</span>
+            <span>{{ activity }}</span>
+          </span>
+          <span style="font-variant-numeric:tabular-nums;color:var(--color-neutral-600);font-size:13px;">{{ elapsed }}</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:12px 14px;border:1px solid var(--color-divider);border-radius:var(--radius-md);font-size:12px;font-variant-numeric:tabular-nums;">
+          <span style="color:var(--color-neutral-600);">Progress</span>
+          <div style="display:flex;gap:3px;">
+            <sc-for list="{{ steps }}" as="sg" hint-placeholder-count="6">
+              <div title="{{ sg.name }}" style="flex:1;height:6px;border-radius:3px;background:var(--color-neutral-200);overflow:hidden;">
+                <div style="height:100%;width:{{ sg.fill }};background:var(--color-accent);transition:width .6s ease;animation:{{ sg.anim }};"></div>
+              </div>
+            </sc-for>
+          </div>
+          <span><span style="color:var(--color-text);">{{ pct }}%</span> <span style="color:var(--color-neutral-600);">· {{ stepName }}</span></span>
+          <span style="color:var(--color-neutral-600);">Context</span>
+          <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--color-neutral-200);">
+            <sc-for list="{{ ctxSegs }}" as="cx" hint-placeholder-count="3">
+              <div title="{{ cx.label }}" style="width:{{ cx.w }};background:{{ cx.c }};transition:width .6s ease;"></div>
+            </sc-for>
+          </div>
+          <span><span style="color:{{ ctxColor }};">{{ ctxPct }}%</span> <span style="color:var(--color-neutral-600);">· {{ ctxUsed }} / 200k</span></span>
+        </div>
+
+        <div style="padding:13px 14px;background:var(--color-neutral-200);border-radius:var(--radius-md);display:flex;gap:10px;">
+          <span style="color:var(--color-neutral-700);">›</span><span style="color:var(--color-neutral-600);font-style:italic;">{{ hint }}</span>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:4px 14px;padding:0 4px;font-size:12px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums;">
+          <span style="color:var(--color-accent-700);">[powerhouse]</span>
+          <span>⎇ {{ branch }} ↑{{ ahead }}</span><span>{{ diffLabel }}</span><span>tests {{ testsLabel }}</span><span>{{ cost }}</span>
+        </div>
+      </div>
+
+      <aside style="flex:1 1 340px;min-width:0;border-left:1px solid var(--color-divider);background:var(--color-bg);display:flex;flex-direction:column;">
+        <div style="display:flex;flex-wrap:wrap;gap:0;padding:0 8px;border-bottom:1px solid var(--color-divider);">
+          <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+            <button data-tab="{{ tb.id }}" onClick="{{ setTab }}" style="all:unset;cursor:pointer;display:flex;gap:6px;align-items:center;padding:12px 7px 10px;font-size:13px;color:{{ tb.c }};border-bottom:1.5px solid {{ tb.b }};transition:color .2s,border-color .2s;" style-hover="color:var(--color-text)">
+              <span>{{ tb.label }}</span>
+              <sc-if value="{{ tb.hasBadge }}"><span style="font-size:11px;min-width:18px;text-align:center;padding:1px 5px;border-radius:9px;background:var(--color-accent-100);color:var(--color-accent-800);font-variant-numeric:tabular-nums;">{{ tb.badge }}</span></sc-if>
+            </button>
+          </sc-for>
+        </div>
+        <div style="padding:18px;display:flex;flex-direction:column;gap:18px;max-height:640px;overflow-y:auto;">
+
+          <sc-if value="{{ isOverview }}">
+            <div style="display:flex;flex-direction:column;gap:20px;animation:pm-in .3s ease both;">
+              <sc-if value="{{ needsYou }}">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border:1px solid var(--color-accent);border-radius:var(--radius-md);animation:pm-in .4s ease both;">
+                  <div style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700);">Needs you</span><span style="font-size:14px;">{{ needsText }}</span></div>
+                  <button class="btn btn-primary" onClick="{{ needsAction }}">{{ needsBtn }}</button>
+                </div>
+              </sc-if>
+
+              <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+                <div style="position:relative;width:120px;height:120px;flex:none;">
+                  <svg viewBox="0 0 120 120" width="120" height="120">
+                    <circle cx="60" cy="60" r="50" style="fill:none;stroke:var(--color-neutral-200);stroke-width:8;"></circle>
+                    <circle cx="60" cy="60" r="50" transform="rotate(-90 60 60)" style="fill:none;stroke:var(--color-accent);stroke-width:8;stroke-linecap:round;stroke-dasharray:314.16;stroke-dashoffset:{{ ringOff }};transition:stroke-dashoffset .7s ease;"></circle>
+                  </svg>
+                  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <span style="font-family:var(--font-heading);font-size:32px;line-height:1;font-variant-numeric:tabular-nums;">{{ pct }}%</span>
+                    <span style="font-size:11px;color:var(--color-neutral-600);">{{ stepName }}</span>
+                  </div>
+                </div>
+                <div style="flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:10px;">
+                  <span style="font-family:var(--font-heading);font-size:20px;font-weight:500;line-height:1.2;">Add rate limiting to the login API</span>
+                  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-variant-numeric:tabular-nums;">
+                    <sc-for list="{{ stats }}" as="sx" hint-placeholder-count="3">
+                      <div style="display:flex;flex-direction:column;gap:1px;"><span style="font-size:11px;color:var(--color-neutral-600);">{{ sx.label }}</span><span style="font-size:15px;white-space:nowrap;">{{ sx.v }}</span></div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <sc-for list="{{ steps }}" as="st" hint-placeholder-count="6">
+                  <span style="display:flex;gap:5px;align-items:center;font-size:12px;padding:3px 9px;border-radius:12px;border:1px solid {{ st.bc }};color:{{ st.c }};background:{{ st.bg }};transition:all .3s;"><span>{{ st.mark }}</span><span>{{ st.name }}</span></span>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--color-divider);border-radius:var(--radius-md);">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;">
+                  <span style="font-size:14px;">Context window</span>
+                  <span style="font-size:13px;"><span style="color:{{ ctxColor }};">{{ ctxUsed }}</span><span style="color:var(--color-neutral-600);"> / 200k</span></span>
+                </div>
+                <div style="position:relative;display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--color-neutral-200);">
+                  <sc-for list="{{ ctxSegs }}" as="cx" hint-placeholder-count="3">
+                    <div style="width:{{ cx.w }};background:{{ cx.c }};transition:width .6s ease;"></div>
+                  </sc-for>
+                  <div style="position:absolute;top:0;bottom:0;left:80%;width:1.5px;background:var(--color-text);opacity:.5;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;font-size:12px;font-variant-numeric:tabular-nums;">
+                  <sc-for list="{{ ctxLegend }}" as="lg" hint-placeholder-count="4">
+                    <span style="display:flex;gap:7px;align-items:center;"><span style="width:9px;height:9px;border-radius:2px;background:{{ lg.c }};"></span><span style="flex:1;color:var(--color-neutral-700);">{{ lg.label }}</span><span>{{ lg.v }}</span></span>
+                  </sc-for>
+                </div>
+                <span style="font-size:12px;color:var(--color-neutral-600);">{{ ctxNote }}</span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;">
+                  <span style="font-size:14px;">Decisions</span>
+                  <div class="seg">
+                    <label class="seg-opt"><input type="radio" name="mode" value="auto" checked="{{ isAuto }}" onChange="{{ onMode }}"><span>Auto · judge</span></label>
+                    <label class="seg-opt"><input type="radio" name="mode" value="ask" checked="{{ isAsk }}" onChange="{{ onMode }}"><span>Ask me</span></label>
+                  </div>
+                </div>
+                <span style="font-size:12px;color:var(--color-neutral-600);font-variant-numeric:tabular-nums;">Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass</span>
+                <sc-if value="{{ noDecision }}"><span style="font-size:13px;color:var(--color-neutral-600);padding:6px 0;">None yet.</span></sc-if>
+                <div style="display:flex;flex-direction:column;border-top:1px solid var(--color-divider);">
+                  <sc-for list="{{ decLog }}" as="dl" hint-placeholder-count="2">
+                    <div style="border-bottom:1px solid var(--color-divider);animation:pm-in .4s ease both;">
+                      <div data-id="{{ dl.id }}" onClick="{{ toggleDecision }}" style="cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:9px 4px;font-size:13px;transition:background .15s;" style-hover="background:var(--color-accent-100)">
+                        <span>{{ dl.q }}</span>
+                        <span style="font-size:11px;padding:1px 8px;border-radius:10px;border:1px solid var(--color-accent-300);color:var(--color-accent-800);font-variant-numeric:tabular-nums;align-self:start;">{{ dl.tier }}</span>
+                        <span style="font-size:12px;color:var(--color-accent-800);font-variant-numeric:tabular-nums;">{{ dl.result }}</span>
+                        <span style="font-size:11px;color:var(--color-neutral-600);font-variant-numeric:tabular-nums;">{{ dl.time }}</span>
+                      </div>
+                      <sc-if value="{{ dl.open }}">
+                        <div style="display:flex;flex-direction:column;gap:10px;padding:4px 4px 14px;animation:pm-in .25s ease both;">
+                          <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;font-size:12px;font-variant-numeric:tabular-nums;">
+                            <span style="color:var(--color-neutral-600);">Complexity</span>
+                            <div style="height:4px;border-radius:2px;background:var(--color-neutral-200);overflow:hidden;"><div style="height:100%;width:{{ dl.scoreW }};background:var(--color-accent);transition:width .5s;"></div></div>
+                            <span>{{ dl.score }}/10</span>
+                          </div>
+                          <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                            <sc-for list="{{ dl.signals }}" as="sg" hint-placeholder-count="3"><span class="tag tag-neutral">{{ sg }}</span></sc-for>
+                          </div>
+                          <sc-if value="{{ dl.byJudge }}">
+                            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                              <sc-for list="{{ dl.seats }}" as="s" hint-placeholder-count="6">
+                                <span style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:1.5px {{ s.bs }} {{ s.bc }};background:{{ s.bg }};color:{{ s.c }};transition:all .3s;">
+                                  <sc-if value="{{ s.revealed }}"><span style="animation:pm-seat .35s ease both;">{{ s.mark }}</span></sc-if>
+                                </span>
+                              </sc-for>
+                              <span style="font-size:12px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums;margin-left:4px;">{{ dl.tally }}</span>
+                            </div>
+                          </sc-if>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isFiles }}">
+            <div style="display:flex;flex-direction:column;gap:14px;animation:pm-in .3s ease both;">
+              <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;">
+                <div class="seg">
+                  <label class="seg-opt"><input type="radio" name="fview" value="tree" checked="{{ isTreeView }}" onChange="{{ onFileView }}"><span>Folders</span></label>
+                  <label class="seg-opt"><input type="radio" name="fview" value="list" checked="{{ isListView }}" onChange="{{ onFileView }}"><span>Activity</span></label>
+                </div>
+                <span style="font-size:12px;color:var(--color-neutral-600);font-variant-numeric:tabular-nums;">{{ diffLabel }}</span>
+              </div>
+              <sc-if value="{{ isTreeView }}">
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                  <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:6px 0;font-family:ui-monospace,Menlo,monospace;font-size:12px;">
+                    <sc-for list="{{ tree }}" as="n" hint-placeholder-count="10">
+                      <div data-path="{{ n.path }}" data-dir="{{ n.dirFlag }}" onClick="{{ onTreeClick }}" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:3px 12px 3px {{ n.pad }};background:{{ n.bg }};transition:background .15s;animation:{{ n.anim }};" style-hover="background:var(--color-accent-100)">
+                        <span style="width:10px;color:var(--color-neutral-600);">{{ n.caret }}</span>
+                        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{{ n.c }};text-decoration:{{ n.deco }};">{{ n.name }}</span>
+                        <sc-if value="{{ n.hasTag }}"><span style="font-size:11px;color:{{ n.tc }};font-variant-numeric:tabular-nums;">{{ n.tag }}</span></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ hasTreeSel }}">
+                    <div style="display:flex;flex-direction:column;gap:8px;animation:pm-in .25s ease both;">
+                      <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--color-accent-700);word-break:break-all;">{{ treeSel.path }}</span>
+                      <sc-if value="{{ treeSel.untouched }}"><span style="font-size:13px;color:var(--color-neutral-600);">Not touched in this session.</span></sc-if>
+                      <sc-for list="{{ treeSel.ops }}" as="tf" hint-placeholder-count="1">
+                        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);overflow:hidden;">
+                          <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 10px;font-size:11px;color:var(--color-neutral-600);border-bottom:1px solid var(--color-divider);"><span>{{ tf.op }} · {{ tf.time }}</span><span>{{ tf.meta }}</span></div>
+                          <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;padding:6px 0;overflow-x:auto;">
+                            <sc-for list="{{ tf.lines }}" as="ln" hint-placeholder-count="4"><div style="padding:0 10px;white-space:pre;background:{{ ln.bg }};color:{{ ln.c }};">{{ ln.t }}</div></sc-for>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+              <sc-if value="{{ isListView }}">
+                <sc-if value="{{ noFiles }}"><span style="color:var(--color-neutral-600);font-size:14px;">No file operations yet.</span></sc-if>
+                <div style="display:flex;flex-direction:column;border-top:1px solid var(--color-divider);">
+                  <sc-for list="{{ files }}" as="f" hint-placeholder-count="3">
+                    <div style="border-bottom:1px solid var(--color-divider);animation:pm-in .4s ease both;">
+                      <div data-id="{{ f.id }}" onClick="{{ toggleFile }}" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:9px 4px;transition:background .15s;" style-hover="background:var(--color-accent-100)">
+                        <span style="width:48px;font-size:11px;color:{{ f.tc }};">{{ f.op }}</span>
+                        <span style="flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ f.path }}</span>
+                        <span style="font-size:12px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums;">{{ f.meta }}</span>
+                        <span style="color:var(--color-neutral-600);display:inline-block;transition:transform .2s;transform:rotate({{ f.rot }});">›</span>
+                      </div>
+                      <sc-if value="{{ f.open }}">
+                        <div style="margin:0 4px 12px;border:1px solid var(--color-divider);border-radius:var(--radius-md);font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;padding:6px 0;overflow-x:auto;animation:pm-in .25s ease both;">
+                          <sc-for list="{{ f.lines }}" as="ln" hint-placeholder-count="4"><div style="padding:0 10px;white-space:pre;background:{{ ln.bg }};color:{{ ln.c }};">{{ ln.t }}</div></sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isTests }}">
+            <div style="display:flex;flex-direction:column;gap:16px;animation:pm-in .3s ease both;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <span style="font-size:15px;font-variant-numeric:tabular-nums;">{{ testSummary }}</span>
+                <span style="font-size:12px;color:var(--color-neutral-600);">Two subagents: one proves it works, one tries to break it.</span>
+              </div>
+              <sc-for list="{{ testers }}" as="tz" hint-placeholder-count="2">
+                <div style="border:1px solid {{ tz.bc }};border-radius:var(--radius-md);padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .3s;">
+                  <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                    <div style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:15px;">{{ tz.icon }} {{ tz.name }}</span><span style="font-size:12px;color:var(--color-neutral-600);">{{ tz.desc }}</span></div>
+                    <span style="font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;">{{ tz.count }}</span>
+                  </div>
+                  <div style="display:flex;gap:3px;">
+                    <sc-for list="{{ tz.cases }}" as="c" hint-placeholder-count="4"><div style="flex:1;height:4px;border-radius:2px;background:{{ c.bar }};transition:background .3s;animation:{{ c.anim }};"></div></sc-for>
+                  </div>
+                  <div style="display:flex;flex-direction:column;">
+                    <sc-for list="{{ tz.cases }}" as="c" hint-placeholder-count="4">
+                      <div style="display:flex;flex-direction:column;gap:4px;padding:7px 0;border-top:1px solid var(--color-divider);">
+                        <div style="display:flex;gap:10px;align-items:baseline;font-size:13px;"><span style="width:14px;flex:none;color:{{ c.ic }};animation:{{ c.anim }};">{{ c.icon }}</span><span style="flex:1;">{{ c.n }}</span><span style="font-size:11px;color:var(--color-neutral-600);font-variant-numeric:tabular-nums;">{{ c.ms }}</span></div>
+                        <sc-if value="{{ c.hasNote }}"><div style="margin-left:24px;font-size:12px;line-height:1.5;display:flex;flex-direction:column;gap:3px;animation:pm-in .3s ease both;"><span style="color:var(--color-neutral-800);">{{ c.err }}</span><sc-if value="{{ c.isFixed }}"><span style="color:var(--color-accent-700);">{{ c.fix }}</span></sc-if></div></sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <button class="btn btn-secondary" data-id="{{ tz.id }}" onClick="{{ rerunTests }}" disabled="{{ tz.busy }}" style="align-self:flex-start;">↻ Re-run</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isAgents }}">
+            <div style="display:flex;flex-direction:column;gap:12px;animation:pm-in .3s ease both;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span style="font-size:14px;font-variant-numeric:tabular-nums;">{{ agentSummary }}</span>
+                <button class="btn btn-secondary" onClick="{{ toggleSpawn }}" style="white-space:nowrap;">+ New agent</button>
+              </div>
+              <sc-if value="{{ spawnOpen }}">
+                <div style="border:1px solid var(--color-accent-300);border-radius:var(--radius-md);padding:12px;display:flex;flex-direction:column;gap:10px;animation:pm-in .25s ease both;">
+                  <div class="field"><label>Task</label><input class="input" value="{{ spawnTask }}" onChange="{{ onSpawnTask }}" placeholder="Document the 429 response in the API guide"></div>
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;">
+                    <div class="field"><label>Type</label><select class="input" value="{{ spawnType }}" onChange="{{ onSpawnType }}"><sc-for list="{{ agentTypes }}" as="at" hint-placeholder-count="6"><option value="{{ at }}">{{ at }}</option></sc-for></select></div>
+                    <button class="btn btn-primary" onClick="{{ spawn }}" disabled="{{ spawnDisabled }}">Start</button>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-for list="{{ agents }}" as="ag" hint-placeholder-count="4">
+                <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:12px;display:flex;flex-direction:column;gap:8px;animation:pm-in .35s ease both;">
+                  <div data-id="{{ ag.id }}" onClick="{{ toggleAgent }}" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                    <span style="display:flex;gap:8px;align-items:center;min-width:0;"><span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{ ag.dot }};animation:{{ ag.anim }};"></span><span style="font-size:14px;">{{ ag.name }}</span><span style="font-size:11px;color:var(--color-neutral-600);">{{ ag.type }}</span></span>
+                    <span style="display:flex;gap:8px;align-items:center;"><span style="font-size:11px;padding:1px 8px;border-radius:10px;border:1px solid {{ ag.sbc }};color:{{ ag.sc }};">{{ ag.status }}</span><span style="color:var(--color-neutral-600);display:inline-block;transition:transform .2s;transform:rotate({{ ag.rot }});">›</span></span>
+                  </div>
+                  <span style="font-size:13px;color:var(--color-neutral-700);line-height:1.45;">{{ ag.task }}</span>
+                  <div style="height:4px;border-radius:2px;background:var(--color-neutral-200);overflow:hidden;"><div style="height:100%;width:{{ ag.w }};background:{{ ag.bar }};transition:width .5s ease;"></div></div>
+                  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:center;">
+                    <span style="font-size:12px;color:var(--color-neutral-600);font-variant-numeric:tabular-nums;">{{ ag.meta }}</span>
+                    <div style="display:flex;gap:2px;">
+                      <sc-if value="{{ ag.canPause }}"><button class="btn btn-ghost" data-id="{{ ag.id }}" onClick="{{ pauseAgent }}" style="font-size:12px;min-height:0;padding:3px 8px;">{{ ag.pauseLabel }}</button></sc-if>
+                      <sc-if value="{{ ag.canStop }}"><button class="btn btn-ghost" data-id="{{ ag.id }}" onClick="{{ stopAgent }}" style="font-size:12px;min-height:0;padding:3px 8px;">Stop</button></sc-if>
+                      <button class="btn btn-ghost" data-id="{{ ag.id }}" onClick="{{ restartAgent }}" style="font-size:12px;min-height:0;padding:3px 8px;">Restart</button>
+                    </div>
+                  </div>
+                  <sc-if value="{{ ag.open }}">
+                    <div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--color-divider);padding-top:8px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;">
+                      <sc-if value="{{ ag.noLog }}"><span style="color:var(--color-neutral-600);">No output yet.</span></sc-if>
+                      <sc-for list="{{ ag.log }}" as="lg" hint-placeholder-count="2"><div style="display:flex;gap:10px;animation:pm-in .3s ease both;"><span style="color:var(--color-neutral-600);font-variant-numeric:tabular-nums;flex:none;">{{ lg.time }}</span><span>{{ lg.t }}</span></div></sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isGit }}">
+            <div style="display:flex;flex-direction:column;gap:14px;animation:pm-in .3s ease both;">
+              <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px;">
+                <div class="field"><label>Branch</label><input class="input" value="{{ branch }}" onChange="{{ onBranch }}" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;"></div>
+                <div class="field"><label>Into</label>
+                  <select class="input" data-field="base" value="{{ git.base }}" onChange="{{ onField }}"><option value="main">main</option><option value="develop">develop</option><option value="release">release</option></select>
+                </div>
+              </div>
+              <div class="seg" style="display:flex;flex-wrap:wrap;">
+                <sc-for list="{{ types }}" as="ty" hint-placeholder-count="7">
+                  <label class="seg-opt"><input type="radio" name="ctype" value="{{ ty.t }}" checked="{{ ty.on }}" onChange="{{ onType }}"><span>{{ ty.t }}</span></label>
+                </sc-for>
+              </div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.4fr);gap:10px;">
+                <div class="field"><label>Scope</label><input class="input" data-field="scope" value="{{ git.scope }}" onChange="{{ onField }}"></div>
+                <div class="field"><label>Subject</label><input class="input" data-field="subject" value="{{ git.subject }}" onChange="{{ onField }}"></div>
+              </div>
+              <div style="padding:10px 12px;border:1px solid var(--color-accent-300);border-radius:var(--radius-md);font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;word-break:break-word;white-space:pre-wrap;">{{ commitMsg }}</div>
+
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <sc-if value="{{ noChanged }}"><span style="font-size:13px;color:var(--color-neutral-600);">Nothing uncommitted.</span></sc-if>
+                <sc-for list="{{ changed }}" as="cf" hint-placeholder-count="3">
+                  <label style="display:flex;gap:8px;align-items:center;font-size:12px;cursor:pointer;animation:pm-in .3s ease both;"><input type="checkbox" data-path="{{ cf.path }}" checked="{{ cf.staged }}" onChange="{{ toggleStage }}" style="accent-color:var(--color-accent);"><span style="flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ cf.path }}</span><span style="color:var(--color-neutral-700);font-variant-numeric:tabular-nums;">{{ cf.meta }}</span></label>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--color-divider);border-radius:var(--radius-md);">
+                <label style="display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer;"><input type="checkbox" data-field="autoCommit" checked="{{ git.autoCommit }}" onChange="{{ onField }}" style="accent-color:var(--color-accent);width:16px;height:16px;"><span>Auto-commit</span></label>
+                <select class="input" data-field="autoWhen" value="{{ git.autoWhen }}" onChange="{{ onField }}" disabled="{{ autoOff }}" style="width:auto;flex:1 1 170px;">
+                  <sc-for list="{{ autoWhens }}" as="aw" hint-placeholder-count="3"><option value="{{ aw.v }}">{{ aw.label }}</option></sc-for>
+                </select>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <button class="btn btn-primary" disabled="{{ commitDisabled }}" onClick="{{ commitNow }}">{{ commitLabel }}</button>
+                <span style="font-size:12px;color:var(--color-neutral-600);text-align:center;">{{ commitSummary }}</span>
+              </div>
+
+              <button onClick="{{ toggleMore }}" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;font-size:13px;padding:8px 2px;border-top:1px solid var(--color-divider);color:var(--color-neutral-700);" style-hover="color:var(--color-text)"><span>Patterns &amp; options</span><span style="display:inline-block;transition:transform .2s;transform:rotate({{ moreRot }});">›</span></button>
+              <sc-if value="{{ moreOpen }}">
+                <div style="display:flex;flex-direction:column;gap:12px;animation:pm-in .25s ease both;">
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+                    <div class="field"><label>Branch pattern</label>
+                      <select class="input" data-field="branchPattern" value="{{ branchPreset }}" onChange="{{ onPreset }}"><sc-for list="{{ branchPresets }}" as="bp" hint-placeholder-count="5"><option value="{{ bp.v }}">{{ bp.label }}</option></sc-for></select>
+                    </div>
+                    <div class="field"><label>Message pattern</label>
+                      <select class="input" data-field="msgPattern" value="{{ msgPreset }}" onChange="{{ onPreset }}"><sc-for list="{{ msgPresets }}" as="mp" hint-placeholder-count="5"><option value="{{ mp.v }}">{{ mp.label }}</option></sc-for></select>
+                    </div>
+                  </div>
+                  <div class="field"><label>{type} {ticket} {slug} {user} {scope}</label><input class="input" data-field="branchPattern" value="{{ git.branchPattern }}" onChange="{{ onField }}" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;"></div>
+                  <div class="field"><label>{type} {scope} {subject} {Subject} {ticket} {branch}</label><input class="input" data-field="msgPattern" value="{{ git.msgPattern }}" onChange="{{ onField }}" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;"></div>
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;">
+                    <div class="field"><label>Ticket</label><input class="input" data-field="ticket" value="{{ git.ticket }}" onChange="{{ onField }}"></div>
+                    <div class="field"><label>User</label><input class="input" data-field="user" value="{{ git.user }}" onChange="{{ onField }}"></div>
+                  </div>
+                  <div class="field"><label>Body</label><textarea class="input" data-field="body" value="{{ git.body }}" onChange="{{ onField }}" style="min-height:52px;"></textarea></div>
+                  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;font-size:13px;">
+                    <sc-for list="{{ gitOpts }}" as="go" hint-placeholder-count="8">
+                      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;"><input type="checkbox" data-field="{{ go.key }}" checked="{{ go.on }}" onChange="{{ onField }}" style="accent-color:var(--color-accent);width:15px;height:15px;"><span>{{ go.label }}</span></label>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ hasCommits }}">
+                <div style="display:flex;flex-direction:column;border-top:1px solid var(--color-divider);">
+                  <sc-for list="{{ commits }}" as="cm" hint-placeholder-count="1">
+                    <div style="display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--color-divider);font-size:13px;animation:pm-in .4s ease both;">
+                      <span><span style="font-family:ui-monospace,Menlo,monospace;color:var(--color-accent-700);">{{ cm.sha }}</span> {{ cm.msg }}</span>
+                      <span style="font-size:12px;color:var(--color-neutral-600);">{{ cm.meta }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;paper&quot;,&quot;white&quot;,&quot;black&quot;,&quot;solarized&quot;,&quot;nord&quot;],&quot;default&quot;:&quot;paper&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;font&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;serif&quot;,&quot;mono&quot;],&quot;default&quot;:&quot;serif&quot;,&quot;tsType&quot;:&quot;'serif'|'mono'&quot;},&quot;speed&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;slow&quot;,&quot;normal&quot;,&quot;fast&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;'slow'|'normal'|'fast'&quot;}}">
+const END = 41;
+const fmt = t => { const s = Math.round(t * 2.9); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const A = t => ({ t: '+ ' + t, k: 'a' }), D = t => ({ t: '− ' + t, k: 'd' }), C = t => ({ t: '  ' + t, k: 'c' });
+const FILES = [
+  { id: 'f1', op: 'Search', path: 'src/**  "rateLimit|throttle"', at: 4, meta: '3 hits', lines: [C('src/utils/oldThrottle.ts:3   export function throttle(fn, ms) {'), C('src/routes/login.ts:18       // TODO: throttle attempts'), C('src/middleware/index.ts:9    export * from "./cors"')] },
+  { id: 'f2', op: 'Read', path: 'src/routes/login.ts', at: 6, meta: '84 ln', lines: [C('router.post("/login", async (req, res) => {'), C('  const { email, password } = req.body'), C('  // TODO: throttle attempts'), C('  const user = await auth.verify(email, password)')] },
+  { id: 'f3', op: 'Read', path: 'src/middleware/index.ts', at: 7, meta: '31 ln', lines: [C('export * from "./cors"'), C('export * from "./session"'), C('export * from "./errors"')] },
+  { id: 'f4', op: 'Write', path: 'src/middleware/rateLimit.ts', at: 18, meta: '+64', add: 64, del: 0, ch: true, lines: [A('const buckets = new Map<string, Bucket>()'), A('export function rateLimit({ max = 5, perMs = 60_000 }) {'), A('  return (req, res, next) => {'), A('    const b = take(buckets, req.headers["x-forwarded-for"] ?? req.ip, max, perMs)'), A('    if (!b.ok) return res.status(429).json({ retryIn: b.wait })'), A('    next()'), A('  }'), A('}')] },
+  { id: 'f5', op: 'Edit', path: 'src/routes/login.ts', at: 20, meta: '+3 −1', add: 3, del: 1, ch: true, lines: [C('router.post("/login",'), D('  async (req, res) => {'), A('  rateLimit({ max: 5, perMs: 60_000 }),'), A('  async (req, res) => {'), C('  const { email, password } = req.body'), D('  // TODO: throttle attempts')] },
+  { id: 'f7', op: 'Edit', path: 'src/middleware/rateLimit.ts', at: 38, meta: '+3 −1', add: 3, del: 1, ch: true, lines: [D('    const b = take(buckets, req.headers["x-forwarded-for"] ?? req.ip, max, perMs)'), A('    const key = clientIp(req, { trustedProxies: LB_HOPS })'), A('    if (!key) return res.status(400).end()'), A('    const b = take(buckets, key, max, perMs)')] },
+  { id: 'f6', op: 'Delete', path: 'src/utils/oldThrottle.ts', at: 33, meta: '−41', add: 0, del: 41, ch: true, lines: [D('export function throttle(fn, ms) {'), D('  let last = 0'), D('  …38 more lines')] },
+];
+const DECS = [
+  { id: 'd0', at: 3, q: 'Run tests before the change, or only after?', opts: ['Only after', 'Before and after'], votes: [1, 1, 1], score: 2, signals: ['Read-only so far', 'No risk'] },
+  { id: 'd1', at: 9, q: 'Where should rate limiting live?', opts: ['Middleware, token bucket', 'Inside the login handler'], votes: [1, 1, 1, 0, 1, 1], score: 5, signals: ['Touches auth route', '2 files', 'Reversible'] },
+  { id: 'd2', at: 22, q: 'Delete unused src/utils/oldThrottle.ts?', opts: ['Delete it', 'Keep it'], votes: [1, 1, 1, 1, 0, 1, 1, 1, 1], score: 8, signals: ['Deletes a file', 'Security-adjacent', 'No remaining imports'] },
+];
+const FEED = [
+  { k: 'user', at: 0, text: 'Add rate limiting to the login API. Keep it simple and tested.' },
+  { k: 'asst', at: 2, text: "I'll check how login is wired, then add a limiter in front of it." },
+  { k: 'judge', at: 3, id: 'd0' },
+  { k: 'agent', at: 4, id: 'explore' },
+  { k: 'files', at: 4, ids: ['f1', 'f2', 'f3'] },
+  { k: 'judge', at: 9, id: 'd1' },
+  { k: 'asst', at: 17, text: 'Going with a token-bucket middleware: 5 attempts per minute per IP.' },
+  { k: 'files', at: 18, ids: ['f4', 'f5'] },
+  { k: 'judge', at: 22, id: 'd2' },
+  { k: 'files', at: 33, ids: ['f6'] },
+  { k: 'tests', at: 35 },
+  { k: 'files', at: 38, ids: ['f7'] },
+  { k: 'agent', at: 39, id: 'review' },
+  { k: 'asst', at: 40, text: 'Done. Login returns 429 after 5 attempts a minute. The negative tester caught a header-spoofing bypass, which is fixed and re-tested. 9 of 9 cases and the 48 existing tests pass.' },
+];
+const ACT = [[0, 'Reading the request'], [2, 'Planning'], [3, 'Judging · 3 judges'], [4, 'Searching src/'], [6, 'Reading login.ts'], [9, 'Judging · 6 judges'], [17, 'Writing rateLimit.ts'], [20, 'Editing login.ts'], [22, 'Judging · 9 judges'], [33, 'Deleting oldThrottle.ts'], [35, 'Testers running · 2 subagents'], [37, 'Negative tester found a bypass'], [38, 'Fixing rateLimit.ts'], [39, 'Re-running · reviewer checking diff'], [40, 'Summarising']];
+const STEPS = [['Understand', 0, 3], ['Explore', 4, 8], ['Decide', 9, 16], ['Implement', 17, 34], ['Verify', 35, 40]];
+const TYPES = ['feat', 'fix', 'refactor', 'perf', 'test', 'docs', 'chore'];
+const BRANCH_PRESETS = [{ v: '{type}/{slug}', label: 'type/slug' }, { v: '{type}/{ticket}-{slug}', label: 'type/ticket-slug' }, { v: '{user}/{slug}', label: 'user/slug' }, { v: '{ticket}/{slug}', label: 'ticket/slug' }, { v: '__custom', label: 'Custom' }];
+const MSG_PRESETS = [{ v: '{type}({scope}): {subject}', label: 'Conventional' }, { v: '{ticket} {type}: {subject}', label: 'Ticket first' }, { v: '[{scope}] {Subject}', label: 'Scoped' }, { v: '{Subject}', label: 'Plain sentence' }, { v: '__custom', label: 'Custom' }];
+const AUTO_WHENS = [{ v: 'tests', label: 'after tests pass' }, { v: 'step', label: 'after each change step' }, { v: 'done', label: 'when the task finishes' }];
+const THEMES = [{ id: 'paper', label: 'Paper', bg: '#f3f2f2', ac: '#b68235' }, { id: 'white', label: 'White', bg: '#ffffff', ac: '#9a6a22' }, { id: 'black', label: 'Black', bg: '#0b0b0b', ac: '#d4a35a' }, { id: 'solarized', label: 'Solarized', bg: '#002b36', ac: '#b58900' }, { id: 'nord', label: 'Nord', bg: '#2e3440', ac: '#88c0d0' }];
+const TREE_BASE = ['package.json', 'src/middleware/cors.ts', 'src/middleware/errors.ts', 'src/middleware/index.ts', 'src/middleware/session.ts', 'src/routes/health.ts', 'src/routes/login.ts', 'src/utils/hash.ts', 'src/utils/oldThrottle.ts', 'tests/login.test.ts'];
+const TESTERS = {
+  pos: { name: 'Positive tester', icon: '✓', desc: 'Proves the feature works as intended', start: 35, cases: [
+    { n: 'Login succeeds under the limit (4 attempts)', at: 36, ok: true, ms: 42 },
+    { n: 'Limit resets after the 60 s window', at: 36, ok: true, ms: 61 },
+    { n: 'Separate IPs get separate buckets', at: 37, ok: true, ms: 38 },
+    { n: 'Existing auth suite (48 tests)', at: 38, ok: true, ms: 3100 }] },
+  neg: { name: 'Negative tester', icon: '✗', desc: 'Tries to break it: abuse, edge cases, bad input', start: 35, cases: [
+    { n: '6th attempt in a minute returns 429', at: 36, ok: true, ms: 35 },
+    { n: 'Burst of 50 parallel requests', at: 36, ok: true, ms: 210 },
+    { n: 'Spoofed X-Forwarded-For bypasses the limit', at: 37, ok: false, fixAt: 39, ms: 44, err: 'Expected 429, got 200. The limiter keyed on a header the client controls.', fix: 'Fixed in rateLimit.ts: only trust proxy hops from the load balancer. Re-run passed.' },
+    { n: 'Missing IP is rejected, not shared', at: 38, ok: true, ms: 29 },
+    { n: 'Malformed body does not crash the limiter', at: 38, ok: true, ms: 31 }] },
+};
+const AGENTS = [
+  { id: 'explore', name: 'Explorer', type: 'Explorer', task: 'Map the login flow and find any existing throttling', start: 4, end: 8, tok: 6.1, log: [[4, 'Glob src/**'], [5, 'Grep rateLimit|throttle → 3 hits'], [6, 'Read routes/login.ts'], [7, 'Read middleware/index.ts'], [8, 'Report: no limiter; oldThrottle.ts is unused']] },
+  { id: 'judge', name: 'Judge panel', type: 'Judges', task: 'Votes on decisions with 3, 6 or 9 seats', start: 3, end: 32, tok: 9.4 },
+  { id: 'pos', name: 'Positive tester', type: 'Tester +', task: TESTERS ? 'Happy-path tests for the limiter' : '', start: 35, end: 38, tok: 4.2, tester: 'pos' },
+  { id: 'neg', name: 'Negative tester', type: 'Tester −', task: 'Abuse and edge-case tests for the limiter', start: 35, end: 39, tok: 5.8, tester: 'neg' },
+  { id: 'review', name: 'Reviewer', type: 'Reviewer', task: 'Review the full diff before commit', start: 39, end: 40, tok: 3.0, log: [[39, 'Reading diff +70 −43'], [40, 'Checked limiter, route and deleted helper'], [41, '2 nits: name the LB_HOPS constant; add JSDoc to rateLimit()']] },
+];
+const AGENT_TYPES = ['General', 'Explorer', 'Positive tester', 'Negative tester', 'Reviewer', 'Docs writer'];
+const SPEED = { slow: 750, normal: 450, fast: 220 };
+const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+const nJ = s => s <= 3 ? 3 : s <= 6 ? 6 : 9;
+const thrOf = n => Math.ceil(n * 2 / 3);
+const opColor = op => op === 'Write' || op === 'Edit' ? 'var(--color-accent-700)' : op === 'Delete' ? 'var(--color-neutral-600)' : 'var(--color-neutral-700)';
+const ln = l => ({ t: l.t, bg: l.k === 'a' ? 'var(--color-accent-100)' : l.k === 'd' ? 'var(--color-neutral-200)' : 'transparent', c: l.k === 'a' ? 'var(--color-accent-900)' : l.k === 'd' ? 'var(--color-neutral-700)' : 'var(--color-text)' });
+
+class Component extends DCLogic {
+  state = { clock: 0, rerun: {}, agentOv: {}, openAgent: null, spawnOpen: false, spawnTask: '', spawnType: 'General', custom: [], tick: 0, tab: 'overview', openFile: null, openDec: null, mode: 'auto', answers: {}, waiting: null, toast: null, commits: [], staged: {}, committed: {}, theme: null, fileView: 'tree', collapsed: {}, treeSel: 'src/middleware/rateLimit.ts', more: false,
+    git: { branch: '', branchAuto: true, branchPattern: '{type}/{ticket}-{slug}', ticket: 'API-142', user: 'dev', base: 'main', type: 'feat', scope: 'auth', subject: 'add rate limiting to login', body: '', msgPattern: '{type}({scope}): {subject}',
+      autoCommit: false, autoWhen: 'tests', breaking: false, push: true, pr: true, draft: false, signoff: false, gpg: false, squash: true, preTest: true } };
+  feedRef = React.createRef();
+  componentDidMount() { this._sp = this.props.speed; this.start(); }
+  componentWillUnmount() { clearInterval(this.iv); clearTimeout(this.tt); }
+  componentDidUpdate() {
+    const s = this.state;
+    if (this._t !== s.tick || this._c !== s.commits || this._w !== s.waiting) { this._t = s.tick; this._c = s.commits; this._w = s.waiting; const el = this.feedRef.current; if (el) el.scrollTop = el.scrollHeight; }
+    if (this._sp !== this.props.speed) { this._sp = this.props.speed; this.start(); }
+  }
+  start() { clearInterval(this.iv); this.iv = setInterval(() => this.step(), SPEED[this.props.speed] || 450); }
+  dec(d, tick) {
+    const n = nJ(d.score), revealed = Math.max(0, Math.min(tick - d.at, n)), yesAll = d.votes.filter(v => v).length;
+    return { n, revealed, yes: d.votes.slice(0, revealed).filter(v => v).length, done: tick >= d.at + n + 1, winner: yesAll >= thrOf(n) ? d.opts[0] : d.opts[1], yesAll };
+  }
+  toast(text) { clearTimeout(this.tt); this.setState({ toast: { id: Date.now(), text } }); this.tt = setTimeout(() => this.setState({ toast: null }), 2800); }
+  step() {
+    const s = this.state;
+    if (s.waiting || s.tick >= END) { this.setState({ clock: s.clock + 1 }); return; }
+    const next = s.tick + 1, upd = { tick: next, clock: s.clock + 1 };
+    const d = DECS.find(x => x.at === next);
+    if (d && s.mode === 'ask' && !s.answers[d.id]) upd.waiting = d.id;
+    this.setState(upd);
+    DECS.forEach(x => { const r = this.dec(x, next); if (!s.answers[x.id] && next === x.at + r.n + 1) this.toast(`Judge ${r.yesAll}/${r.n} · ${r.winner}`); });
+    if (next === 37) this.toast('Negative tester: 1 failure');
+    if (next === 39) this.toast('Fixed · all 9 cases pass');
+    const g = s.git;
+    if (g.autoCommit && ((g.autoWhen === 'tests' && next === 39) || (g.autoWhen === 'done' && next === END) || (g.autoWhen === 'step' && (next === 21 || next === 34)))) setTimeout(() => this.commit(true), 600);
+    if (next === END) this.toast('Task complete');
+  }
+  replay = () => this.setState({ tick: 0, openFile: null, openDec: null, answers: {}, waiting: null, toast: null, commits: [], committed: {}, staged: {}, tab: 'overview', rerun: {}, agentOv: {}, custom: [] });
+  setTab = e => this.setState({ tab: e.currentTarget.dataset.tab });
+  openFiles = () => this.setState({ tab: 'files' });
+  openGit = () => this.setState({ tab: 'git' });
+  toggleFile = e => { const id = e.currentTarget.dataset.id; this.setState(s => ({ openFile: s.openFile === id ? null : id })); };
+  pickDecision = e => this.setState({ tab: 'overview', openDec: e.currentTarget.dataset.id });
+  toggleDecision = e => { const id = e.currentTarget.dataset.id; this.setState(s => ({ openDec: s.openDec === id ? null : id })); };
+  answer = e => { const { id, opt } = e.currentTarget.dataset; this.setState(s => ({ answers: { ...s.answers, [id]: opt }, waiting: null })); this.toast('You chose · ' + opt); };
+  onMode = e => { const mode = e.target.value; this.setState(s => ({ mode, waiting: mode === 'auto' ? null : s.waiting })); };
+  onField = e => { const f = e.target.dataset.field, v = e.target.type === 'checkbox' ? e.target.checked : e.target.value; this.setState(s => ({ git: { ...s.git, [f]: v } })); };
+  onPreset = e => { const f = e.target.dataset.field, v = e.target.value; if (v === '__custom') return; this.setState(s => ({ git: { ...s.git, [f]: v, ...(f === 'branchPattern' ? { branchAuto: true } : {}) } })); };
+  onBranch = e => { const v = e.target.value; this.setState(s => ({ git: { ...s.git, branch: v, branchAuto: false } })); };
+  onType = e => { const v = e.target.value; this.setState(s => ({ git: { ...s.git, type: v } })); };
+  toggleStage = e => { const p = e.currentTarget.dataset.path, on = e.target.checked; this.setState(s => ({ staged: { ...s.staged, [p]: on } })); };
+  setTheme = e => this.setState({ theme: e.currentTarget.dataset.themeId });
+  toggleMore = () => this.setState(s => ({ more: !s.more }));
+  onFileView = e => this.setState({ fileView: e.target.value });
+  onTreeClick = e => { const { path, dir } = e.currentTarget.dataset; if (dir === '1') this.setState(s => ({ collapsed: { ...s.collapsed, [path]: !s.collapsed[path] } })); else this.setState({ treeSel: path }); };
+  commitNow = () => this.commit(false);
+  openTests = () => this.setState({ tab: 'tests' });
+  openAgents = () => this.setState({ tab: 'agents' });
+  rerunTests = e => { const id = e.currentTarget.dataset.id; this.setState(s => ({ rerun: { ...s.rerun, [id]: s.clock } })); this.toast('Re-running ' + TESTERS[id].name.toLowerCase()); };
+  toggleAgent = e => { const id = e.currentTarget.dataset.id; this.setState(s => ({ openAgent: s.openAgent === id ? null : id })); };
+  toggleSpawn = () => this.setState(s => ({ spawnOpen: !s.spawnOpen }));
+  onSpawnTask = e => this.setState({ spawnTask: e.target.value });
+  onSpawnType = e => this.setState({ spawnType: e.target.value });
+  spawn = () => { const s = this.state, n = s.custom.length + 1, task = s.spawnTask.trim(); if (!task) return;
+    const a = { id: 'c' + n, name: s.spawnType === 'General' ? 'Agent ' + n : s.spawnType, type: s.spawnType, task, start: s.clock + 1, end: s.clock + 8, tok: 3.5, custom: true, rel: [[0, 'Started: ' + task], [2, 'Reading relevant files'], [5, 'Working…'], [8, 'Done · report ready']] };
+    this.setState({ custom: [...s.custom, a], spawnTask: '', spawnOpen: false, openAgent: a.id }); this.toast('Started ' + a.name); };
+  allAgents() { return [...AGENTS, ...this.state.custom]; }
+  agentRaw(a) { const s = this.state, t = a.custom ? s.clock : s.tick;
+    if (a.id === 'judge') { const doneN = DECS.filter(d => t >= d.at + nJ(d.score) + 1).length, voting = DECS.some(d => t >= d.at && t < d.at + nJ(d.score) + 1); return { p: doneN / DECS.length, st: doneN === DECS.length ? 'done' : voting ? 'running' : t < 3 ? 'queued' : 'waiting' }; }
+    if (a.tester && s.rerun[a.tester] != null) { const n = TESTERS[a.tester].cases.length, k = s.clock - s.rerun[a.tester]; return { p: Math.min(k / n, 1), st: k >= n ? 'done' : 'running' }; }
+    if (t < a.start) return { p: 0, st: 'queued' }; if (t > a.end) return { p: 1, st: 'done' }; return { p: (t - a.start + 1) / (a.end - a.start + 2), st: 'running' }; }
+  pauseAgent = e => { const id = e.currentTarget.dataset.id, a = this.allAgents().find(x => x.id === id), ov = this.state.agentOv[id];
+    this.setState(s => { const o = { ...s.agentOv }; if (ov && ov.st === 'paused') delete o[id]; else o[id] = { st: 'paused', p: this.agentRaw(a).p }; return { agentOv: o }; }); };
+  stopAgent = e => { const id = e.currentTarget.dataset.id, a = this.allAgents().find(x => x.id === id); this.setState(s => ({ agentOv: { ...s.agentOv, [id]: { st: 'stopped', p: this.agentRaw(a).p } } })); this.toast('Stopped ' + a.name); };
+  restartAgent = e => { const id = e.currentTarget.dataset.id, a = this.allAgents().find(x => x.id === id);
+    this.setState(s => { const o = { ...s.agentOv }; delete o[id]; const custom = s.custom.map(c => c.id === id ? { ...c, start: s.clock + 1, end: s.clock + 8 } : c); const rerun = a.tester ? { ...s.rerun, [a.tester]: s.clock } : s.rerun; return { agentOv: o, custom, rerun }; });
+    this.toast('Restarted ' + a.name); };
+  testerView(key) { const s = this.state, t = s.tick, T = TESTERS[key], rr = s.rerun[key];
+    const cases = T.cases.map((c, i) => { let st;
+      if (rr != null) st = s.clock >= rr + i + 1 ? 'pass' : 'run';
+      else if (t < T.start) st = 'pending'; else if (t < c.at) st = 'run'; else if (c.ok) st = 'pass'; else st = t >= c.fixAt ? 'fixed' : 'fail';
+      const ms = c.ms >= 1000 ? (c.ms / 1000).toFixed(1) + ' s' : c.ms + ' ms';
+      return { n: c.n, st, ms: st === 'pass' || st === 'fail' || st === 'fixed' ? ms : '', icon: { pass: '✓', fixed: '↻', fail: '✗', run: '…', pending: '○' }[st],
+        ic: st === 'fail' ? 'var(--color-text)' : st === 'pass' || st === 'fixed' ? 'var(--color-accent-700)' : 'var(--color-neutral-500)',
+        bar: st === 'fail' ? 'var(--color-text)' : st === 'pass' || st === 'fixed' ? 'var(--color-accent)' : st === 'run' ? 'var(--color-neutral-400)' : 'var(--color-neutral-200)',
+        anim: st === 'run' ? 'pm-pulse 1.2s ease-in-out infinite' : 'none', hasNote: !!c.err && (st === 'fail' || st === 'fixed'), isFixed: st === 'fixed', err: c.err, fix: c.fix }; });
+    const pass = cases.filter(c => c.st === 'pass' || c.st === 'fixed').length, fail = cases.filter(c => c.st === 'fail').length, busy = cases.some(c => c.st === 'run');
+    return { id: key, name: T.name, icon: T.icon, desc: T.desc, cases, pass, fail, busy, started: cases.some(c => c.st !== 'pending'),
+      count: !cases.some(c => c.st !== 'pending') ? 'not started' : `${pass}/${cases.length} passed${fail ? ' · ' + fail + ' failing' : ''}`,
+      bc: fail ? 'var(--color-text)' : 'var(--color-divider)' }; }
+  agentsView() { const s = this.state;
+    return this.allAgents().map(a => { const raw = this.agentRaw(a), ov = s.agentOv[a.id], st = ov ? ov.st : raw.st, p = ov ? ov.p : raw.p, t = a.custom ? s.clock : s.tick;
+      let log;
+      if (a.id === 'judge') log = DECS.flatMap(d => { const r = this.dec(d, s.tick); const out = []; if (s.tick >= d.at) out.push([d.at, d.q]); if (r.done) out.push([d.at + r.n + 1, `→ ${r.winner} (${r.yesAll}/${r.n})`]); return out; });
+      else if (a.tester) log = this.testerView(a.tester).cases.filter(c => c.st !== 'pending' && c.st !== 'run').map((c, i) => [TESTERS[a.tester].cases[i].at, (c.st === 'fail' ? 'FAIL ' : c.st === 'fixed' ? 'FIXED ' : 'pass ') + c.n]);
+      else if (a.custom) log = a.rel.filter(r => t >= a.start + r[0]).map(r => [a.start + r[0], r[1]]);
+      else log = a.log.filter(r => t >= r[0]);
+      if (ov && ov.st === 'stopped') log = [...log, [t, 'Stopped by you']];
+      const run = st === 'running';
+      return { id: a.id, name: a.name, type: a.type, task: a.task, w: Math.round(p * 100) + '%', open: s.openAgent === a.id, rot: s.openAgent === a.id ? '90deg' : '0deg',
+        status: { queued: 'Queued', running: 'Running', paused: 'Paused', stopped: 'Stopped', done: 'Done', waiting: 'Idle' }[st],
+        dot: run ? 'var(--color-accent)' : st === 'done' ? 'var(--color-accent-300)' : 'var(--color-neutral-400)', anim: run ? 'pm-pulse 1.2s ease-in-out infinite' : 'none',
+        bar: st === 'stopped' || st === 'paused' ? 'var(--color-neutral-500)' : 'var(--color-accent)',
+        sbc: run ? 'var(--color-accent)' : 'var(--color-divider)', sc: run ? 'var(--color-accent-800)' : 'var(--color-neutral-700)',
+        meta: `${(a.tok * p).toFixed(1)}k tokens · ${Math.round(p * 100)}%`,
+        canPause: run || st === 'paused', pauseLabel: st === 'paused' ? 'Resume' : 'Pause', canStop: run || st === 'paused',
+        log: log.map(([at, tx]) => ({ time: fmt(at), t: tx })), noLog: log.length === 0, st }; }); }
+  branchName() { const g = this.state.git; if (!g.branchAuto) return g.branch; return g.branchPattern.replace(/\{type\}/g, g.type).replace(/\{ticket\}/g, g.ticket.toLowerCase()).replace(/\{slug\}/g, slug(g.subject)).replace(/\{user\}/g, slug(g.user)).replace(/\{scope\}/g, slug(g.scope)); }
+  msg() { const g = this.state.git; let m = g.msgPattern.replace(/\{type\}/g, g.type).replace(/\(\{scope\}\)/g, g.scope ? '(' + g.scope + ')' : '').replace(/\{scope\}/g, g.scope).replace(/\{subject\}/g, g.subject).replace(/\{Subject\}/g, g.subject.charAt(0).toUpperCase() + g.subject.slice(1)).replace(/\{ticket\}/g, g.ticket).replace(/\{branch\}/g, this.branchName()); if (g.breaking) { const i = m.indexOf(': '); m = i > 0 ? m.slice(0, i) + '!' + m.slice(i) : 'BREAKING: ' + m; } return m; }
+  changed() { return FILES.filter(f => f.ch && f.at <= this.state.tick && !this.state.committed[f.path]).map(f => ({ path: f.path, meta: f.meta, staged: this.state.staged[f.path] !== false })); }
+  commit(auto) {
+    const g = this.state.git, files = this.changed().filter(f => f.staged);
+    if (!files.length) return;
+    const br = this.branchName(), sha = Math.random().toString(16).slice(2, 9);
+    const extra = [auto && 'auto', g.preTest && 'tests run', g.gpg && 'GPG signed', g.signoff && 'signed off', g.push && 'pushed', g.pr && (g.draft ? 'draft PR → ' : 'PR → ') + g.base].filter(Boolean).join(' · ');
+    const done = {}; files.forEach(f => done[f.path] = true);
+    this.setState(s => ({ committed: { ...s.committed, ...done }, commits: [{ sha, auto, msg: this.msg(), meta: `${br} · ${files.length} files${extra ? ' · ' + extra : ''}` }, ...s.commits] }));
+    this.toast(`${auto ? 'Auto-committed' : 'Committed'} ${sha}${g.push ? ' · pushed' : ''}${g.pr ? ' · PR ready' : ''}`);
+  }
+  tree(vf) {
+    const s = this.state, paths = new Set(TREE_BASE); vf.forEach(f => { if (f.op !== 'Search') paths.add(f.path); });
+    const rows = [], seen = new Set();
+    [...paths].sort((a, b) => { const da = a.includes('/'), db = b.includes('/'); return da === db ? a.localeCompare(b) : da ? -1 : 1; }).forEach(p => {
+      const parts = p.split('/');
+      const hidden = i => parts.slice(0, i).some((_, j) => s.collapsed[parts.slice(0, j + 1).join('/')]);
+      for (let i = 1; i < parts.length; i++) { const d = parts.slice(0, i).join('/'); if (seen.has(d)) continue; seen.add(d); if (hidden(i - 1)) continue;
+        const touched = vf.some(f => f.path.startsWith(d + '/') && f.ch);
+        rows.push({ path: d, dirFlag: '1', name: parts[i - 1] + '/', pad: (12 + (i - 1) * 16) + 'px', caret: s.collapsed[d] ? '▸' : '▾', c: touched ? 'var(--color-accent-700)' : 'var(--color-text)', deco: 'none', bg: 'transparent', anim: 'none', hasTag: false }); }
+      if (hidden(parts.length - 1)) return;
+      const ops = vf.filter(f => f.path === p), last = ops[ops.length - 1];
+      const tag = !last ? '' : last.op === 'Read' ? 'read' : last.op === 'Write' ? 'new ' + last.meta : last.op === 'Delete' ? 'deleted' : last.meta;
+      rows.push({ path: p, dirFlag: '0', name: parts[parts.length - 1], pad: (12 + (parts.length - 1) * 16) + 'px', caret: '', hasTag: !!last, tag, tc: last ? opColor(last.op) : '',
+        c: !last ? 'var(--color-neutral-600)' : last.op === 'Delete' ? 'var(--color-neutral-500)' : 'var(--color-text)', deco: last && last.op === 'Delete' ? 'line-through' : 'none',
+        bg: s.treeSel === p ? 'var(--color-accent-100)' : 'transparent', anim: last && last.op === 'Write' && ops.length === 1 ? 'pm-in .5s ease both' : 'none' });
+    });
+    const selOps = vf.filter(f => f.path === s.treeSel).slice().reverse().map(f => ({ op: f.op, meta: f.meta, time: fmt(f.at), lines: f.lines.map(ln) }));
+    return { rows, sel: s.treeSel && paths.has(s.treeSel) ? { path: s.treeSel, ops: selOps, untouched: selOps.length === 0 } : null };
+  }
+
+  renderVals() {
+    const s = this.state, t = s.tick, done = t >= END, g = s.git;
+    const vf = FILES.filter(f => f.at <= t);
+    const changed = this.changed(), committed = s.commits.length > 0 && changed.length === 0 && done;
+    const adds = vf.reduce((a, f) => a + (f.add || 0), 0), dels = vf.reduce((a, f) => a + (f.del || 0), 0);
+    const diffLabel = adds || dels ? `+${adds} −${dels}` : 'no changes';
+    const feed = FEED.filter(f => f.at <= t).map(f => {
+      if (f.k === 'files') {
+        const v = f.ids.map(id => FILES.find(x => x.id === id)).filter(x => x.at <= t);
+        const a = v.reduce((x, y) => x + (y.add || 0), 0), d = v.reduce((x, y) => x + (y.del || 0), 0);
+        return { isFiles: true, text: v.map(x => x.op + ' ' + (x.op === 'Search' ? 'src/' : x.path.split('/').pop())).join(' · '), diff: a || d ? `+${a} −${d}` : v.length + ' files' };
+      }
+      if (f.k === 'judge') {
+        const d = DECS.find(x => x.id === f.id), r = this.dec(d, t), ans = s.answers[d.id];
+        if (ans) return { isJudge: true, id: d.id, text: 'You decided', status: ans, seats: [] };
+        if (s.mode === 'ask') return { isAsk: true, q: d.q, score: d.score, opts: d.opts.map(o => ({ id: d.id, label: o })) };
+        return { isJudge: true, id: d.id, text: `${r.n} judges`, status: r.done ? `${r.yesAll}/${r.n} → ${r.winner}` : `voting ${r.revealed}/${r.n}`,
+          seats: d.votes.map((v, i) => i < r.revealed ? { bc: v ? 'var(--color-accent)' : 'var(--color-neutral-500)', bg: v ? 'var(--color-accent)' : 'transparent' } : { bc: 'var(--color-neutral-400)', bg: 'transparent' }) };
+      }
+      if (f.k === 'tests') return { isTests: true, rows: ['pos', 'neg'].map(k => { const v = this.testerView(k); return { name: v.name, icon: v.icon, ic: v.fail ? 'var(--color-text)' : 'var(--color-accent-700)', status: v.busy ? v.count.replace(' passed', '') + ' · running' : v.count, sc: v.fail ? 'var(--color-text)' : 'var(--color-accent-800)' }; }) };
+      if (f.k === 'agent') { const a = AGENTS.find(x => x.id === f.id), v = this.agentsView().find(x => x.id === f.id); return { isAgent: true, text: `${a.name} subagent · ${a.task}`, status: v.status }; }
+      return { isUser: f.k === 'user', isAsst: f.k === 'asst', text: f.text };
+    });
+    s.commits.slice().reverse().forEach(c => feed.push({ isCommit: true, text: `${c.auto ? 'Auto-committed' : 'Committed'} ${c.sha} · ${c.msg}` }));
+
+    const act = s.waiting ? 'Waiting for your answer' : done ? (committed ? 'Done · committed' : 'Done · ready to commit') : ACT.filter(a => a[0] <= t).pop()[1];
+    const pct = Math.round(Math.min(t / END, 1) * 85 + (committed ? 15 : 0));
+    const steps = STEPS.map(([name, a, b]) => { const st = t > b || done ? 'done' : t >= a ? 'active' : 'pending'; return { name, st, fill: st === 'done' ? '100%' : st === 'active' ? Math.round(((t - a + 1) / (b - a + 1)) * 100) + '%' : '0%' }; });
+    steps.push({ name: 'Commit', st: committed ? 'done' : done ? 'active' : 'pending', fill: committed ? '100%' : done ? '30%' : '0%' });
+    const stepsV = steps.map(x => ({ ...x, anim: x.st === 'active' ? 'pm-pulse 1.6s ease-in-out infinite' : 'none', mark: x.st === 'done' ? '✓' : x.st === 'active' ? '●' : '○',
+      bc: x.st === 'pending' ? 'var(--color-divider)' : 'var(--color-accent)', bg: x.st === 'active' ? 'var(--color-accent-100)' : 'transparent', c: x.st === 'pending' ? 'var(--color-neutral-600)' : 'var(--color-text)' }));
+    const ai = stepsV.findIndex(x => x.st === 'active');
+
+    const sys = 14, filesK = vf.filter(f => f.op !== 'Search').length * 4 + (vf.length ? 2 : 0), chat = Math.round(3 + t * 1.25), tools = t >= 35 ? 6 + (t >= 37 ? 4 : 0) : 0;
+    const used = sys + filesK + chat + tools, ctxPct = Math.round(used / 2);
+    const segs = [['System & tools', sys, 'var(--color-accent-800)'], ['Files', filesK, 'var(--color-accent-600)'], ['Conversation', chat, 'var(--color-accent-400)'], ['Test output', tools, 'var(--color-accent-300)']];
+    const cost = '$' + (0.02 + t * 0.009 + s.commits.length * 0.01).toFixed(2);
+    const started = DECS.filter(d => d.at <= t);
+    const decLog = started.slice().reverse().map(d => { const r = this.dec(d, t), ans = s.answers[d.id], byJudge = !ans && s.mode === 'auto';
+      return { id: d.id, q: d.q, time: fmt(d.at), tier: r.n + ' judges', open: s.openDec === d.id, score: d.score, scoreW: d.score * 10 + '%', signals: d.signals, byJudge,
+        result: ans ? 'You chose · ' + ans : s.mode === 'ask' ? 'Waiting for you' : r.done ? `${r.yesAll}/${r.n} → ${r.winner}` : `Voting ${r.revealed}/${r.n}`,
+        tally: `${r.yes} for · ${r.revealed - r.yes} against · needs ${thrOf(r.n)}`,
+        seats: d.votes.map((v, i) => { const rv = i < r.revealed; return { revealed: rv, mark: v ? '✓' : '×', bs: rv ? 'solid' : 'dashed', bc: rv ? (v ? 'var(--color-accent)' : 'var(--color-neutral-500)') : 'var(--color-neutral-400)', bg: rv && v ? 'var(--color-accent-100)' : 'transparent', c: v ? 'var(--color-accent-800)' : 'var(--color-neutral-700)' }; }) }; });
+
+    const tv = ['pos', 'neg'].map(k => this.testerView(k)), av = this.agentsView();
+    const tPass = tv.reduce((a, x) => a + x.pass, 0), tFail = tv.reduce((a, x) => a + x.fail, 0), tTotal = tv.reduce((a, x) => a + x.cases.length, 0);
+    const aRun = av.filter(a => a.st === 'running').length, aDone = av.filter(a => a.st === 'done').length;
+    const tabs = [['overview', 'Overview', s.waiting ? '!' : ''], ['files', 'Files', vf.length || ''], ['tests', 'Tests', tFail ? '✗' + tFail : tv.some(x => x.started) ? tPass : ''], ['agents', 'Agents', aRun || ''], ['git', 'Git', changed.length || '']]
+      .map(([id, label, badge]) => ({ id, label, badge, hasBadge: badge !== '', c: s.tab === id ? 'var(--color-text)' : 'var(--color-neutral-600)', b: s.tab === id ? 'var(--color-accent)' : 'transparent' }));
+    const theme = s.theme ?? this.props.theme ?? 'paper';
+    const staged = changed.filter(c => c.staged).length;
+    const tr = this.tree(vf);
+
+    return {
+      replay: this.replay, setTab: this.setTab, openFiles: this.openFiles, openGit: this.openGit, toggleFile: this.toggleFile, pickDecision: this.pickDecision, toggleDecision: this.toggleDecision,
+      answer: this.answer, onMode: this.onMode, onField: this.onField, onPreset: this.onPreset, onBranch: this.onBranch, onType: this.onType, toggleStage: this.toggleStage, setTheme: this.setTheme,
+      toggleMore: this.toggleMore, onFileView: this.onFileView, onTreeClick: this.onTreeClick, commitNow: this.commitNow, feedRef: this.feedRef,
+      theme, font: this.props.font ?? 'serif',
+      themes: THEMES.map(x => ({ ...x, ring: x.id === theme ? 'var(--color-accent)' : 'var(--color-divider)' })),
+      runLabel: s.waiting ? 'Paused · needs you' : done ? 'Finished · ' + fmt(END) : 'Running · ' + fmt(t),
+      toastEl: s.toast ? React.createElement('div', { key: s.toast.id, style: { position: 'absolute', top: 14, right: 18, zIndex: 5, display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px', fontSize: 13, whiteSpace: 'nowrap', maxWidth: 'calc(100% - 36px)', overflow: 'hidden', textOverflow: 'ellipsis', background: 'var(--color-bg)', border: '1px solid var(--color-accent)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', animation: 'pm-toast .35s ease both' } }, React.createElement('span', { style: { color: 'var(--color-accent-700)' } }, '◆'), s.toast.text) : null,
+      feed, activity: act, elapsed: done ? 'Done in ' + fmt(END) : fmt(t),
+      steps: stepsV, stepName: ai >= 0 ? stepsV[ai].name : 'Complete', pct, ringOff: (314.16 * (1 - pct / 100)).toFixed(1),
+      ctxSegs: segs.map(([label, v, c]) => ({ label, c, w: (v / 2) + '%' })), ctxLegend: segs.map(([label, v, c]) => ({ label, c, v: v + 'k' })),
+      ctxPct, ctxUsed: used + 'k', ctxColor: ctxPct >= 80 ? 'var(--color-accent-700)' : 'var(--color-text)',
+      ctxNote: ctxPct >= 80 ? 'Auto-compact is about to run.' : `${200 - used}k free · auto-compact at 80%`,
+      hint: done && changed.length ? `commit as ${this.msg()}` : s.waiting ? 'Pick an option above' : 'Type to steer Claude…',
+      branch: this.branchName(), ahead: s.commits.length, diffLabel, testsLabel: tv.some(x => x.started) ? `✓${tPass}${tFail ? ' ✗' + tFail : ''}/${tTotal}` : '—', cost,
+      modeLabel: s.mode === 'auto' ? 'Auto · judge' : 'Ask mode',
+      tabs, isOverview: s.tab === 'overview', isFiles: s.tab === 'files', isGit: s.tab === 'git', isTests: s.tab === 'tests', isAgents: s.tab === 'agents',
+      testers: tv, testSummary: tv.some(x => x.started) ? `${tPass} of ${tTotal} cases passing${tFail ? ' · ' + tFail + ' failing' : ''}` : 'Testers start after the change is written',
+      agents: av, agentSummary: `${aRun} running · ${aDone} done · ${av.length} total`, agentTypes: AGENT_TYPES, spawnOpen: s.spawnOpen, spawnTask: s.spawnTask, spawnType: s.spawnType, spawnDisabled: !s.spawnTask.trim(),
+      openTests: this.openTests, openAgents: this.openAgents, rerunTests: this.rerunTests, toggleAgent: this.toggleAgent, toggleSpawn: this.toggleSpawn, onSpawnTask: this.onSpawnTask, onSpawnType: this.onSpawnType, spawn: this.spawn, pauseAgent: this.pauseAgent, stopAgent: this.stopAgent, restartAgent: this.restartAgent,
+      needsYou: !!s.waiting || (done && changed.length > 0), needsText: s.waiting ? 'Claude is waiting for your answer.' : `${changed.length} files ready to commit.`, needsBtn: s.waiting ? 'Answer' : 'Open Git',
+      needsAction: s.waiting ? () => { const el = this.feedRef.current; if (el) el.scrollTop = el.scrollHeight; } : this.openGit,
+      stats: [{ label: 'Elapsed', v: fmt(t) }, { label: 'Changes', v: diffLabel === 'no changes' ? '—' : diffLabel }, { label: 'Cost', v: cost }],
+      isAuto: s.mode === 'auto', isAsk: s.mode === 'ask', decLog, noDecision: started.length === 0,
+      isTreeView: s.fileView === 'tree', isListView: s.fileView === 'list', tree: tr.rows, treeSel: tr.sel || {}, hasTreeSel: !!tr.sel,
+      noFiles: vf.length === 0,
+      files: vf.slice().reverse().map(f => ({ id: f.id, op: f.op, path: f.path, meta: f.meta, tc: opColor(f.op), open: s.openFile === f.id, rot: s.openFile === f.id ? '90deg' : '0deg', lines: f.lines.map(ln) })),
+      git: g, types: TYPES.map(x => ({ t: x, on: g.type === x })),
+      branchPresets: BRANCH_PRESETS, msgPresets: MSG_PRESETS, autoWhens: AUTO_WHENS,
+      branchPreset: BRANCH_PRESETS.some(p => p.v === g.branchPattern) ? g.branchPattern : '__custom', msgPreset: MSG_PRESETS.some(p => p.v === g.msgPattern) ? g.msgPattern : '__custom',
+      autoOff: !g.autoCommit, moreOpen: s.more, moreRot: s.more ? '90deg' : '0deg',
+      gitOpts: [['breaking', 'Breaking change'], ['preTest', 'Run tests first'], ['push', 'Push after commit'], ['pr', 'Open pull request'], ['draft', 'PR as draft'], ['squash', 'Squash before PR'], ['signoff', 'Sign-off'], ['gpg', 'GPG sign']].map(([key, label]) => ({ key, label, on: g[key] })),
+      changed, noChanged: changed.length === 0, commitMsg: this.msg() + (g.body ? '\n\n' + g.body : ''),
+      commitDisabled: staged === 0 || !g.subject.trim(), commitLabel: g.push ? 'Commit & push' : 'Commit',
+      commitSummary: [staged + ' files', g.preTest && 'tests first', g.pr && (g.draft ? 'draft PR' : 'PR') + ' → ' + g.base, g.autoCommit && 'auto ' + AUTO_WHENS.find(a => a.v === g.autoWhen).label].filter(Boolean).join(' · '),
+      commits: s.commits, hasCommits: s.commits.length > 0,
+    };
+  }
+}
+</script>
+</body>
+</html>

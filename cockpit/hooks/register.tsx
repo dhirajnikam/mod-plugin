@@ -1,0 +1,443 @@
+import { atom, read } from 'claude-code'
+import type { Register } from 'claude-code'
+
+import type { Decision, Tab, ThemeId } from '../types'
+import {
+  commit,
+  finishTester,
+  judge,
+  detectTheme,
+  loadAccounts,
+  measure,
+  openPane,
+  refreshRepo,
+  runTester,
+  set,
+  setTheme,
+  trackAgent,
+} from './actions'
+import { activityOf, base, fmt, kTok, progress, selfCheck, stepOf, tally, toOp } from './logic'
+import { INITIAL, PANE } from './state'
+import { THEME_IDS, ctxShades, themeOf } from './theme'
+import { Agents, Card, Files, Git, Header, Overview, Tabs, TesterCard, Tests, seatDots } from './views'
+import type { UI } from './views'
+
+// The session's Cockpit state (see state.ts)
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-2' })
+
+const TABS: Tab[] = ['overview', 'files', 'tests', 'agents', 'git']
+
+export const register: Register = on => {
+  // Root of the session's working directory, for relative paths
+  let root = ''
+  // Whether the running turn wrote or edited a file (auto-test and auto-commit read it)
+  let changedThisTurn = false
+
+  on('session.start', async ($, e, next) => {
+    const r = await next(e)
+    root = await $.session.cwd()
+    const bad = selfCheck()
+    if (bad.length) $.ui.log(`cockpit self-check failed: ${JSON.stringify(bad)}`)
+    await $.command.register({
+      name: 'cockpit',
+      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask>, tab <name>, test',
+      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask> | tab <name> | test]',
+    })
+    await refreshRepo($)
+    await loadAccounts($)
+    await detectTheme($)
+    await measure($)
+    // Focus keeps the pane closed until /cockpit asks for it
+    if ((await read($, S)).focus === false) void openPane($)
+    return r
+  })
+
+  on('command.run', { command: 'cockpit' }, async ($, e) => {
+    const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
+    if (verb === 'theme') {
+      if (!THEME_IDS.includes(arg as ThemeId)) return { text: `Themes: ${THEME_IDS.join(', ')}` }
+      await setTheme($, arg as ThemeId)
+      return { text: `Cockpit theme: ${arg}` }
+    }
+    if (verb === 'mode') {
+      if (arg !== 'auto' && arg !== 'ask') return { text: 'Modes: auto (judges decide), ask (you decide)' }
+      await set($, { mode: arg })
+      return { text: `Decisions: ${arg === 'auto' ? 'Auto · judge' : 'Ask me'}` }
+    }
+    if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
+    if (verb === 'focus') {
+      const isOn = arg === 'on' ? true : arg === 'off' ? false : (await read($, S)).focus === false
+      await set($, { focus: isOn })
+      return { text: `Focus ${isOn ? 'on: only your prompts, replies and progress show' : 'off'}` }
+    }
+    if (verb === 'test') {
+      await runTester($, 'pos')
+      await runTester($, 'neg')
+    }
+    await openPane($)
+    return { text: 'Cockpit pane opened.' }
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    if (!e.command && !e.isMeta && e.text.trim()) {
+      const now = await $.clock.now()
+      changedThisTurn = false
+      await set($, { task: e.text.trim().split('\n')[0] ?? '', turnStart: now, isWorking: true, activity: 'Reading the request', reached: ['Understand'] })
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Every tool call: subagent calls go to that agent's log; main-loop calls drive activity, steps and the file list
+  on('tool.call', async ($, e, next) => {
+    const input = e as unknown as Record<string, unknown>
+    const now = await $.clock.now()
+    if (e.agentId) {
+      const what = String(input.file_path ?? input.pattern ?? input.command ?? input.description ?? '').split('\n')[0]?.slice(0, 80) ?? ''
+      await set($, s => ({ agents: s.agents.map(a => (a.id === e.agentId ? { ...a, tools: a.tools + 1, log: [...a.log, { at: now, t: `${e.tool} ${what}` }].slice(-40) } : a)) }))
+      return next(e)
+    }
+    const op = toOp(e.tool, input, e.tool_use_id ?? `op${now}`, now)
+    const step = stepOf(e.tool, input)
+    if (op && (op.op === 'Write' || op.op === 'Edit' || op.op === 'Delete')) changedThisTurn = true
+    await set($, s => ({
+      activity: activityOf(e.tool, input),
+      ...(op ? { ops: [...s.ops, op].slice(-200) } : {}),
+      ...(step && !s.reached.includes(step) ? { reached: [...s.reached, step] } : {}),
+      ...(op && op.op !== 'Search' && op.op !== 'Read' ? { ui: { ...s.ui, treeSel: op.path.replace(/\\/g, '/').replace(`${root.replace(/\\/g, '/')}/`, '') } } : {}),
+    }))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Claude's questions: judges vote in auto mode, the person answers in ask mode or on a split
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    if (e.agentId) return next(e)
+    const s = await read($, S)
+    const now = await $.clock.now()
+    const qs = e.questions
+    const ids = qs.map((_, i) => `${e.tool_use_id ?? now}-${i}`)
+    const decs: Decision[] = qs.map((q, i) => ({ id: ids[i] ?? String(i), q: q.question, opts: q.options.map(o => o.label), at: now, score: 0, signals: [], votes: [], status: 'scoring', result: '' }))
+    await set($, st => ({ decisions: [...st.decisions, ...decs].slice(-50) }))
+
+    const askPerson = async () => {
+      await set($, { waiting: ids[0] ?? '', activity: 'Waiting for your answer' })
+      const r = await next(e)
+      const answers = ('result' in r && r.result ? (r.result as { answers?: Record<string, string> }).answers : undefined) ?? {}
+      await set($, st => ({
+        waiting: '',
+        decisions: st.decisions.map(d => (ids.includes(d.id) && d.status !== 'decided' ? { ...d, status: 'you', result: answers[d.q] ? `You chose · ${answers[d.q]}` : 'Answered by you' } : d)),
+      }))
+      return r
+    }
+
+    const judgeable = qs.every(q => !q.multiSelect && q.options.length >= 2)
+    if (s.mode === 'ask' || !judgeable) return askPerson()
+    const answers: Record<string, string> = {}
+    for (const [i, q] of qs.entries()) {
+      const win = await judge($, ids[i] ?? String(i), q.question, q.options)
+      if (!win) return askPerson()
+      answers[q.question] = win
+    }
+    await set($, { activity: 'Judges decided' })
+    return { result: { questions: qs, answers } }
+  }).catch(($, e, next) => next(e))
+
+  // Subagents the model or anyone else starts show in the Agents tab
+  on('agent.spawn', async ($, e, next) => {
+    const r = await next(e)
+    if ('agentId' in r && r.agentId) await trackAgent($, { id: r.agentId, name: e.subagentType, type: e.subagentType, task: e.description, prompt: e.prompt })
+    return r
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', async ($, e, next) => {
+    const r = await next(e)
+    const now = await $.clock.now()
+    if (e.agentId) {
+      const s = await read($, S)
+      await set($, st => ({ agents: st.agents.map(a => (a.id === e.agentId && a.status === 'running' ? { ...a, status: e.isAborted ? 'stopped' : 'done', endedAt: now, log: [...a.log, { at: now, t: 'Done · report ready' }] } : a)) }))
+      for (const key of ['pos', 'neg'] as const) {
+        if (s.testers[key].agentId === e.agentId) await finishTester($, key, e.answer)
+      }
+      const after = await read($, S)
+      const passed = after.testers.pos.status === 'done' && after.testers.neg.status === 'done' && ![...after.testers.pos.cases, ...after.testers.neg.cases].some(c => c.st === 'fail')
+      if (passed && after.git.autoCommit && after.git.autoWhen === 'tests' && (s.testers.pos.status === 'running' || s.testers.neg.status === 'running')) await commit($, true)
+      return r
+    }
+    await set($, st => ({ isWorking: false, activity: 'Done', lastTurnMs: now - st.turnStart }))
+    await refreshRepo($)
+    await measure($)
+    const s = await read($, S)
+    if (changedThisTurn && s.autoTest) {
+      await set($, st => ({ ui: { ...st.ui, testsHidden: false } }))
+      await runTester($, 'pos')
+      await runTester($, 'neg')
+    }
+    if (changedThisTurn && s.git.autoCommit && (s.git.autoWhen === 'step' || s.git.autoWhen === 'done')) await commit($, true)
+    changedThisTurn = false
+    return r
+  })
+
+  // Auto theme follows a /config theme change
+  on('config.set', { key: 'theme' }, async ($, e, next) => {
+    const r = await next(e)
+    await detectTheme($).catch(() => null)
+    return r
+  }).catch(($, e, next) => next(e))
+
+  on('session.measure', async ($, e, next) => {
+    await measure($)
+    return next(e)
+  })
+
+  // Activity line in place of the spinner: ✻ what is happening · elapsed
+  on('ui.render', { component: 'Spinner' }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const s = await read($, S)
+    const t = themeOf(s)
+    const now = await $.clock.now()
+    const mode = e.props.mode
+    const what = s.waiting ? 'Waiting for your answer' : mode === 'thinking' ? 'Thinking' : mode === 'requesting' ? 'Sending' : mode === 'responding' ? 'Writing' : s.activity
+    const glyph = ['✻', '✼', '✽', '✾', '✽', '✼'][Math.floor(now / 180) % 6]
+    return (
+      <Box justifyContent="space-between" marginTop={1}>
+        <Text>
+          <Text color={t.accent}>{`${glyph} `}</Text>
+          <Text color={t.text}>{what}</Text>
+          {mode === 'thinking' && s.activity !== 'Done' && s.activity !== 'Reading the request' && <Text color={t.dim}>{` · after ${s.activity.toLowerCase()}`}</Text>}
+        </Text>
+        <Text color={t.dim}>{s.turnStart ? fmt(now - s.turnStart) : ''}</Text>
+      </Box>
+    )
+  })
+
+  // Band above the prompt: a box with Progress and Context, a Focus switch in its header; one line while Focus is on
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const s = await read($, S)
+    const t = themeOf(s)
+    const p = progress(s)
+    const win = s.ctx.window || 200000
+    const toggle = (
+      <Button key="ph-focus" label={s.focus !== false ? 'Focus on' : 'Focus off'} plain onPress={() => set($, st => ({ focus: st.focus === false }))}>
+        <Text color={s.focus !== false ? t.accent : t.dim}>{s.focus !== false ? '◉ Focus' : '○ Focus'}</Text>
+      </Button>
+    )
+    if (s.focus !== false) {
+      return (
+        <Box marginTop={1} borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between">
+          <Text>
+            <Text color={t.accent}>{`${p.pct}%`}</Text>
+            <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
+            <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`${s.ctx.pct}%`}</Text>
+          </Text>
+          {toggle}
+        </Box>
+      )
+    }
+    // Columns: label 10, bar, figures; border and padding take 4
+    const right1 = `  ${p.pct}% · ${p.stepName}`
+    const right2 = `  ${s.ctx.pct}% · ${kTok(s.ctx.used)} / ${kTok(win)}`
+    const tail = Math.max(right1.length, right2.length)
+    const bw = Math.max(12, e.props.bodyColumns - 4 - 10 - tail)
+    const gaps = p.steps.length - 1
+    const segW = Math.max(1, Math.floor((bw - gaps) / p.steps.length))
+    const shades = ctxShades(t)
+    let left = bw
+    const ctxCells = s.ctx.segs.map(([name, n], i) => {
+      const k = Math.min(left, Math.round((n / win) * bw))
+      left -= k
+      return <Text key={`cx-${name}`} color={shades[i] ?? t.faint}>{'━'.repeat(k)}</Text>
+    })
+    const showTests = (s.testers.pos.status !== 'idle' || s.testers.neg.status !== 'idle') && !s.ui.testsHidden
+    const ui = { Box, Text, Button } as UI
+    return (
+      <Box flexDirection="column" marginTop={1}>
+        {showTests && TesterCard($, ui, t, s, await $.clock.now())}
+        <Box flexDirection="column" borderStyle="round" borderColor={t.dim} paddingX={1}>
+          <Box justifyContent="space-between">
+            <Text color={t.faint}>cockpit</Text>
+            {toggle}
+          </Box>
+          <Button key="ph-progress" label="Progress" plain onPress={() => set($, { tab: 'overview' })}>
+            <Text color={t.dim}>{'Progress  '}</Text>
+            {p.steps.map((x, i) => {
+              const k = x.st === 'done' ? segW : x.st === 'active' ? Math.max(1, Math.round(segW / 2)) : 0
+              return (
+                <Text key={`pg-${x.name}`}>
+                  <Text color={t.accent}>{'━'.repeat(k)}</Text>
+                  <Text color={t.track}>{'━'.repeat(segW - k)}</Text>
+                  {i < gaps && <Text> </Text>}
+                </Text>
+              )
+            })}
+            <Text color={t.track}>{'━'.repeat(Math.max(0, bw - segW * p.steps.length - gaps))}</Text>
+            <Text color={t.text}>{`  ${p.pct}%`}</Text>
+            <Text color={t.dim}>{` · ${p.stepName}`}</Text>
+          </Button>
+          <Button key="ph-context" label="Context" plain onPress={() => set($, { tab: 'overview' })}>
+            <Text color={t.dim}>{'Context   '}</Text>
+            {ctxCells}
+            <Text color={t.track}>{'━'.repeat(Math.max(0, left))}</Text>
+            <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`  ${s.ctx.pct}%`}</Text>
+            <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
+          </Button>
+        </Box>
+      </Box>
+    )
+  })
+
+  // Chat cards: tool rows drawn as the design's cards; ctrl+o, errors and interrupts keep the engine's row
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    const p = e.props
+    if (p.isExpanded || p.isErrored || p.isInterrupted) return next(e)
+    const s = await read($, S)
+    const t = themeOf(s)
+    const table = $.ui.resolve(e)
+    if (s.focus !== false) return <table.Box display='none' />
+    const ui = { Box: table.Box, Text: table.Text, Button: table.Button } as UI
+    const { Text } = table
+    const w = Math.max(30, (e.viewport?.columns ?? 100) - 4)
+    const input = (p.input ?? {}) as Record<string, unknown>
+    const id = e.requestId
+    if (p.tool === 'AskUserQuestion') {
+      const d = s.decisions.find(x => x.id.startsWith(`${id}-`))
+      if (!d) return next(e)
+      const open = () => set($, st => ({ tab: 'overview', ui: { ...st.ui, openDec: d.id } }))
+      if (d.status === 'you') return <Card ui={ui} t={t} w={w} id={id} dashed={false} icon="⚖" left={<Text color={t.text}>You decided</Text>} right={d.result.replace(/^You chose · /, '')} onPress={open} />
+      const tl = tally(d)
+      const left = [<Text key="jn" color={t.text}>{`${tl.n || '…'} judges `}</Text>, ...seatDots(ui, t, d)]
+      const right = d.status === 'voting' ? `voting ${tl.revealed}/${tl.n}` : d.status === 'scoring' ? 'scoring…' : d.status === 'split' ? 'split · asking you' : `${tl.yes}/${tl.n} → ${d.opts[tl.top] ?? ''}`
+      return <Card ui={ui} t={t} w={w} id={id} dashed={false} icon="⚖" left={left} right={right} onPress={open} />
+    }
+    if (p.tool === 'Agent' || p.tool === 'Task') {
+      const task = String(input.description ?? input.prompt ?? '').split('\n')[0] ?? ''
+      const type = String(input.subagent_type ?? 'Agent')
+      const a = s.agents.filter(x => x.task === task).pop()
+      const status = p.isRunning ? 'Running' : a ? { running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' }[a.status] : 'Done'
+      return <Card ui={ui} t={t} w={w} id={id} dashed icon="⧉" left={<Text color={t.text}>{`${type} subagent · ${task}`}</Text>} right={status} onPress={() => set($, st => ({ tab: 'agents', ui: { ...st.ui, openAgent: a?.id ?? '' } }))} />
+    }
+    if (p.tool === 'Bash' && /\bgit commit\b/.test(String(input.command)) && !p.isRunning) {
+      const out = typeof p.output === 'string' ? p.output : JSON.stringify(p.output ?? '')
+      const m = out.match(/\[[^\]\s]+ ([0-9a-f]{7,})\] ([^\n"]+)/)
+      return <Card ui={ui} t={t} w={w} id={id} dashed={false} icon="⎇" left={<Text color={t.text}>{m ? `Committed ${m[1]} · ${m[2]}` : 'Committed'}</Text>} right="" onPress={() => set($, { tab: 'git' })} />
+    }
+    const op = s.ops.find(o => o.id === id)
+    if (!op) return next(e)
+    const name = op.op === 'Search' ? op.path : base(op.path)
+    const right = p.isRunning ? '…' : op.add || op.del ? `+${op.add} −${op.del} →` : op.op === 'Read' ? '1 file →' : '→'
+    return <Card ui={ui} t={t} w={w} id={id} dashed={op.op !== 'Delete'} icon="◇" left={<Text color={t.text}>{`${op.op} ${name}`}</Text>} right={right} onPress={() => set($, st => ({ tab: 'files', ui: { ...st.ui, fileView: 'list', openFile: op.id } }))} />
+  })
+
+  // A folded run of reads and searches, as one card
+  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+    if (e.props.isExpanded) return next(e)
+    const ops = e.props.calls.map((c, i) => toOp(c.tool, (c.input ?? {}) as Record<string, unknown>, c.tool_use_id ?? `g${i}`, 0)).filter(o => o !== null)
+    const s = await read($, S)
+    const table = $.ui.resolve(e)
+    if (s.focus !== false) return <table.Box display='none' />
+    if (!ops.length) return next(e)
+    const t = themeOf(s)
+    const ui = { Box: table.Box, Text: table.Text, Button: table.Button } as UI
+    const text = ops.map(o => (o.op === 'Search' ? `Search ${o.path.split('  ')[1] ?? ''}` : `${o.op} ${base(o.path)}`)).join(' · ')
+    const files = new Set(ops.filter(o => o.op !== 'Search').map(o => o.path)).size
+    return <Card ui={ui} t={t} w={Math.max(30, (e.viewport?.columns ?? 100) - 4)} id={e.requestId} dashed icon="◇" left={<table.Text color={t.text}>{text}</table.Text>} right={`${files || ops.length} ${files === 1 ? 'file' : 'files'} →`} onPress={() => set($, st => ({ tab: 'files', ui: { ...st.ui, fileView: 'list' } }))} />
+  })
+
+  // The line a finished turn leaves: ✻ Done … Done in m:ss
+  on('ui.render', { component: 'TurnDuration' }, async ($, e, next) => {
+    if (e.props.isExpanded) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const s = await read($, S)
+    if (s.focus !== false) return <Box display='none' />
+    const t = themeOf(s)
+    // ponytail: the latest turn is told by its duration matching the one turn.complete measured; two equal turns both match
+    const isLatest = Math.abs(e.props.durationMs - s.lastTurnMs) < 2500
+    return (
+      <Box justifyContent="space-between" width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
+        <Text>
+          <Text color={t.accent}>✻ </Text>
+          <Text color={t.text}>{isLatest && s.repo.changed.length ? 'Done · ready to commit' : 'Done'}</Text>
+        </Text>
+        <Text color={t.dim}>{`Done in ${fmt(e.props.durationMs)}`}</Text>
+      </Box>
+    )
+  })
+
+  // Your prompts as the design's "›" rows; notifications and ctrl+o keep the engine's own
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    if (e.props.isExpanded || e.props.origin.kind !== 'composer') return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const t = themeOf(await read($, S))
+    return (
+      <Box backgroundColor={t.surface} paddingX={1} width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
+        <Text color={t.hi}>{'› '}</Text>
+        <Text color={t.text}>{e.props.text}</Text>
+      </Box>
+    )
+  })
+
+  // Claude's replies with the design's "●" mark, markdown kept
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    const table = $.ui.resolve(e)
+    if (!('Markdown' in table)) return next(e)
+    const { Box, Markdown, Text } = table
+    const t = themeOf(await read($, S))
+    return (
+      <Box>
+        <Text color={t.accent}>{e.props.isFirstOfReply ? '● ' : '  '}</Text>
+        <Box flexGrow={1}>
+          <Markdown key="reply" text={e.props.text} />
+        </Box>
+      </Box>
+    )
+  })
+
+  // Status row under the prompt: [cockpit] ⎇ branch ↑ahead · diff · tests · cost · mode
+  on('ui.render', { component: 'PromptHint' }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const s = await read($, S)
+    const t = themeOf(s)
+    const all = [...s.testers.pos.cases, ...s.testers.neg.cases]
+    const pass = all.filter(c => c.st !== 'fail').length
+    const fail = all.length - pass
+    const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
+    const dels = s.repo.changed.reduce((a, c) => a + c.del, 0)
+    return (
+      <Box gap={2}>
+        <Text color={t.hi}>{s.focus !== false ? '[cockpit · focus]' : '[cockpit]'}</Text>
+        {s.repo.isRepo && <Text color={t.dim}>{`⎇ ${s.repo.current} ↑${s.repo.ahead}`}</Text>}
+        {s.accounts.some(a => a.id === s.accountId) && <Text color={t.dim}>{`@ ${s.accounts.find(a => a.id === s.accountId)?.label}`}</Text>}
+        <Text color={t.dim}>{adds || dels ? `+${adds} −${dels}` : 'no changes'}</Text>
+        <Text color={t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
+        <Text color={t.dim}>{`$${s.cost.toFixed(2)}`}</Text>
+        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}</Text>
+        {e.props.isWorking && <Text color={t.faint}>esc to interrupt</Text>}
+      </Box>
+    )
+  })
+
+  // The side pane: header, tabs, and the open tab
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const table = $.ui.resolve(e)
+    const s = await read($, S)
+    const t = themeOf(s)
+    if (!('Input' in table) || !('Select' in table)) {
+      return <table.Text color={t.dim}>Cockpit needs a surface with fields.</table.Text>
+    }
+    const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Raster' in table ? { Raster: table.Raster } : {}), ...('Svg' in table ? { Svg: table.Svg } : {}) }
+    const v = { ui, s, t, w: Math.max(30, e.props.bodyColumns), now: await $.clock.now(), root }
+    const { Box } = ui
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        {Header($, v)}
+        {Tabs($, v)}
+        {s.tab === 'overview' && Overview($, v)}
+        {s.tab === 'files' && Files($, v)}
+        {s.tab === 'tests' && Tests($, v)}
+        {s.tab === 'agents' && Agents($, v)}
+        {s.tab === 'git' && Git($, v)}
+      </Box>
+    )
+  })
+
+}
