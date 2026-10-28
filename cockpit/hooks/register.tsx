@@ -66,7 +66,9 @@ export const register: Register = on => {
     }
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'focus') {
-      const isOn = arg === 'on' ? true : arg === 'off' ? false : (await read($, S)).focus === false
+      const want = arg.toLowerCase()
+      if (want && want !== 'on' && want !== 'off') return { text: 'Use /cockpit focus on, /cockpit focus off, or /cockpit focus to switch' }
+      const isOn = want === 'on' ? true : want === 'off' ? false : (await read($, S)).focus === false
       await set($, { focus: isOn })
       return { text: `Focus ${isOn ? 'on: only your prompts, replies and progress show' : 'off'}` }
     }
