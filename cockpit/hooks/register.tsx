@@ -430,7 +430,7 @@ export const register: Register = on => {
     const v = { ui, s, t, w: Math.max(30, e.props.bodyColumns), now: await $.clock.now(), root }
     const { Box } = ui
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={1} backgroundColor={t.bg}>
         {Header($, v)}
         {Tabs($, v)}
         {s.tab === 'overview' && Overview($, v)}

@@ -4,7 +4,6 @@ import type { EngineInterface } from 'claude-code'
 import type { Account, Agent, Decision, Ph, Tester, ThemeId } from '../types'
 import { branchName, commitMsg, nJ, parseCases, tally } from './logic'
 import { INITIAL, PANE } from './state'
-import { themeOf } from './theme'
 
 // The session's Cockpit state (see state.ts)
 const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-2' })
@@ -238,11 +237,10 @@ export async function measure($: $) {
 }
 
 export async function openPane($: $) {
-  const s = await read($, S)
-  return $.ui.open({ id: PANE, title: 'Cockpit', backgroundColor: themeOf(s).bg })
+  return $.ui.open({ id: PANE, title: 'Cockpit' })
 }
 
-// Switch theme and repaint the pane's backdrop with it
+// Switch theme; the pane repaints its backdrop from state
 export async function setTheme($: $, theme: ThemeId) {
   await set($, { theme })
   await openPane($)
