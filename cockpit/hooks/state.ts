@@ -22,7 +22,8 @@ export const INITIAL: Ph = {
     branchPattern: '{type}/{ticket}-{slug}',
     ticket: '',
     user: 'dev',
-    base: 'main',
+    // Filled from the repository's default branch on the first refresh
+    base: '',
     type: 'feat',
     scope: '',
     subject: '',
@@ -38,7 +39,7 @@ export const INITIAL: Ph = {
     gpg: false,
     preTest: false,
   },
-  repo: { isRepo: false, current: '', ahead: 0, changed: [] },
+  repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [] },
   staged: {},
   commits: [],
   accounts: [],
@@ -64,5 +65,5 @@ export const INITIAL: Ph = {
 }
 
 // The state atom is declared in each file that reads it (the engine scans for it there).
-// Bump its 'ph-2' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
+// Bump its 'ph-3' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
 export const PANE = 'cockpit'

@@ -33,5 +33,3 @@ export const themeOf = (s: { theme: ThemeId; isDarkTerm: boolean }): Theme =>
 // Context legend shades, darkest first, as the design ramps the accent
 export const ctxShades = (t: Theme) => [t.deep, t.accent, t.lo, t.faint]
 
-// 0xRRGGBB from '#rrggbb'
-export const hex = (c: string) => parseInt(c.slice(1), 16)

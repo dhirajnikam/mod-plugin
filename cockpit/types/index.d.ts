@@ -78,7 +78,8 @@ export type GitForm = {
 // A git identity to commit as, and the GitHub login to push and open PRs with
 export type Account = { id: string; label: string; name: string; email: string; gh: string }
 
-export type Changed = { path: string; meta: string; add: number; del: number }
+// `from` is a rename's old path: it is committed with the new one
+export type Changed = { path: string; meta: string; add: number; del: number; from?: string }
 export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 
 export type Ph = {
@@ -101,7 +102,7 @@ export type Ph = {
   autoTest: boolean
   agents: Agent[]
   git: GitForm
-  repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[] }
+  repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[] }
   staged: Record<string, boolean>
   commits: Commit[]
   accounts: Account[]

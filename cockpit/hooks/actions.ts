@@ -1,12 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Decision, Ph, Tester, ThemeId } from '../types'
+import type { Account, Agent, Changed, Decision, Ph, Tester, ThemeId } from '../types'
 import { branchName, commitMsg, nJ, parseCases, tally } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-2' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-3' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -28,26 +28,47 @@ async function git($: $, args: string[]) {
   return $.process.run(['git', ...args]).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
 }
 
-// Branch, ahead count and uncommitted files with their line counts
+const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
+
+// A commit subject from the task's first line, when the form has none
+export const subjectOf = (task: string) => {
+  const line = (task.split('\n')[0] ?? '').trim().replace(/[.!?]+$/, '')
+  const s = line.length > 60 ? `${line.slice(0, 59).replace(/\s+\S*$/, '')}…` : line
+  return s.charAt(0).toLowerCase() + s.slice(1)
+}
+
+// Branch, ahead count, local branches and uncommitted files with their line counts
 export async function refreshRepo($: $) {
-  const st = await git($, ['status', '--porcelain', '-b'])
-  if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, changed: [] } })
-  const [head = '', ...rest] = st.stdout.split('\n').filter(Boolean)
-  const current = head.replace(/^## (No commits yet on )?/, '').split('...')[0] ?? ''
+  // -z: paths come unquoted whatever they hold; a rename is "R  new\0old\0"
+  const st = await git($, ['status', '--porcelain=v1', '-z', '-b'])
+  if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [] } })
+  const [head = '', ...rest] = st.stdout.split('\0')
+  const current = head.replace(/^## (No commits yet on )?/, '').split('...')[0]?.replace(/^HEAD \(no branch\)$/, '') ?? ''
   const ahead = Number(head.match(/ahead (\d+)/)?.[1] ?? 0)
-  const num = await git($, ['diff', '--numstat', 'HEAD'])
+  // numstat -z: "a\td\tpath\0", a rename "a\td\t\0old\0new\0"
   const counts = new Map<string, [number, number]>()
-  for (const l of num.stdout.split('\n')) {
-    const [a, d, p] = l.split('\t')
-    if (p) counts.set(p, [Number(a) || 0, Number(d) || 0])
+  const num = (await git($, ['diff', '--numstat', '-z', 'HEAD'])).stdout.split('\0')
+  for (let i = 0; i < num.length; i++) {
+    const [a, d, p] = (num[i] ?? '').split('\t')
+    if (a === undefined || d === undefined) continue
+    const path = p || num[(i += 2)] || ''
+    if (path) counts.set(path, [Number(a) || 0, Number(d) || 0])
   }
-  const changed = rest.map(l => {
-    const path = l.slice(3).replace(/^"|"$/g, '').split(' -> ').pop() ?? ''
+  const changed: Changed[] = []
+  for (let i = 0; i < rest.length; i++) {
+    const l = rest[i] ?? ''
+    if (l.length < 4) continue
+    const code = l.slice(0, 2)
+    const path = l.slice(3)
+    const from = code.includes('R') || code.includes('C') ? rest[++i] : undefined
     const [add, del] = counts.get(path) ?? [0, 0]
-    const code = l.slice(0, 2).trim()
-    return { path, add, del, meta: code === '??' ? 'new' : code === 'D' ? 'deleted' : `+${add} −${del}` }
-  })
-  await set($, s => ({ repo: { isRepo: true, current, ahead, changed }, git: { ...s.git, branch: s.git.branch || current } }))
+    const meta = code === '??' ? 'new' : code.includes('D') ? 'deleted' : from ? `renamed · +${add} −${del}` : `+${add} −${del}`
+    changed.push({ path, add, del, meta, ...(from ? { from } : {}) })
+  }
+  const branches = (await git($, ['branch', '--format=%(refname:short)'])).stdout.split('\n').map(b => b.trim()).filter(Boolean)
+  const origin = (await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).stdout.trim().replace(/^origin\//, '')
+  const base = origin || ['main', 'master', 'develop'].find(b => branches.includes(b)) || current
+  await set($, s => ({ repo: { isRepo: true, current, ahead, changed, branches }, git: { ...s.git, base: s.git.base || base } }))
 }
 
 export async function gitInit($: $) {
@@ -60,13 +81,15 @@ export async function gitInit($: $) {
 export async function commit($: $, auto: boolean) {
   const s = await read($, S)
   const g = s.git
-  const files = s.repo.changed.filter(f => s.staged[f.path] !== false).map(f => f.path)
+  const picked = s.repo.changed.filter(f => s.staged[f.path] !== false)
+  const files = picked.map(f => f.path)
   if (!files.length) return toast($, 'Nothing staged to commit')
-  if (!g.subject.trim()) return toast($, 'Write a commit subject first')
+  const subject = g.subject.trim() || subjectOf(s.task)
+  if (!subject) return toast($, 'Write a commit subject first')
   if (g.preTest && !(s.testers.pos.status === 'done' && s.testers.neg.status === 'done' && ![...s.testers.pos.cases, ...s.testers.neg.cases].some(c => c.st === 'fail'))) {
     return toast($, 'Run tests first is on: the testers have not passed yet')
   }
-  const br = branchName(g, s.repo.current)
+  const br = branchName({ ...g, subject }, s.repo.current)
   if (br && br !== s.repo.current) {
     const sw = await git($, ['switch', br])
     if (sw.exitCode !== 0) {
@@ -74,34 +97,40 @@ export async function commit($: $, auto: boolean) {
       if (mk.exitCode !== 0) return toast($, `Could not switch to ${br}: ${mk.stderr.trim()}`)
     }
   }
-  await git($, ['add', '-A', '--', ...files])
+  const add = await git($, ['add', '-A', '--', ...files])
+  if (add.exitCode !== 0) return toast($, `git add failed: ${firstLine(add)}`)
   const acct = s.accounts.find(a => a.id === s.accountId)
   const who = acct ? ['-c', `user.name=${acct.name}`, '-c', `user.email=${acct.email}`] : []
-  const msg = commitMsg(g, br)
-  const args = [...who, 'commit', '-m', msg, ...(g.body ? ['-m', g.body] : []), ...(g.signoff ? ['-s'] : []), ...(g.gpg ? ['-S'] : [])]
+  const msg = commitMsg({ ...g, subject }, br)
+  // The pathspec commits the ticked files alone, not whatever else sits in the index; a rename needs its old path too
+  const paths = [...files, ...picked.flatMap(f => (f.from ? [f.from] : []))]
+  const args = [...who, 'commit', '-m', msg, ...(g.body ? ['-m', g.body] : []), ...(g.signoff ? ['-s'] : []), ...(g.gpg ? ['-S'] : []), '--', ...paths]
   const c = await git($, args)
-  if (c.exitCode !== 0) return toast($, `Commit failed: ${(c.stderr || c.stdout).trim().split('\n')[0]}`)
+  if (c.exitCode !== 0) return toast($, `Commit failed: ${firstLine(c)}`)
   const sha = (await git($, ['rev-parse', '--short', 'HEAD'])).stdout.trim()
   const extra: string[] = []
   if (auto) extra.push('auto')
   if (g.push && acct?.gh) {
     // ponytail: gh auth switch changes the machine's active GitHub account, not just this push; per-push tokens if that bites
-    const sw = await $.process.run(['gh', 'auth', 'switch', '--user', acct.gh]).catch(() => null)
-    if (sw?.exitCode !== 0) extra.push(`gh switch to ${acct.gh} failed`)
+    const sw = await $.process.run(['gh', 'auth', 'switch', '--user', acct.gh]).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+    if (sw.exitCode !== 0) extra.push(`gh switch to ${acct.gh} failed: ${firstLine(sw)}`)
   }
   if (g.push) {
     const p = await git($, ['push', '-u', 'origin', br])
-    extra.push(p.exitCode === 0 ? 'pushed' : 'push failed')
+    extra.push(p.exitCode === 0 ? 'pushed' : `push failed: ${firstLine(p)}`)
     if (p.exitCode === 0 && g.pr) {
+      const base = g.base || s.repo.current
       const pr = await $.process
-        .run(['gh', 'pr', 'create', '--base', g.base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])])
-        .catch(() => null)
-      extra.push(pr?.exitCode === 0 ? `${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : 'PR failed')
+        .run(['gh', 'pr', 'create', '--base', base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])])
+        .catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+      extra.push(pr.exitCode === 0 ? `${g.draft ? 'draft PR' : 'PR'} → ${base} ${pr.stdout.trim()}` : `PR failed: ${firstLine(pr)}`)
     }
   }
   await set($, st => ({
-    commits: [{ sha, auto, msg, meta: [br, `${files.length} files`, ...extra].join(' · ') }, ...st.commits],
+    commits: [{ sha, auto, msg, meta: [br, `${files.length} files`, ...extra].join(' · ') }, ...st.commits].slice(0, 30),
     staged: {},
+    // The next commit starts from a fresh subject; the branch now is the checkout's
+    git: { ...st.git, subject: '', body: '', branch: '' },
     reached: st.reached.includes('Commit') ? st.reached : [...st.reached, 'Commit'],
   }))
   await toast($, `${auto ? 'Auto-committed' : 'Committed'} ${sha}${extra.length ? ` · ${extra.join(' · ')}` : ''}`)
@@ -201,7 +230,11 @@ export async function finishTester($: $, key: 'pos' | 'neg', text: string) {
 
 export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'>) {
   const at = await $.clock.now()
-  await set($, s => ({ agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running', startedAt: at, tools: 0, log: [] }] }))
+  // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count
+  await set($, s => {
+    const was = s.agents.find(x => x.id === a.id)
+    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [] }].slice(-40) }
+  })
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
@@ -230,8 +263,11 @@ export async function measure($: $) {
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 4)
     .map(c => [c.name, c.tokens] as [string, number])
+  // Before the first API response `tokens` is unset: the breakdown's total stands in
+  const used = u.context.tokens ?? u.context.breakdown?.totalTokens ?? 0
+  const pct = u.context.percent ?? (u.context.window ? Math.round((used / u.context.window) * 100) : 0)
   await set($, {
-    ctx: { pct: u.context.percent ?? 0, used: u.context.tokens ?? 0, window: u.context.window, segs },
+    ctx: { pct, used, window: u.context.window, segs },
     cost: u.cost?.usd ?? 0,
   })
 }
@@ -255,8 +291,10 @@ export async function loadAccounts($: $) {
   const email = (await git($, ['config', '--global', 'user.email'])).stdout.trim()
   const st = await $.process.run(['gh', 'auth', 'status']).catch(() => null)
   const out = `${st?.stdout ?? ''}${st?.stderr ?? ''}`
-  const logins = [...out.matchAll(/account (\S+)/g)].map(m => m[1] ?? '')
-  const active = out.match(/account (\S+)[^\n]*\n(?:[^\n]*\n)*?\s*- Active account: true/)?.[1] ?? logins[0] ?? ''
+  // One block per login: "Logged in to github.com account <login> ..." then its "- Active account: true|false"
+  const blocks = out.split(/Logged in to /).slice(1)
+  const logins = blocks.map(b => b.match(/account (\S+)/)?.[1] ?? '').filter(Boolean)
+  const active = blocks.find(b => /Active account: true/.test(b))?.match(/account (\S+)/)?.[1] ?? logins[0] ?? ''
   const found: Account[] = []
   if (name || email) found.push({ id: 'global', label: active || name || 'global', name, email, gh: active })
   for (const l of logins) if (l && l !== active) found.push({ id: `gh-${l}`, label: l, name: l, email: `${l}@users.noreply.github.com`, gh: l })

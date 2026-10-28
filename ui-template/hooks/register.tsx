@@ -41,8 +41,10 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Replaces the spinner: no next(e), so the original line (and its "Claude" wording) never draws
-  on('ui.render', { component: 'Spinner' }, async ($, e) => {
+  // Replaces the spinner: no next(e), so the original line (and its "Claude" wording) never draws.
+  // The desktop keeps its own row and takes only its words.
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+    if (e.surface !== 'terminal') return next({ ...e, props: { ...e.props, message: SPINNER[e.props.mode] ?? 'working' } })
     const { Text } = $.ui.resolve(e)
     return <Text color="suggestion">● {SPINNER[e.props.mode] ?? 'working'}…</Text>
   })

@@ -16,8 +16,7 @@ export const MSG_PRESETS = [
 ]
 export const AUTO_WHENS = [
   { v: 'tests', label: 'after tests pass' },
-  { v: 'step', label: 'after each change step' },
-  { v: 'done', label: 'when the task finishes' },
+  { v: 'step', label: 'after each turn that changes files' },
 ]
 export const GIT_OPTS: [keyof GitForm, string][] = [
   ['breaking', 'Breaking change'],
@@ -51,6 +50,11 @@ export const branchName = (g: GitForm, current: string) => {
     .replace(/\{slug\}/g, slug(g.subject))
     .replace(/\{user\}/g, slug(g.user))
     .replace(/\{scope\}/g, slug(g.scope))
+    // Empty fields leave no stray dashes or slashes
+    .replace(/-{2,}/g, '-')
+    .replace(/(^|\/)-+|-+(?=\/|$)/g, '$1')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^\/|\/$/g, '')
 }
 
 export const commitMsg = (g: GitForm, branch: string) => {
@@ -202,37 +206,36 @@ export function tree(ops: FileOp[], collapsed: Record<string, boolean>, root: st
   return rows
 }
 
-// The progress ring as raster cells: half-block pixels, the percentage in its middle
-export function ring(pct: number, fill: number, track: number, bg: number, ink: number, cols = 14) {
+// The progress ring as rows of half-block text runs: each cell holds two pixels, top and bottom, as ▀ with two colours.
+// Cells outside the ring stay transparent, so the ring sits on any terminal background.
+export type Run = { t: string; fg?: string; bg?: string }
+export function ringRuns(pct: number, fill: string, track: string, ink: string, cols = 14): Run[][] {
   const rows = Math.ceil(cols / 2)
-  const words = new Uint32Array(cols * rows * 3)
   const c = (cols - 1) / 2
   const r1 = cols / 2 - 0.3
   const r0 = r1 - 2.1
   const px = (x: number, y: number) => {
     const d = Math.hypot(x - c, y - c)
-    if (d > r1 || d < r0) return bg
+    if (d > r1 || d < r0) return undefined
     const a = (Math.atan2(x - c, -(y - c)) / (2 * Math.PI) + 1) % 1
     return a <= pct / 100 ? fill : track
   }
   const label = `${pct}%`
   const mid = Math.floor(rows / 2)
   const start = Math.floor((cols - label.length) / 2)
-  for (let row = 0; row < rows; row++) {
+  return Array.from({ length: rows }, (_, row) => {
+    const runs: Run[] = []
     for (let col = 0; col < cols; col++) {
-      const i = (row * cols + col) * 3
       const ch = row === mid ? label[col - start] : undefined
-      if (ch) {
-        words.set([ch.charCodeAt(0), ink, bg], i)
-      } else {
-        words.set([0x2580, px(col, row * 2), px(col, row * 2 + 1)], i)
-      }
+      const top = px(col, row * 2)
+      const bot = px(col, row * 2 + 1)
+      const cell: Run = ch ? { t: ch, fg: ink } : top && bot ? { t: '▀', fg: top, bg: bot } : top ? { t: '▀', fg: top } : bot ? { t: '▄', fg: bot } : { t: ' ' }
+      const last = runs[runs.length - 1]
+      if (last && last.fg === cell.fg && last.bg === cell.bg) last.t += cell.t
+      else runs.push(cell)
     }
-  }
-  const bytes = new Uint8Array(words.buffer)
-  let bin = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return { cells: btoa(bin), columns: cols, rows }
+    return runs
+  })
 }
 
 // Self-check: the parts a broken edit would quietly corrupt
@@ -240,6 +243,8 @@ export function selfCheck() {
   const g = { branch: '', branchAuto: true, branchPattern: '{type}/{ticket}-{slug}', ticket: 'API-142', user: 'dev', base: 'main', type: 'feat', scope: 'auth', subject: 'add rate limiting to login', body: '', msgPattern: '{type}({scope}): {subject}', autoCommit: false, autoWhen: 'tests', breaking: false, push: false, pr: false, draft: false, signoff: false, gpg: false, preTest: false } as GitForm
   const checks: [unknown, unknown][] = [
     [branchName(g, 'main'), 'feat/api-142-add-rate-limiting-to-login'],
+    [branchName({ ...g, ticket: '' }, 'main'), 'feat/add-rate-limiting-to-login'],
+    [branchName({ ...g, ticket: '', subject: '' }, 'main'), 'feat'],
     [commitMsg(g, 'x'), 'feat(auth): add rate limiting to login'],
     [commitMsg({ ...g, breaking: true }, 'x'), 'feat(auth)!: add rate limiting to login'],
     [nJ(2), 3], [nJ(5), 6], [nJ(8), 9], [thrOf(6), 4],

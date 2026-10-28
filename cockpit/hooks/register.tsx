@@ -23,7 +23,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, TesterCard, Tests, se
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-2' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-3' })
 
 const TABS: Tab[] = ['overview', 'files', 'tests', 'agents', 'git']
 
@@ -65,6 +65,7 @@ export const register: Register = on => {
       return { text: `Decisions: ${arg === 'auto' ? 'Auto · judge' : 'Ask me'}` }
     }
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
+    if (verb === 'tab' && arg === 'git') await refreshRepo($)
     if (verb === 'focus') {
       const want = arg.toLowerCase()
       if (want && want !== 'on' && want !== 'off') return { text: 'Use /cockpit focus on, /cockpit focus off, or /cockpit focus to switch' }
@@ -168,12 +169,14 @@ export const register: Register = on => {
     await refreshRepo($)
     await measure($)
     const s = await read($, S)
-    if (changedThisTurn && s.autoTest) {
+    const commitAfterTests = s.git.autoCommit && s.git.autoWhen === 'tests'
+    if (changedThisTurn && (s.autoTest || commitAfterTests)) {
       await set($, st => ({ ui: { ...st.ui, testsHidden: false } }))
       await runTester($, 'pos')
       await runTester($, 'neg')
     }
-    if (changedThisTurn && s.git.autoCommit && (s.git.autoWhen === 'step' || s.git.autoWhen === 'done')) await commit($, true)
+    // 'done' is a stored value from before; it commits as 'step' does
+    if (changedThisTurn && s.git.autoCommit && s.git.autoWhen !== 'tests') await commit($, true)
     changedThisTurn = false
     return r
   })
@@ -191,13 +194,15 @@ export const register: Register = on => {
   })
 
   // Activity line in place of the spinner: ✻ what is happening · elapsed
-  on('ui.render', { component: 'Spinner' }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     const s = await read($, S)
-    const t = themeOf(s)
-    const now = await $.clock.now()
     const mode = e.props.mode
     const what = s.waiting ? 'Waiting for your answer' : mode === 'thinking' ? 'Thinking' : mode === 'requesting' ? 'Sending' : mode === 'responding' ? 'Writing' : s.activity
+    // The desktop keeps its own row and takes only its words
+    if (e.surface !== 'terminal') return next({ ...e, props: { ...e.props, message: what } })
+    const { Box, Text } = $.ui.resolve(e)
+    const t = themeOf(s)
+    const now = await $.clock.now()
     const glyph = ['✻', '✼', '✽', '✾', '✽', '✼'][Math.floor(now / 180) % 6]
     return (
       <Box justifyContent="space-between" marginTop={1}>
@@ -220,27 +225,35 @@ export const register: Register = on => {
     const p = progress(s)
     const win = s.ctx.window || 200000
     const toggle = (
-      <Button key="ph-focus" label={s.focus !== false ? 'Focus on' : 'Focus off'} plain onPress={() => set($, st => ({ focus: st.focus === false }))}>
+      <Button key="ph-focus" plain onPress={() => set($, st => ({ focus: st.focus === false }))}>
         <Text color={s.focus !== false ? t.accent : t.dim}>{s.focus !== false ? '◉ Focus' : '○ Focus'}</Text>
       </Button>
     )
+    // Testers in one phrase, for the one-line band
+    const tz = [s.testers.pos, s.testers.neg]
+    const testsFail = tz.some(x => x.cases.some(c => c.st === 'fail'))
+    const testsAll = tz.flatMap(x => x.cases)
+    const testsLine = tz.some(x => x.status === 'running') ? 'testing…' : testsAll.length ? `tests ${testsAll.length - testsAll.filter(c => c.st === 'fail').length}/${testsAll.length}` : ''
     if (s.focus !== false) {
       return (
-        <Box marginTop={1} borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between">
+        <Box marginTop={1} borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
             <Text color={t.accent}>{`${p.pct}%`}</Text>
             <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
             <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`${s.ctx.pct}%`}</Text>
+            {testsLine && <Text color={testsFail ? t.hi : t.dim}>{`  ·  ${testsLine}`}</Text>}
           </Text>
           {toggle}
         </Box>
       )
     }
-    // Columns: label 10, bar, figures; border and padding take 4
+    // Columns: label 10, bar, figures; border and padding take 4. Too narrow for that, the figures go above a full-width bar
     const right1 = `  ${p.pct}% · ${p.stepName}`
     const right2 = `  ${s.ctx.pct}% · ${kTok(s.ctx.used)} / ${kTok(win)}`
     const tail = Math.max(right1.length, right2.length)
-    const bw = Math.max(12, e.props.bodyColumns - 4 - 10 - tail)
+    const inner = e.props.bodyColumns - 4
+    const narrow = inner < 10 + 12 + tail
+    const bw = narrow ? Math.max(6, inner) : inner - 10 - tail
     const gaps = p.steps.length - 1
     const segW = Math.max(1, Math.floor((bw - gaps) / p.steps.length))
     const shades = ctxShades(t)
@@ -260,8 +273,15 @@ export const register: Register = on => {
             <Text color={t.faint}>cockpit</Text>
             {toggle}
           </Box>
-          <Button key="ph-progress" label="Progress" plain onPress={() => set($, { tab: 'overview' })}>
-            <Text color={t.dim}>{'Progress  '}</Text>
+          {narrow && (
+            <Text>
+              <Text color={t.dim}>Progress </Text>
+              <Text color={t.text}>{`${p.pct}%`}</Text>
+              <Text color={t.dim}>{` · ${p.stepName}`}</Text>
+            </Text>
+          )}
+          <Button key="ph-progress" plain onPress={() => set($, { tab: 'overview' })}>
+            {!narrow && <Text color={t.dim}>{'Progress  '}</Text>}
             {p.steps.map((x, i) => {
               const k = x.st === 'done' ? segW : x.st === 'active' ? Math.max(1, Math.round(segW / 2)) : 0
               return (
@@ -273,15 +293,22 @@ export const register: Register = on => {
               )
             })}
             <Text color={t.track}>{'━'.repeat(Math.max(0, bw - segW * p.steps.length - gaps))}</Text>
-            <Text color={t.text}>{`  ${p.pct}%`}</Text>
-            <Text color={t.dim}>{` · ${p.stepName}`}</Text>
+            {!narrow && <Text color={t.text}>{`  ${p.pct}%`}</Text>}
+            {!narrow && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}
           </Button>
-          <Button key="ph-context" label="Context" plain onPress={() => set($, { tab: 'overview' })}>
-            <Text color={t.dim}>{'Context   '}</Text>
+          {narrow && (
+            <Text>
+              <Text color={t.dim}>Context </Text>
+              <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`${s.ctx.pct}%`}</Text>
+              <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
+            </Text>
+          )}
+          <Button key="ph-context" plain onPress={() => set($, { tab: 'overview' })}>
+            {!narrow && <Text color={t.dim}>{'Context   '}</Text>}
             {ctxCells}
             <Text color={t.track}>{'━'.repeat(Math.max(0, left))}</Text>
-            <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`  ${s.ctx.pct}%`}</Text>
-            <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
+            {!narrow && <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`  ${s.ctx.pct}%`}</Text>}
+            {!narrow && <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>}
           </Button>
         </Box>
       </Box>
@@ -426,11 +453,11 @@ export const register: Register = on => {
     if (!('Input' in table) || !('Select' in table)) {
       return <table.Text color={t.dim}>Cockpit needs a surface with fields.</table.Text>
     }
-    const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Raster' in table ? { Raster: table.Raster } : {}), ...('Svg' in table ? { Svg: table.Svg } : {}) }
-    const v = { ui, s, t, w: Math.max(30, e.props.bodyColumns), now: await $.clock.now(), root }
+    const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Svg' in table && e.surface !== 'terminal' ? { Svg: table.Svg } : {}) }
+    const v = { ui, s, t, w: Math.max(16, e.props.bodyColumns - 2), now: await $.clock.now(), root }
     const { Box } = ui
     return (
-      <Box flexDirection="column" paddingX={1} backgroundColor={t.bg}>
+      <Box flexDirection="column" paddingX={1}>
         {Header($, v)}
         {Tabs($, v)}
         {s.tab === 'overview' && Overview($, v)}
