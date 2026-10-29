@@ -182,6 +182,16 @@ export async function decideCommit($: $) {
   else if (s.git.commitMode === 'ask') await proposeCommit($)
 }
 
+// Push the current branch
+export async function pushNow($: $) {
+  const s = await read($, S)
+  const acct = s.accounts.find(a => a.id === s.accountId)
+  if (acct?.gh) await $.process.run(['gh', 'auth', 'switch', '--user', acct.gh]).catch(() => null)
+  const p = await git($, ['push', '-u', 'origin', s.repo.current])
+  await toast($, p.exitCode === 0 ? `Pushed ${s.repo.current}` : `Push failed: ${firstLine(p)}`)
+  await refreshRepo($)
+}
+
 // gh login with a personal access token on stdin; gh keeps the token, Cockpit never does
 export async function ghLoginToken($: $, token: string) {
   const tk = token.trim()

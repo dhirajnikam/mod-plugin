@@ -52,14 +52,15 @@ export const GIT_OPTS: [keyof GitForm, string][] = [
   ['gpg', 'GPG sign'],
 ]
 // Cockpit's own experts, shipped as agents/<name>.md; they hand their reports to one another along a pipeline
-export const EXPERTS: { type: string; name: string; what: string }[] = [
-  { type: 'cockpit:planner', name: 'Planner', what: 'reads the task and the code, lays out the smallest plan' },
-  { type: 'cockpit:builder', name: 'Builder', what: 'implements the plan with the smallest diff that works' },
-  { type: 'cockpit:reviewer', name: 'Reviewer', what: 'reviews the change for bugs, edge cases and bloat' },
-  { type: 'cockpit:prover', name: 'Prover', what: 'proves the change works: tests for the happy paths' },
-  { type: 'cockpit:breaker', name: 'Breaker', what: 'tries to break the change: abuse, edge cases, bad input' },
-  { type: 'cockpit:scribe', name: 'Scribe', what: 'brings the README, docs and changelog up to date' },
+export const EXPERTS: { type: string; name: string; glyph: string; what: string }[] = [
+  { type: 'cockpit:planner', name: 'Planner', glyph: '◆', what: 'reads the task and the code, lays out the smallest plan' },
+  { type: 'cockpit:builder', name: 'Builder', glyph: '⚙', what: 'implements the plan with the smallest diff that works' },
+  { type: 'cockpit:reviewer', name: 'Reviewer', glyph: '◎', what: 'reviews the change for bugs, edge cases and bloat' },
+  { type: 'cockpit:prover', name: 'Prover', glyph: '✓', what: 'proves the change works: tests for the happy paths' },
+  { type: 'cockpit:breaker', name: 'Breaker', glyph: '✗', what: 'tries to break the change: abuse, edge cases, bad input' },
+  { type: 'cockpit:scribe', name: 'Scribe', glyph: '✎', what: 'brings the README, docs and changelog up to date' },
 ]
+export const expertGlyph = (type: string) => EXPERTS.find(x => x.type === type)?.glyph ?? '⧉'
 export const PIPELINES: { name: string; label: string; steps: string[]; what: string }[] = [
   { name: 'build', label: 'Build', steps: ['cockpit:planner', 'cockpit:builder', 'cockpit:reviewer', 'cockpit:prover', 'cockpit:breaker', 'cockpit:scribe'], what: 'plan, build, review, prove, break, document' },
   { name: 'verify', label: 'Verify', steps: ['cockpit:prover', 'cockpit:breaker'], what: 'prove it works, then try to break it' },
