@@ -6,6 +6,7 @@ import {
   commit,
   confirmPending,
   discoverAgentTypes,
+  loadProject,
   runExpert,
   ghLoginToken,
   ghLoginWeb,
@@ -30,7 +31,8 @@ import {
   COMMIT_MODES,
   EXPERTS,
   PIPELINES,
-  STEPS,
+  FLOWS,
+  progressOf,
   expertGlyph,
   expertName,
   verifyState,
@@ -48,7 +50,7 @@ import {
   thrOf,
   tree,
 } from './logic'
-import { setGit as setGitPref } from './actions'
+import { pickFlow, setGit as setGitPref } from './actions'
 import { BAD, BUSY, OK, THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
 
@@ -191,7 +193,7 @@ export function Tabs($: $, v: V) {
     <Box flexDirection="column">
       <Box flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'xs' : 0}>
         {tabs.map(([id, label, badge]) => {
-          const open = () => Promise.all([set($, { tab: id }), id === 'git' ? refreshRepo($) : id === 'agents' ? discoverAgentTypes($) : null])
+          const open = () => Promise.all([set($, { tab: id }), id === 'git' ? refreshRepo($) : id === 'agents' ? discoverAgentTypes($) : id === 'files' ? loadProject($) : null])
           return v.desk ? (
             <Button key={`tab-${id}`} label={badge ? `${label} ${badge}` : label} variant={id === s.tab ? 'primary' : 'secondary'} onPress={open} />
           ) : (
@@ -264,7 +266,10 @@ export function Overview($: $, v: V) {
         )}
         <Box flexDirection="column" gap={sp(v, 1)} flexGrow={1} flexShrink={1}>
           <Text color={t.text} bold size="heading" wrap="wrap">{s.task || 'No task yet: send a prompt.'}</Text>
-          <Text color={s.isWorking ? t.accent : t.dim}>{p.stepName}</Text>
+          <Text>
+            <Text color={s.isWorking ? t.accent : t.dim}>{p.stepName}</Text>
+            {s.flows.length > 0 && <Text color={t.dim}>{` · ${p.flow.label} flow`}</Text>}
+          </Text>
           <Box columnGap={sp(v, 3)} flexWrap="wrap">
             {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? BUSY : t.text], ['Changes', diff, adds || dels ? OK : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
@@ -283,6 +288,24 @@ export function Overview($: $, v: V) {
           </Text>
         ))}
       </Box>
+      {s.flows.length > 0 && (
+        <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
+          <Text color={t.dim} size="footnote">Flow</Text>
+          <Seg v={v} id="flow" value={p.flow.name} items={FLOWS.map(f => [f.name, f.label] as [string, string])} onPick={k => pickFlow($, k)} />
+        </Box>
+      )}
+      {flows.length === 0 && (
+        <Box flexDirection="column">
+          <Text color={t.text} weight="semibold">Flows</Text>
+          {FLOWS.map(f => (
+            <Text key={`fd-${f.name}`} wrap="wrap">
+              <Text color={t.accent}>{f.label}</Text>
+              <Text color={t.dim}>{` · ${f.steps.join(' › ')} · ${f.what}`}</Text>
+            </Text>
+          ))}
+          <Text color={t.dim} size="footnote" wrap="wrap">Each prompt picks a flow from its words; a step reached beyond it is added, and a question that edits files becomes a Build.</Text>
+        </Box>
+      )}
       {flows.length > 0 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
@@ -299,6 +322,7 @@ export function Overview($: $, v: V) {
             const live = f.status === 'running'
             const col = live ? BUSY : f.status === 'done' ? OK : BAD
             const took = (f.endedAt ?? v.now) - f.startedAt
+            const fp = progressOf(f.task, f.reached, live, f.kind)
             return (
               <Box key={`fl-${f.id}`} flexDirection="column">
                 <Box columnGap={sp(v, 1)}>
@@ -310,10 +334,11 @@ export function Overview($: $, v: V) {
                     </Button>
                   </Box>
                   <Text mono>
-                    {STEPS.map(name => (
-                      <Text key={`fs-${f.id}-${name}`} color={f.reached.includes(name) ? (live && name === f.reached[f.reached.length - 1] ? BUSY : OK) : t.faint}>{f.reached.includes(name) ? (live && name === f.reached[f.reached.length - 1] ? '●' : '✓') : '○'}</Text>
+                    {fp.steps.map(x => (
+                      <Text key={`fs-${f.id}-${x.name}`} color={x.st === 'active' ? BUSY : x.st === 'done' ? OK : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : '○'}</Text>
                     ))}
                   </Text>
+                  <Text color={t.dim} size="footnote">{`${fp.pct}%`}</Text>
                   {(f.add || f.del) > 0 && (
                     <Text size="footnote">
                       <Text color={OK}>{`+${f.add}`}</Text>
@@ -324,7 +349,7 @@ export function Overview($: $, v: V) {
                 </Box>
                 {open && (
                   <Box flexDirection="column" paddingLeft={2}>
-                    <Text color={t.dim} size="footnote" wrap="wrap">{`${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
+                    <Text color={t.dim} size="footnote" wrap="wrap">{`${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
                     <Text color={t.dim} size="footnote">{`${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
                   </Box>
                 )}
@@ -459,7 +484,7 @@ export function Files($: $, v: V) {
   }
   const latest = s.ops[s.ops.length - 1]
   const nowPath = live && latest && latest.op !== 'Search' ? rel(latest.path) : ''
-  const rows_ = tree(s.ops, s.ui.collapsed, v.root)
+  const rows_ = tree(s.ops, s.ui.collapsed, v.root, s.project)
   const filter = s.ui.treeSel
   type Row = { at: number; key: string; kind: 'op' | 'agent'; op?: (typeof s.ops)[number]; who?: string; glyph?: string; text?: string; running?: boolean }
   const feed: Row[] = [
@@ -492,12 +517,12 @@ export function Files($: $, v: V) {
         </Box>
         {live && marquee()}
       </Box>
-      {rows_.length === 0 && <Text color={t.dim} wrap="wrap">Nothing yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
+      {rows_.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
       {rows_.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
           <Box justifyContent="space-between" flexWrap="wrap">
-            <Text color={t.text} weight="semibold">Files</Text>
-            <Text color={t.dim} size="footnote">{`${new Set(s.ops.filter(o => o.op !== 'Search').map(o => o.path)).size} touched`}</Text>
+            <Text color={t.text} weight="semibold">Project</Text>
+            <Text color={t.dim} size="footnote">{`${s.project.length ? `${s.project.length} files · ` : ''}${new Set(s.ops.filter(o => o.op !== 'Search').map(o => o.path)).size} touched`}</Text>
           </Box>
           {rows_.map(n => {
             const isNow = nowPath !== '' && n.path === nowPath
@@ -509,10 +534,10 @@ export function Files($: $, v: V) {
                   <Button
                     key={`treeb-${n.path}`}
                     plain
-                    onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !st.ui.collapsed[n.path] } } } : { ui: { ...st.ui, treeSel: chosen ? '' : n.path } }))}
+                    onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !n.collapsed } } } : { ui: { ...st.ui, treeSel: chosen ? '' : n.path } }))}
                   >
                     <Text backgroundColor={chosen ? t.wash : undefined} mono>
-                      <Text color={isNow && blink ? BUSY : t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (s.ui.collapsed[n.path] ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
+                      <Text color={isNow && blink ? BUSY : t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (n.collapsed ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
                       <Text color={isNow ? BUSY : col} bold={isNow || chosen} strikethrough={n.op === 'Delete'} wrap="truncate-end">
                         {n.name}
                       </Text>

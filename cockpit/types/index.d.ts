@@ -96,6 +96,8 @@ export type Flow = {
   del: number
   decisions: number
   commit: string
+  // A flow picked by hand (/cockpit flow, or the picker); else the words of the task choose
+  kind?: string
 }
 
 export type Changed = { path: string; meta: string; add: number; del: number; from?: string }
@@ -117,6 +119,8 @@ export type Ph = {
   // Every prompt's work, oldest first; the last one is the current flow
   flows: Flow[]
   ops: FileOp[]
+  // Every path of the project, relative to the root: the Activity tree's skeleton
+  project: string[]
   decisions: Decision[]
   waiting: string
   // Run the Verify experts after each turn that changes files

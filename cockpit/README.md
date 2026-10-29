@@ -5,14 +5,18 @@ A Claude Code mod that shows what a session is doing and gives you its controls,
 ## What it adds
 
 - **Side pane** (`/cockpit`) with five tabs:
-  - **Overview**: the current flow (a progress ring, the task, elapsed, changes, cost, step chips), then every prompt of the session as a flow with its state, time, steps, changes and commit, and the session's totals; the context-window breakdown, a "Needs you" card, and a log of Claude's decisions with each judge's vote.
-  - **Activity**: what is happening, live. A header with the current action, a turning glyph and a light running along a bar while work runs; the files touched as a tree, the one being worked on right now marked `▶ … now` and pulsing, each file with its last operation's glyph and figures; and under it the feed, newest first: every file read, written, edited, deleted or searched (its diff a press away) and what each agent is doing, each line with its age. Pressing a file narrows the feed to it.
+  - **Overview**: the current flow (a progress ring, the task, elapsed, changes, cost, step chips), then every prompt of the session as a flow with its state, time, steps, progress, changes and commit, and the session's totals (before the first prompt, the predefined flows); the context-window breakdown, a "Needs you" card, and a log of Claude's decisions with each judge's vote.
+  - **Activity**: what is happening, live. A header with the current action, a turning glyph and a light running along a bar while work runs; the project's folder structure as a tree (git's view of it, ignored files left out), every file the session touched marked with its last operation's glyph and figures, the one being worked on right now marked `▶ … now` and pulsing, folders with nothing touched folded away until pressed; and under it the feed, newest first: every file read, written, edited, deleted or searched (its diff a press away) and what each agent is doing, each line with its age. Pressing a file narrows the feed to it.
   - **Agents**: a team board of Cockpit's six experts, each card showing what that expert is doing right now (its latest tool call and elapsed time), its last result and REPORT line, with ▶ to run it and ■ to stop it; a pipeline strip (**Build**, **Verify**, **Review**) that shows the current step and the hand-off travelling to the next expert; and an activity list of every agent, with View, Stop and Restart, and a form to start any agent type. The experts (`cockpit:planner`, `builder`, `reviewer`, `prover`, `breaker`, `scribe`) ship with the mod and work in turn: each is handed the task and the REPORT and HANDOFF lines of the experts before it. Verify runs the Prover (proves the change works) then the Breaker (tries to break it); their CASE lines show on their cards and as `tests ✓n/m` in the band. The form lists every agent type it finds: the built-ins, the experts, `.claude/agents/*.md` in the project and in `~/.claude`, each installed plugin's agents as `plugin:name`, and any type that has started this session; any other name can be typed in.
   - **Git**: the branch with what is unpushed and a **↑ Push** button, the next commit as a card (type, message, branch, files, Commit), the changes with their kind (new, deleted, renamed, edited) and ticks, the repository's recent commits as a timeline with Cockpit's own annotated, and the account, patterns and options folded away.
 - **Above the prompt**: Progress and Context bars. Click either one to open Overview.
 - **Spinner**: `✻ Editing login.ts … 1:23`. The desktop app keeps its own row and shows Cockpit's words in it.
 - **Under the prompt** (terminal only): `[cockpit] ⎇ branch ↑ahead @account +add −del tests $cost mode`.
 - **In the chat**: your prompts as `›` rows, Claude's replies with a `●`, and tool activity as cards (file edits, searches, judge votes, subagents, commits) that open the matching tab when clicked. The latest turn ends with `✻ Done · ready to commit … Done in m:ss`. A running pipeline shows its step above the prompt.
+
+## Flows
+
+Every prompt opens a flow, and each flow picks one of four predefined templates from the words of the prompt: **Build** (Understand › Explore › Implement › Verify › Commit) for a feature, fix or refactor; **Docs** (no Verify) when the prompt is about the README, docs or comments; **Check** (Understand › Explore › Verify › Answer) for review, verify, lint, "make sure" or "run the tests"; **Answer** (Understand › Explore › Answer) for a question. Progress is the share of that flow's steps reached, so a question is done when it is answered and a build sits at 60% until its commit. The steps are dynamic: one reached beyond the template is added (a Decide when Claude asks you something, a Verify when tests run in an Answer flow), and a question that starts editing files becomes a Build, so Commit joins its steps. The ring, the chips, the band's Progress bar and each flow's row all measure against the flow's own steps. When the words pick wrong, `/cockpit flow <name>` or the **Flow** picker under the step chips puts the current prompt on another flow, and that choice stands.
 
 ## Live figures
 
@@ -59,6 +63,7 @@ In **Auto · judge** mode, a quick model rates each question Claude asks from 0 
 | `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch theme (or click the dots in the pane header) |
 | `/cockpit mode <auto\|ask>` | who answers Claude's questions |
 | `/cockpit tab <overview\|files\|tests\|agents\|git>` | open a tab (`git` reads the repo again) |
+| `/cockpit flow <build\|docs\|check\|answer>` | put the current prompt on that flow (or pick it under the step chips) |
 | `/cockpit test` | run the Verify pipeline now |
 
 ## Defaults that cost or publish

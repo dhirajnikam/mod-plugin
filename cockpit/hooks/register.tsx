@@ -13,7 +13,9 @@ import {
   loadAccounts,
   loadGitPrefs,
   measure,
+  loadProject,
   openPane,
+  pickFlow,
   skipPending,
   refreshRepo,
   registerExperts,
@@ -22,14 +24,14 @@ import {
   setTheme,
   trackAgent,
 } from './actions'
-import { PIPELINES, activityOf, base, expertName, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
+import { FLOWS, PIPELINES, activityOf, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 import { BAD, BUSY, OK, THEME_IDS, ctxShades, themeOf } from './theme'
 import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './views'
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-9' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-11' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -46,8 +48,8 @@ export const register: Register = on => {
     if (bad.length) $.ui.log(`cockpit self-check failed: ${JSON.stringify(bad)}`)
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask>, tab <name>, test',
-      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask> | tab <name> | test]',
+      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask>, tab <name>, flow <build|docs|check|answer>, test',
+      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask> | tab <name> | flow <name> | test]',
     })
     await refreshRepo($)
     await loadGitPrefs($)
@@ -86,6 +88,7 @@ export const register: Register = on => {
     }
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'tab' && arg === 'git') await refreshRepo($)
+    if (verb === 'tab' && arg === 'files') await loadProject($)
     if (verb === 'tab' && arg === 'agents') await discoverAgentTypes($)
     if (verb === 'focus') {
       const want = arg.toLowerCase()
@@ -93,6 +96,14 @@ export const register: Register = on => {
       const isOn = want === 'on' ? true : want === 'off' ? false : (await read($, S)).focus === false
       await set($, { focus: isOn })
       return { text: `Focus ${isOn ? 'on: only your prompts, replies and progress show' : 'off'}` }
+    }
+    if (verb === 'flow') {
+      const f = FLOWS.find(x => x.name === arg.toLowerCase())
+      if (!f) return { text: `Flows: ${FLOWS.map(x => `${x.name} (${x.steps.join(' › ')})`).join(', ')}` }
+      if (!(await read($, S)).flows.length) return { text: 'No flow yet: send a prompt first.' }
+      await pickFlow($, f.name)
+      await openPane($)
+      return { text: `${f.label} flow: ${f.steps.join(' › ')}` }
     }
     if (verb === 'test') await startPipeline($, 'verify')
     await openPane($)
@@ -197,12 +208,17 @@ export const register: Register = on => {
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
       return r
     }
-    await set($, st => ({
-      isWorking: false,
-      activity: 'Done',
-      lastTurnMs: now - st.turnStart,
-      flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached: st.reached } : f)),
-    }))
+    await set($, st => {
+      // A flow that ends in an answer reaches it when the turn completes
+      const reached = !e.isAborted && st.reached.length && flowOf(st.task, st.reached, st.flows[st.flows.length - 1]?.kind).steps.includes('Answer') && !st.reached.includes('Answer') ? [...st.reached, 'Answer'] : st.reached
+      return {
+        isWorking: false,
+        activity: 'Done',
+        lastTurnMs: now - st.turnStart,
+        reached,
+        flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached } : f)),
+      }
+    })
     await refreshRepo($)
     await measure($)
     const s = await read($, S)

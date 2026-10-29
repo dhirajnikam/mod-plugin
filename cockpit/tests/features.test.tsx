@@ -23,6 +23,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     if (cmd.startsWith('git config --global user.email')) return ok('dev@x.io\n')
     if (cmd.startsWith('gh auth status')) return ok('github.com\n  ✓ Logged in to github.com account one (keyring)\n  - Active account: false\n\n  ✓ Logged in to github.com account two (keyring)\n  - Active account: true\n')
     if (cmd.startsWith('git rev-parse')) return ok('abc1234\n')
+    if (cmd.startsWith('git ls-files')) return ok('README.md\0docs/guide.md\0src/app.ts\0')
     return ok('')
   })
   on('store.get', async (_: unknown, e: any) => ({ value: log.store[e.key] }))
@@ -184,6 +185,12 @@ test('file operations build the Files tab, the chat cards and the progress steps
   expect(drawn).toContain('"Edit "')
   await ui.press({ key: 'opb-e1' })
   expect(JSON.stringify(await ui.drawn())).toContain('+ c')
+  // The tree is the project's: an untouched folder shows folded, and opens on a press
+  expect(drawn).toContain('README.md')
+  expect(drawn).toContain('docs/')
+  expect(drawn).not.toContain('guide.md')
+  await ui.press({ key: 'treeb-docs' })
+  expect(JSON.stringify(await ui.drawn())).toContain('guide.md')
   // The tree sits above the feed; pressing a file narrows the feed to it
   expect(drawn).toContain('src/')
   await ui.press({ key: 'treeb-repo/src/limit.ts' })
@@ -213,6 +220,45 @@ test('file operations build the Files tab, the chat cards and the progress steps
   const card = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'ToolUse', requestId: 'e1', props: { tool_use_id: 'e1', tool: 'Edit', input: {}, isRunning: false, isErrored: false, isInterrupted: false } } as never)
   expect(JSON.stringify(await card.drawn())).toContain('Edit app.ts')
   await card.unmount()
+})
+
+test('each prompt picks a flow; a question reaches Answer at turn end, a build waits for its commit', async ($, on) => {
+  stand($, on)
+  // Before the first prompt the Overview lists the predefined flows
+  let ui = await $.ui.mount(pane('overview') as never)
+  expect(JSON.stringify(await ui.drawn())).toContain('Understand › Explore › Answer')
+  await ui.unmount()
+  await $.prompt.submit({ text: 'what does the band draw?', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/repo/src/app.ts', tool_use_id: 'r1' } as never)
+  await $.turn.complete({ answer: 'a bar', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
+  ui = await $.ui.mount(pane('overview') as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('Answer flow')
+  expect(d).toContain('"100%"')
+  expect(d).not.toContain(' Commit ')
+  await ui.unmount()
+  // A question that edits files is a Build: Commit joins its steps and it stays short of done
+  await $.prompt.submit({ text: 'how is the ring drawn?', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/ring.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
+  await $.turn.complete({ answer: 'done', reason: 'answer', turnId: 't2', isAborted: false, durationMs: 1000 } as never)
+  ui = await $.ui.mount(pane('overview') as never)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('Build flow')
+  expect(d).toContain(' Commit ')
+  expect(d).toContain('"60%"')
+  await ui.unmount()
+  // Verify run between turns reaches the closed flow too
+  await $.command.run({ command: 'cockpit', args: 'test' } as never)
+  ui = await $.ui.mount(pane('overview') as never)
+  expect(JSON.stringify(await ui.drawn())).toContain('"80%"')
+  // A flow picked by hand stands: by command, then by the picker
+  const r = await $.command.run({ command: 'cockpit', args: 'flow answer' } as never)
+  expect(JSON.stringify(r)).toContain('Answer flow')
+  expect(JSON.stringify(await ui.drawn())).toContain('Answer flow')
+  await ui.press({ key: 'flow-docs' })
+  expect(JSON.stringify(await ui.drawn())).toContain('Docs flow')
+  expect(JSON.stringify(await $.command.run({ command: 'cockpit', args: 'flow nope' } as never))).toContain('Flows: build')
+  await ui.unmount()
 })
 
 test('themes switch by command and by the header dots; Auto uses the theme keys', async ($, on) => {

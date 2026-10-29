@@ -6,7 +6,7 @@ import { AGENT_TYPES, PIPELINES, base, branchName, commitMsg, expertName, inferT
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-9' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-11' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -41,7 +41,31 @@ export const subjectOf = (task: string) => {
 }
 
 // Branch, ahead count, local branches and uncommitted files with their line counts
+// The project's paths: git's view (tracked and untracked, ignored left out), or a shallow walk outside a repository
+export async function loadProject($: $) {
+  const r = await git($, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+  let project = r.exitCode === 0 ? r.stdout.split('\0').filter(Boolean) : []
+  if (r.exitCode !== 0) {
+    // ponytail: depth 3 and 3000 paths; git gives the full view where it exists
+    const walk = async (dir: string, depth: number): Promise<string[]> => {
+      if (depth > 3 || project.length > 3000) return []
+      const entries = await $.fs.list(dir || undefined).catch(() => [])
+      const out: string[] = []
+      for (const en of entries) {
+        if (en.name.startsWith('.') || en.name === 'node_modules') continue
+        const p = dir ? `${dir}/${en.name}` : en.name
+        if (en.kind === 'dir') out.push(...(await walk(p, depth + 1)))
+        else if (en.kind === 'file') out.push(p)
+      }
+      return out
+    }
+    project = await walk('', 0)
+  }
+  await set($, { project: project.slice(0, 3000) })
+}
+
 export async function refreshRepo($: $) {
+  await loadProject($)
   // -z: paths come unquoted whatever they hold; a rename is "R  new\0old\0"
   const st = await git($, ['status', '--porcelain=v1', '-z', '-b'])
   if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [], log: [] } })
@@ -335,7 +359,12 @@ export async function startPipeline($: $, name: string) {
   startingPipeline = true
   try {
     const at = await $.clock.now()
-    await set($, { pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: [], at }, reached: s.reached.includes('Verify') ? s.reached : [...s.reached, 'Verify'] })
+    await set($, st => ({
+      pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: [], at },
+      reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'],
+      // The last flow, running or just closed: Verify runs after the turn that changed the files
+      flows: st.flows.map((f, i) => (i === st.flows.length - 1 && !f.reached.includes('Verify') ? { ...f, reached: [...f.reached, 'Verify'] } : f)),
+    }))
     await bindExpert($, await runExpert($, def.steps[0] ?? '', []))
   } finally {
     startingPipeline = false
@@ -458,6 +487,11 @@ export async function openPane($: $) {
 const GIT_PREFS: (keyof GitForm)[] = ['branchAuto', 'branchPattern', 'ticket', 'user', 'base', 'type', 'msgPattern', 'commitMode', 'autoWhen', 'setupDone', 'breaking', 'push', 'pr', 'draft', 'signoff', 'gpg', 'preTest']
 async function prefsKey($: $) {
   return `git:${await $.session.cwd()}`
+}
+
+// The current flow's template, chosen by hand
+export function pickFlow($: $, kind: string) {
+  return set($, st => ({ flows: st.flows.map((f, i) => (i === st.flows.length - 1 ? { ...f, kind } : f)) }))
 }
 
 export async function setGit($: $, patch: Partial<GitForm>) {

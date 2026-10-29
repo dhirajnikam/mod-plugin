@@ -1,6 +1,25 @@
 import type { Agent, Decision, FileOp, GitForm, Line, Ph, TestCase } from '../types'
 
-export const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit']
+// Every step a flow can reach, in order. A flow shows its own template's steps plus any it reaches beyond them
+export const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
+// The predefined flows: each prompt picks one from its words, and progress is measured against that flow's steps
+export const FLOWS: { name: string; label: string; steps: string[]; what: string }[] = [
+  { name: 'build', label: 'Build', steps: ['Understand', 'Explore', 'Implement', 'Verify', 'Commit'], what: 'a feature, fix or refactor' },
+  { name: 'docs', label: 'Docs', steps: ['Understand', 'Explore', 'Implement', 'Commit'], what: 'README, docs, comments' },
+  { name: 'check', label: 'Check', steps: ['Understand', 'Explore', 'Verify', 'Answer'], what: 'review, verify, run the tests' },
+  { name: 'answer', label: 'Answer', steps: ['Understand', 'Explore', 'Answer'], what: 'a question, an explanation' },
+]
+// The flow a prompt is on: from its words, and from what was reached: a question that starts editing files is a Build
+export function flowOf(task: string, reached: string[] = [], kind?: string) {
+  const t = task.trim().toLowerCase()
+  const docs = inferType(t, []) === 'docs'
+  const pick = (name: string) => FLOWS.find(f => f.name === name) ?? FLOWS[0]!
+  if (kind && FLOWS.some(f => f.name === kind)) return pick(kind)
+  if (reached.includes('Implement')) return pick(docs ? 'docs' : 'build')
+  if (/\b(review|check|verify|audit|lint|make sure|run (the )?tests?|does it work)\b/.test(t)) return pick('check')
+  if (/\?\s*$/.test(t) || /^(what|why|how|where|which|who|when|is|are|does|can|could|should|explain|show|list|tell|describe|summari[sz]e)\b/.test(t)) return pick('answer')
+  return pick(docs ? 'docs' : 'build')
+}
 export const TYPES = ['feat', 'fix', 'refactor', 'perf', 'test', 'docs', 'chore']
 export const BRANCH_PRESETS = [
   { v: '{kind}/{slug}', label: 'feature/add-login' },
@@ -183,18 +202,22 @@ export function stepOf(tool: string, input: Record<string, unknown>) {
   return ''
 }
 
-export function progress(s: Ph) {
-  const last = STEPS.reduce((m, name, i) => (s.reached.includes(name) ? i : m), -1)
-  const steps = STEPS.map((name, i) => ({
+// Progress of one flow: its template's steps and any reached beyond them, the last reached active while work runs
+export function progressOf(task: string, reached: string[], isWorking: boolean, kind?: string) {
+  const flow = flowOf(task, reached, kind)
+  const names = STEPS.filter(n => flow.steps.includes(n) || reached.includes(n))
+  const last = names.reduce((m, name, i) => (reached.includes(name) ? i : m), -1)
+  const steps = names.map((name, i) => ({
     name,
-    st: i < last || (i === last && !s.isWorking && s.reached.length > 0) ? 'done' : i === last ? 'active' : 'pending',
+    st: i < last || (i === last && !isWorking && reached.length > 0) ? 'done' : i === last ? 'active' : 'pending',
   }))
   const done = steps.filter(x => x.st === 'done').length
   const active = steps.some(x => x.st === 'active') ? 0.5 : 0
-  const pct = Math.round(((done + active) / STEPS.length) * 100)
+  const pct = Math.round(((done + active) / names.length) * 100)
   const at = steps.find(x => x.st === 'active')
-  return { steps, pct, stepName: at ? at.name : s.reached.length ? 'Idle' : 'Ready' }
+  return { flow, steps, pct, stepName: at ? at.name : reached.length ? 'Idle' : 'Ready' }
 }
+export const progress = (s: Ph) => progressOf(s.task, s.reached, s.isWorking, s.flows[s.flows.length - 1]?.kind)
 
 export function tally(d: Decision) {
   const n = d.votes.length
@@ -241,13 +264,15 @@ export function verifyState(agents: Agent[]) {
   }
 }
 
-export type TreeRow = { path: string; isDir: boolean; name: string; depth: number; tag: string; op: string; touched: boolean }
+export type TreeRow = { path: string; isDir: boolean; name: string; depth: number; tag: string; op: string; touched: boolean; collapsed: boolean }
 
-// Folder tree of every path the session touched, collapsed folders folded away
-export function tree(ops: FileOp[], collapsed: Record<string, boolean>, root: string): TreeRow[] {
+// Folder tree of the project and every path the session touched. A folder not toggled by hand is open when
+// something under it was touched and folded away otherwise, so a large project stays short
+export function tree(ops: FileOp[], collapsed: Record<string, boolean>, root: string, project: string[] = []): TreeRow[] {
   const rel = (p: string) => p.replace(/\\/g, '/').replace(root.replace(/\\/g, '/').replace(/\/?$/, '/'), '')
   const files = ops.filter(o => o.op !== 'Search' && o.path)
-  const paths = [...new Set(files.map(o => rel(o.path)))].sort((a, b) => {
+  const isClosed = (d: string) => collapsed[d] ?? !files.some(o => rel(o.path).startsWith(`${d}/`))
+  const paths = [...new Set([...project, ...files.map(o => rel(o.path))])].sort((a, b) => {
     const da = a.includes('/'), db = b.includes('/')
     return da === db ? a.localeCompare(b) : da ? -1 : 1
   })
@@ -255,20 +280,20 @@ export function tree(ops: FileOp[], collapsed: Record<string, boolean>, root: st
   const seen = new Set<string>()
   for (const p of paths) {
     const parts = p.split('/')
-    const hidden = (i: number) => parts.slice(0, i).some((_, j) => collapsed[parts.slice(0, j + 1).join('/')])
+    const hidden = (i: number) => parts.slice(0, i).some((_, j) => isClosed(parts.slice(0, j + 1).join('/')))
     for (let i = 1; i < parts.length; i++) {
       const d = parts.slice(0, i).join('/')
       if (seen.has(d)) continue
       seen.add(d)
       if (hidden(i - 1)) continue
       const touched = files.some(o => rel(o.path).startsWith(`${d}/`) && o.op !== 'Read')
-      rows.push({ path: d, isDir: true, name: `${parts[i - 1]}/`, depth: i - 1, tag: '', op: '', touched })
+      rows.push({ path: d, isDir: true, name: `${parts[i - 1]}/`, depth: i - 1, tag: '', op: '', touched, collapsed: isClosed(d) })
     }
     if (hidden(parts.length - 1)) continue
     const mine = files.filter(o => rel(o.path) === p)
     const last = mine[mine.length - 1]
     const tag = !last ? '' : last.op === 'Read' ? 'read' : last.op === 'Write' ? `new ${last.meta}` : last.op === 'Delete' ? 'deleted' : last.meta
-    rows.push({ path: p, isDir: false, name: parts[parts.length - 1] ?? p, depth: parts.length - 1, tag, op: last?.op ?? '', touched: !!last && last.op !== 'Read' })
+    rows.push({ path: p, isDir: false, name: parts[parts.length - 1] ?? p, depth: parts.length - 1, tag, op: last?.op ?? '', touched: !!last && last.op !== 'Read', collapsed: false })
   }
   return rows
 }
@@ -322,6 +347,14 @@ export function selfCheck() {
     [commitMsg(g, 'x'), 'feat(auth): add rate limiting to login'],
     [commitMsg({ ...g, breaking: true }, 'x'), 'feat(auth)!: add rate limiting to login'],
     [nJ(2), 3], [nJ(5), 6], [nJ(8), 9], [thrOf(6), 4],
+    [flowOf('what does this hook do?').name, 'answer'],
+    [flowOf('add a settings page').name, 'build'],
+    [flowOf('update the readme').name, 'docs'],
+    [flowOf('make sure it works').name, 'check'],
+    [flowOf('what is x', ['Understand', 'Explore', 'Implement']).name, 'build'],
+    [flowOf('what is x', ['Understand', 'Explore', 'Implement'], 'answer').name, 'answer'],
+    [progressOf('why?', ['Understand', 'Explore', 'Answer'], false).pct, 100],
+    [progressOf('add x', ['Understand', 'Explore', 'Decide', 'Implement'], true).steps.map(x => x.name).join(), 'Understand,Explore,Decide,Implement,Verify,Commit'],
     [parseCases('CASE PASS works\nCASE FAIL bad :: got 200').map(c => c.st).join(), 'pass,fail'],
     [tally({ id: 'd', q: '', opts: ['a', 'b'], at: 0, score: 5, signals: [], votes: [0, 0, 0, 0, 1, -1], status: 'voting', result: '' }).passes, true],
   ]
