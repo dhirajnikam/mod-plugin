@@ -124,7 +124,6 @@ export const register: Register = on => {
       activity: activityOf(e.tool, input),
       ...(op ? { ops: [...s.ops, op].slice(-200) } : {}),
       ...(step && !s.reached.includes(step) ? { reached: [...s.reached, step] } : {}),
-      ...(op && op.op !== 'Search' && op.op !== 'Read' ? { ui: { ...s.ui, treeSel: op.path.replace(/\\/g, '/').replace(`${root.replace(/\\/g, '/')}/`, '') } } : {}),
     }))
     return next(e)
   }).catch(($, e, next) => next(e))

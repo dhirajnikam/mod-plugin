@@ -184,10 +184,12 @@ test('file operations build the Files tab, the chat cards and the progress steps
   expect(drawn).toContain('"Edit "')
   await ui.press({ key: 'opb-e1' })
   expect(JSON.stringify(await ui.drawn())).toContain('+ c')
-  // The folders view
-  await ui.press({ key: 'fview-tree' })
-  drawn = JSON.stringify(await ui.drawn())
+  // The tree sits above the feed; pressing a file narrows the feed to it
   expect(drawn).toContain('src/')
+  await ui.press({ key: 'treeb-repo/src/limit.ts' })
+  drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('Feed · repo/src/limit.ts')
+  expect(drawn).not.toContain('opb-e1')
   await ui.unmount()
   await $.command.run({ command: 'cockpit', args: 'focus off' } as never)
   const b = await $.ui.mount(band as never)
