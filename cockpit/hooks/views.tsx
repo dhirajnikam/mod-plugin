@@ -170,7 +170,7 @@ export function Tabs($: $, v: V) {
   const running = s.agents.filter(a => a.status === 'running').length
   const tabs: [Tab, string, string][] = [
     ['overview', 'Overview', s.waiting ? '!' : ''],
-    ['files', 'Files', s.ops.length ? String(s.ops.length) : ''],
+    ['files', 'Activity', s.ops.length ? String(s.ops.length) : ''],
     ['agents', 'Agents', running ? String(running) : vs.fail ? `✗${vs.fail}` : ''],
     ['git', 'Git', s.repo.changed.length ? String(s.repo.changed.length) : ''],
   ]
@@ -359,11 +359,14 @@ export function Overview($: $, v: V) {
   )
 }
 
+// One live feed: every file read, written, edited or searched, and what each agent is doing, newest first
 export function Files($: $, v: V) {
   const { Box, Button, Text } = v.ui
   const { s, t, w } = v
   const adds = s.ops.reduce((a, o) => a + o.add, 0)
   const dels = s.ops.reduce((a, o) => a + o.del, 0)
+  const rel = (p: string) => p.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', '')
+  const opGlyph = (op: string) => (op === 'Read' ? '○' : op === 'Search' ? '⌕' : op === 'Write' ? '✚' : op === 'Edit' ? '✎' : '✖')
   const opColor = (op: string) => (op === 'Write' ? OK : op === 'Edit' ? t.hi : op === 'Delete' ? BAD : t.dim)
   const lineColor = (k: string): [string | undefined, string] => (k === 'a' ? ['diffAdded', t.text] : k === 'd' ? ['diffRemoved', t.text] : [undefined, t.dim])
   const diffLines = (id: string, ls: { t: string; k: string }[]) =>
@@ -375,25 +378,83 @@ export function Files($: $, v: V) {
         </Box>
       )
     })
-  const rows = tree(s.ops, s.ui.collapsed, v.root)
+  // The pulse: a glyph that turns while work runs
+  const spin = ['✻', '✼', '✽', '✾'][Math.floor(v.now / 180) % 4] ?? '✻'
+  const blink = Math.floor(v.now / 400) % 2 === 0
+  const live = s.isWorking || s.agents.some(a => a.status === 'running')
+  // The feed: the session's file operations and every agent's log, as one timeline
+  type Row = { at: number; key: string; kind: 'op' | 'agent'; op?: (typeof s.ops)[number]; who?: string; glyph?: string; text?: string; running?: boolean }
+  const rows: Row[] = [
+    ...s.ops.map((o): Row => ({ at: o.at, key: `op-${o.id}`, kind: 'op', op: o })),
+    ...s.agents.flatMap(a => a.log.map((l, i): Row => ({ at: l.at, key: `al-${a.id}-${i}`, kind: 'agent', who: a.name, glyph: expertGlyph(a.type), text: l.t, running: a.status === 'running' && i === a.log.length - 1 }))),
+  ]
+    .sort((x, y) => y.at - x.at)
+    .slice(0, 80)
+  const tree_ = tree(s.ops, s.ui.collapsed, v.root)
   const sel = s.ops.filter(o => o.path.replace(/\\/g, '/').endsWith(s.ui.treeSel) && s.ui.treeSel)
+  const ago = (at: number) => (at ? fmt(Math.max(0, v.now - at)) : '')
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box justifyContent="space-between">
-        <Seg v={v} id="fview" value={s.ui.fileView} items={[['tree', 'Folders'], ['list', 'Activity']]} onPick={k => set($, st => ({ ui: { ...st.ui, fileView: k } }))} />
-        {adds || dels ? (
-          <Text>
+      <Box borderStyle="round" borderColor={live ? BUSY : t.divider} paddingX={1} justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+        <Text wrap="truncate-end">
+          <Text color={live ? BUSY : t.dim}>{`${live ? spin : '✻'} `}</Text>
+          <Text color={t.text} bold>{s.isWorking ? s.activity : s.agents.some(a => a.status === 'running') ? `${s.agents.filter(a => a.status === 'running').length} agents working` : s.turnStart ? 'Idle' : 'Ready'}</Text>
+        </Text>
+        <Text color={t.dim} size="footnote">{s.isWorking ? `${fmt(v.now - s.turnStart)} · ` : ''}{adds || dels ? '' : 'no changes'}{adds || dels ? '' : ''}</Text>
+        {(adds || dels) > 0 && (
+          <Text size="footnote">
             <Text color={OK}>{`+${adds}`}</Text>
             <Text color={BAD}>{` −${dels}`}</Text>
           </Text>
-        ) : (
-          <Text color={t.dim}>no changes</Text>
         )}
       </Box>
-      {s.ops.length === 0 && <Text color={t.dim}>No file operations yet.</Text>}
-      {s.ui.fileView === 'tree' && rows.length > 0 && (
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+        <Seg v={v} id="fview" value={s.ui.fileView} items={[['list', 'Feed'], ['tree', 'Folders']]} onPick={k => set($, st => ({ ui: { ...st.ui, fileView: k } }))} />
+        <Text color={t.dim} size="footnote">{`${s.ops.length} operations · ${s.agents.length} agents`}</Text>
+      </Box>
+      {s.ui.fileView === 'list' && rows.length === 0 && <Text color={t.dim}>Nothing yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
+      {s.ui.fileView === 'list' &&
+        rows.map((r, i) => {
+          const hot = i === 0 && live
+          if (r.kind === 'agent') {
+            return (
+              <Box key={r.key} columnGap={sp(v, 1)}>
+                <Text color={r.running ? BUSY : t.faint}>{r.running && blink ? '●' : '○'}</Text>
+                <Box flexGrow={1} flexShrink={1}>
+                  <Text wrap="truncate-end">
+                    <Text color={r.running ? BUSY : t.dim}>{`${r.glyph} ${r.who}  `}</Text>
+                    <Text color={t.text}>{r.text}</Text>
+                  </Text>
+                </Box>
+                <Text color={t.dim} size="footnote">{ago(r.at)}</Text>
+              </Box>
+            )
+          }
+          const o = r.op!
+          const open = s.ui.openFile === o.id
+          const name = o.op === 'Search' ? o.path : rel(o.path)
+          return (
+            <Box key={r.key} flexDirection="column">
+              <Box columnGap={sp(v, 1)}>
+                <Text color={hot && blink ? BUSY : opColor(o.op)}>{opGlyph(o.op)}</Text>
+                <Box flexGrow={1} flexShrink={1}>
+                  <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
+                    <Text color={opColor(o.op)}>{`${o.op} `}</Text>
+                    <Text color={t.text} wrap="truncate-end">{name}</Text>
+                    <Text color={t.dim}>{o.lines.length ? (open ? ' ⌄' : ' ›') : ''}</Text>
+                  </Button>
+                </Box>
+                <Text color={o.add || o.del ? (o.add >= o.del ? OK : BAD) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
+                <Text color={t.dim} size="footnote">{ago(o.at)}</Text>
+              </Box>
+              {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={2}>{diffLines(o.id, o.lines)}</Box>}
+            </Box>
+          )
+        })}
+      {s.ui.fileView === 'tree' && tree_.length === 0 && <Text color={t.dim}>No files touched yet.</Text>}
+      {s.ui.fileView === 'tree' && tree_.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.divider}>
-          {rows.map(n => (
+          {tree_.map(n => (
             <Box key={`tree-${n.path}`} justifyContent="space-between" columnGap={sp(v, 1)}>
               <Box flexGrow={1} flexShrink={1}>
               <Button
@@ -423,7 +484,7 @@ export function Files($: $, v: V) {
             .map(o => (
               <Box key={`selop-${o.id}`} flexDirection="column" borderStyle="round" borderColor={t.divider}>
                 <Box justifyContent="space-between">
-                  <Text color={t.dim}>{`${o.op} · ${fmt(o.at - (s.ops[0]?.at ?? o.at))}`}</Text>
+                  <Text color={opColor(o.op)}>{`${opGlyph(o.op)} ${o.op} · ${fmt(o.at - (s.ops[0]?.at ?? o.at))}`}</Text>
                   <Text color={t.dim}>{o.meta}</Text>
                 </Box>
                 {diffLines(o.id, o.lines)}
@@ -431,28 +492,6 @@ export function Files($: $, v: V) {
             ))}
         </Box>
       )}
-      {s.ui.fileView === 'list' &&
-        s.ops
-          .slice()
-          .reverse()
-          .map(o => {
-            const open = s.ui.openFile === o.id
-            return (
-              <Box key={`op-${o.id}`} flexDirection="column">
-                <Box columnGap={sp(v, 1)}>
-                  <Text color={opColor(o.op)} mono>{pad(o.op, 7)}</Text>
-                  <Box flexGrow={1} flexShrink={1}>
-                    <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
-                      <Text color={t.text} wrap="truncate-end">{o.path.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', '')}</Text>
-                    </Button>
-                  </Box>
-                  <Text color={t.dim}>{`${o.meta} ${open ? '⌄' : '›'}`}</Text>
-                </Box>
-                {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={1}>{diffLines(o.id, o.lines)}</Box>}
-                <Rule v={v} />
-              </Box>
-            )
-          })}
     </Box>
   )
 }

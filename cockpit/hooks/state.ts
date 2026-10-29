@@ -55,7 +55,7 @@ export const INITIAL: Ph = {
     openFile: '',
     openDec: '',
     openAgent: '',
-    fileView: 'tree',
+    fileView: 'list',
     collapsed: {},
     treeSel: '',
     more: false,

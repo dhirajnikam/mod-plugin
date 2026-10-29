@@ -55,8 +55,8 @@ export const register: Register = on => {
     await measure($)
     void registerExperts($)
     void discoverAgentTypes($)
-    // Live figures: a redraw each second while anything runs; the repo and usage read again every 15 s while the pane is shown
-    $.clock.every(1000, async () => {
+    // Live figures: a redraw a few times a second while anything runs; the repo and usage read again every 15 s while the pane is shown
+    $.clock.every(400, async () => {
       const s = await read($, S)
       const busy = s.isWorking || s.waiting !== '' || s.agents.some(a => a.status === 'running')
       if (busy) $.ui.invalidate('ui.render')
