@@ -2,6 +2,24 @@
 
 A Claude Code mod that shows what a session is doing and gives you its controls, around the prompt and in a side pane. It is built from the "Powerhouse Mod v2" design.
 
+## Install
+
+Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, type:
+
+```
+/plugin install cockpit --marketplace dhirajnikam/mod-plugin
+```
+
+Answer `y` to add this repository as a marketplace, then pick a scope: for you everywhere, or for one project. Cockpit loads at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
+
+**Good to know before you turn it on**
+
+- Cockpit writes a `.cockpit/` folder at the top of each repository you use it in: its codebase memory and history. The folder carries its own `.gitignore`, so nothing in it is ever committed.
+- Testing each agent's work is on: every agent run that edits files starts two more subagents (a positive and a negative tester). Switch it off in the Agents tab.
+- Each prompt makes one small model call to write its own flow steps, and the judges make a few when Claude asks a question in Auto mode (switch to Ask me in the Overview to stop them).
+- Push, pull requests and Verify after each turn are off until you turn them on.
+- Plugins your organization manages may run before Cockpit and skip some of its hooks; Cockpit's other parts keep working.
+
 ## What it adds
 
 - **Side pane** (`/cockpit`) with five tabs:

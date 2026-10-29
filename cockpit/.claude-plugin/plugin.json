@@ -1,6 +1,19 @@
 {
   "name": "cockpit",
   "version": "0.1.0",
-  "description": "Cockpit: progress, context, judges, testers, agents and git, around the prompt and in a side pane",
-  "types": "./types/index.d.ts"
+  "description": "Cockpit: progress by flow, codebase memory with impact, agents with positive and negative testers, judges, and a git graph, around the prompt and in a side pane",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Dhiraj Nikam"
+  },
+  "homepage": "https://github.com/dhirajnikam/mod-plugin",
+  "repository": "https://github.com/dhirajnikam/mod-plugin",
+  "license": "MIT",
+  "keywords": [
+    "progress",
+    "agents",
+    "testing",
+    "git",
+    "memory"
+  ]
 }

@@ -1,0 +1,14 @@
+{
+  "name": "mod-plugin",
+  "description": "Claude Code mods by Dhiraj Nikam: Cockpit, a side pane and band that show what a session is doing and give you its controls",
+  "owner": {
+    "name": "Dhiraj Nikam"
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "source": "./cockpit",
+      "description": "Progress, context, codebase memory, agents with positive and negative testers, and a git graph, around the prompt and in a side pane"
+    }
+  ]
+}
