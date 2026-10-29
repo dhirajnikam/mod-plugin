@@ -8,12 +8,16 @@ A Claude Code mod that shows what a session is doing and gives you its controls,
   - **Overview**: a progress ring, step chips, the context-window breakdown, a "Needs you" card, and a log of Claude's decisions with each judge's vote.
   - **Files**: every file read, written, edited or deleted, as a folder tree or a timeline, with the changed lines.
   - **Tests**: a positive tester and a negative tester, run as two subagents.
-  - **Agents**: every subagent, with View, Stop and Restart buttons and a form to start a new one.
+  - **Agents**: every subagent, with View, Stop and Restart buttons and a form to start a new one. The form lists every agent type it finds: the built-ins, `.claude/agents/*.md` in the project and in `~/.claude`, each installed plugin's agents as `plugin:name`, and any type that has started this session; any other name can be typed in.
   - **Git**: branch, commit type, scope and subject, a message preview, files to stage, auto-commit, and branch and message patterns.
 - **Above the prompt**: Progress and Context bars. Click either one to open Overview.
 - **Spinner**: `✻ Editing login.ts … 1:23`. The desktop app keeps its own row and shows Cockpit's words in it.
 - **Under the prompt** (terminal only): `[cockpit] ⎇ branch ↑ahead @account +add −del tests $cost mode`.
 - **In the chat**: your prompts as `›` rows, Claude's replies with a `●`, and tool activity as cards (file edits, searches, judge votes, subagents, commits) that open the matching tab when clicked. The latest turn ends with `✻ Done · ready to commit … Done in m:ss`. Tester results show as a card above the prompt.
+
+## Live figures
+
+Timers, bars and the context window redraw every second while a turn, a tester or an agent runs. While the pane is shown, the repository and the usage are read again every 15 seconds, so a commit made in a terminal shows up without a turn. Status colours (green, red, amber) are Claude Code's own theme colours, so they follow your theme.
 
 ## Focus
 

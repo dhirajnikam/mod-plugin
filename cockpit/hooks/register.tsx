@@ -4,6 +4,7 @@ import type { Register } from 'claude-code'
 import type { Decision, Tab, ThemeId } from '../types'
 import {
   commit,
+  discoverAgentTypes,
   finishTester,
   judge,
   detectTheme,
@@ -18,12 +19,12 @@ import {
 } from './actions'
 import { activityOf, base, fmt, kTok, progress, selfCheck, stepOf, tally, toOp } from './logic'
 import { INITIAL, PANE } from './state'
-import { THEME_IDS, ctxShades, themeOf } from './theme'
+import { BAD, BUSY, OK, THEME_IDS, ctxShades, themeOf } from './theme'
 import { Agents, Card, Files, Git, Header, Overview, Tabs, TesterCard, Tests, seatDots } from './views'
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-3' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-4' })
 
 const TABS: Tab[] = ['overview', 'files', 'tests', 'agents', 'git']
 
@@ -47,6 +48,19 @@ export const register: Register = on => {
     await loadAccounts($)
     await detectTheme($)
     await measure($)
+    void discoverAgentTypes($)
+    // Live figures: a redraw each second while anything runs; the repo and usage read again every 15 s while the pane is shown
+    $.clock.every(1000, async () => {
+      const s = await read($, S)
+      const busy = s.isWorking || s.waiting !== '' || s.agents.some(a => a.status === 'running') || s.testers.pos.status === 'running' || s.testers.neg.status === 'running'
+      if (busy) $.ui.invalidate('ui.render')
+    })
+    $.clock.every(15000, async () => {
+      if ((await $.ui.panes()).some(p => p.id === PANE && p.isPlaced)) {
+        await refreshRepo($)
+        await measure($)
+      }
+    })
     // Focus keeps the pane closed until /cockpit asks for it
     if ((await read($, S)).focus === false) void openPane($)
     return r
@@ -66,6 +80,7 @@ export const register: Register = on => {
     }
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'tab' && arg === 'git') await refreshRepo($)
+    if (verb === 'tab' && arg === 'agents') await discoverAgentTypes($)
     if (verb === 'focus') {
       const want = arg.toLowerCase()
       if (want && want !== 'on' && want !== 'off') return { text: 'Use /cockpit focus on, /cockpit focus off, or /cockpit focus to switch' }
@@ -153,6 +168,7 @@ export const register: Register = on => {
       // A tester Cockpit started itself: its id is known here, whether or not the spawn call hands it back
       const key = e.description === 'Positive tester' ? 'pos' : e.description === 'Negative tester' ? 'neg' : null
       if (key) await set($, s => (s.testers[key].status === 'running' && !s.testers[key].agentId ? { testers: { ...s.testers, [key]: { ...s.testers[key], agentId: id } } } : {}))
+      else await set($, s => (s.agentTypes.includes(e.subagentType) ? {} : { agentTypes: [...s.agentTypes, e.subagentType] }))
     }
     return r
   }).catch(($, e, next) => next(e))
@@ -246,8 +262,8 @@ export const register: Register = on => {
           <Text>
             <Text color={t.accent}>{`${p.pct}%`}</Text>
             <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
-            <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`${s.ctx.pct}%`}</Text>
-            {testsLine && <Text color={testsFail ? t.hi : t.dim}>{`  ·  ${testsLine}`}</Text>}
+            <Text color={s.ctx.pct >= 80 ? BUSY : t.text}>{`${s.ctx.pct}%`}</Text>
+            {testsLine && <Text color={testsFail ? 'error' : testsLine === 'testing…' ? BUSY : 'success'}>{`  ·  ${testsLine}`}</Text>}
           </Text>
           {toggle}
         </Box>
@@ -271,6 +287,16 @@ export const register: Register = on => {
     })
     const showTests = (s.testers.pos.status !== 'idle' || s.testers.neg.status !== 'idle') && !s.ui.testsHidden
     const ui = { Box, Text, Button } as UI
+    const progressLabel = (
+      <Button key="ph-progress" plain onPress={() => set($, { tab: 'overview' })}>
+        <Text color={t.dim}>Progress</Text>
+      </Button>
+    )
+    const contextLabel = (
+      <Button key="ph-context" plain onPress={() => set($, { tab: 'overview' })}>
+        <Text color={t.dim}>Context</Text>
+      </Button>
+    )
     return (
       <Box flexDirection="column" marginTop={1}>
         {showTests && TesterCard($, ui, t, s, await $.clock.now())}
@@ -280,14 +306,17 @@ export const register: Register = on => {
             {toggle}
           </Box>
           {narrow && (
-            <Text>
-              <Text color={t.dim}>Progress </Text>
-              <Text color={t.text}>{`${p.pct}%`}</Text>
-              <Text color={t.dim}>{` · ${p.stepName}`}</Text>
-            </Text>
+            <Box columnGap={1}>
+              {progressLabel}
+              <Text>
+                <Text color={t.text}>{`${p.pct}%`}</Text>
+                <Text color={t.dim}>{` · ${p.stepName}`}</Text>
+              </Text>
+            </Box>
           )}
-          <Button key="ph-progress" plain onPress={() => set($, { tab: 'overview' })}>
-            {!narrow && <Text color={t.dim}>{'Progress  '}</Text>}
+          <Box>
+            {!narrow && <Box width={10}>{progressLabel}</Box>}
+            <Text mono>
             {p.steps.map((x, i) => {
               const k = x.st === 'done' ? segW : x.st === 'active' ? Math.max(1, Math.round(segW / 2)) : 0
               return (
@@ -299,23 +328,28 @@ export const register: Register = on => {
               )
             })}
             <Text color={t.track}>{'━'.repeat(Math.max(0, bw - segW * p.steps.length - gaps))}</Text>
+            </Text>
             {!narrow && <Text color={t.text}>{`  ${p.pct}%`}</Text>}
             {!narrow && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}
-          </Button>
+          </Box>
           {narrow && (
-            <Text>
-              <Text color={t.dim}>Context </Text>
-              <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`${s.ctx.pct}%`}</Text>
-              <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
-            </Text>
+            <Box columnGap={1}>
+              {contextLabel}
+              <Text>
+                <Text color={s.ctx.pct >= 80 ? BUSY : t.text}>{`${s.ctx.pct}%`}</Text>
+                <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
+              </Text>
+            </Box>
           )}
-          <Button key="ph-context" plain onPress={() => set($, { tab: 'overview' })}>
-            {!narrow && <Text color={t.dim}>{'Context   '}</Text>}
-            {ctxCells}
-            <Text color={t.track}>{'━'.repeat(Math.max(0, left))}</Text>
-            {!narrow && <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{`  ${s.ctx.pct}%`}</Text>}
+          <Box>
+            {!narrow && <Box width={10}>{contextLabel}</Box>}
+            <Text mono>
+              {ctxCells}
+              <Text color={t.track}>{'━'.repeat(Math.max(0, left))}</Text>
+            </Text>
+            {!narrow && <Text color={s.ctx.pct >= 80 ? BUSY : t.text}>{`  ${s.ctx.pct}%`}</Text>}
             {!narrow && <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>}
-          </Button>
+          </Box>
         </Box>
       </Box>
     )
@@ -440,11 +474,18 @@ export const register: Register = on => {
     return (
       <Box gap={2}>
         <Text color={t.hi}>{s.focus !== false ? '[cockpit · focus]' : '[cockpit]'}</Text>
-        {s.repo.isRepo && <Text color={t.dim}>{`⎇ ${s.repo.current} ↑${s.repo.ahead}`}</Text>}
+        {s.repo.isRepo && <Text color={t.accent}>{`⎇ ${s.repo.current}${s.repo.ahead ? ` ↑${s.repo.ahead}` : ''}`}</Text>}
         {s.accounts.some(a => a.id === s.accountId) && <Text color={t.dim}>{`@ ${s.accounts.find(a => a.id === s.accountId)?.label}`}</Text>}
-        <Text color={t.dim}>{adds || dels ? `+${adds} −${dels}` : 'no changes'}</Text>
-        <Text color={t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
-        <Text color={t.dim}>{`$${s.cost.toFixed(2)}`}</Text>
+        {adds || dels ? (
+          <Text>
+            <Text color={OK}>{`+${adds}`}</Text>
+            <Text color={BAD}>{` −${dels}`}</Text>
+          </Text>
+        ) : (
+          <Text color={t.dim}>no changes</Text>
+        )}
+        <Text color={fail ? BAD : all.length ? OK : t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
+        <Text color={t.accent}>{`$${s.cost.toFixed(2)}`}</Text>
         <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}</Text>
         {e.props.isWorking && <Text color={t.faint}>esc to interrupt</Text>}
       </Box>
@@ -460,7 +501,7 @@ export const register: Register = on => {
       return <table.Text color={t.dim}>Cockpit needs a surface with fields.</table.Text>
     }
     const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Svg' in table && e.surface !== 'terminal' ? { Svg: table.Svg } : {}) }
-    const v = { ui, s, t, w: Math.max(16, e.props.bodyColumns - 2), now: await $.clock.now(), root }
+    const v = { ui, s, t, w: Math.max(16, e.props.bodyColumns - 2), now: await $.clock.now(), root, desk: e.surface !== 'terminal' }
     const { Box } = ui
     return (
       <Box flexDirection="column" paddingX={1}>

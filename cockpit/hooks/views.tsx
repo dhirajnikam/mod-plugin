@@ -4,6 +4,7 @@ import type { Account, Decision, GitForm, Ph, Tab, ThemeId } from '../types'
 import {
   applyAccount,
   commit,
+  discoverAgentTypes,
   gitInit,
   loadAccounts,
   removeAccount,
@@ -35,20 +36,21 @@ import {
   thrOf,
   tree,
 } from './logic'
-import { THEMES, THEME_IDS, ctxShades } from './theme'
+import { BAD, BUSY, OK, THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
 
 type $ = EngineInterface
 type T = ElementTable<'terminal'>
 export type UI = Pick<T, 'Box' | 'Text' | 'Button' | 'Input' | 'Select'> & { Svg?: ElementTable<'desktop'>['Svg'] }
-type V = { ui: UI; s: Ph; t: Theme; w: number; now: number; root: string }
+// desk: a graphical surface, whose native buttons draw their label in their own colour, so coloured marks sit beside them
+type V = { ui: UI; s: Ph; t: Theme; w: number; now: number; root: string; desk: boolean }
 
 // A thin bar: filled share in one colour, the rest as track
 function Bar({ ui, w, frac, fill, track }: { ui: UI; w: number; frac: number; fill: string; track: string }) {
   const { Text } = ui
   const n = Math.max(0, Math.min(w, Math.round(frac * w)))
   return (
-    <Text>
+    <Text mono>
       <Text color={fill}>{'━'.repeat(n)}</Text>
       <Text color={track}>{'━'.repeat(w - n)}</Text>
     </Text>
@@ -65,7 +67,7 @@ function Segs({ ui, w, parts, track }: { ui: UI; w: number; parts: [number, stri
     return <Text key={`s${i}`} color={c}>{'━'.repeat(n)}</Text>
   })
   return (
-    <Text>
+    <Text mono>
       {cells}
       <Text color={track}>{'━'.repeat(left)}</Text>
     </Text>
@@ -80,13 +82,17 @@ function Seg<K extends string>({ v, id, items, value, onPick }: { v: V; id: stri
   const { Box, Button, Text } = v.ui
   return (
     <Box flexWrap="wrap">
-      {items.map(([k, label]) => (
-        <Button key={`${id}-${k}`} plain onPress={() => onPick(k)}>
-          <Text backgroundColor={k === value ? v.t.accent : v.t.track} color={k === value ? v.t.bg : v.t.dim} bold={k === value}>
-            {` ${label} `}
-          </Text>
-        </Button>
-      ))}
+      {items.map(([k, label]) =>
+        v.desk ? (
+          <Button key={`${id}-${k}`} label={label} variant={k === value ? 'primary' : 'secondary'} onPress={() => onPick(k)} />
+        ) : (
+          <Button key={`${id}-${k}`} plain onPress={() => onPick(k)}>
+            <Text backgroundColor={k === value ? v.t.accent : v.t.track} color={k === value ? v.t.bg : v.t.dim} bold={k === value}>
+              {` ${label} `}
+            </Text>
+          </Button>
+        ),
+      )}
     </Box>
   )
 }
@@ -101,37 +107,41 @@ function Check({ v, id, on, label, onPress }: { v: V; id: string; on: boolean; l
   )
 }
 
-const Rule = ({ v }: { v: V }) => <v.ui.Text color={v.t.divider}>{'─'.repeat(v.w)}</v.ui.Text>
+const Rule = ({ v }: { v: V }) => <v.ui.Text color={v.t.divider} mono>{'─'.repeat(v.w)}</v.ui.Text>
 
 export function Header($: $, v: V) {
-  const { Box, Button, Text } = v.ui
+  const { Box, Button, Select, Text } = v.ui
   const { s, t, w } = v
   const run = s.waiting ? 'Paused · needs you' : s.isWorking ? `Running · ${fmt(v.now - s.turnStart)}` : s.turnStart ? 'Finished' : 'Idle'
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={1}>
         <Box gap={1}>
-          <Text color={t.text} bold>Cockpit</Text>
-          {w >= 60 && <Text color={t.dim}>a Claude Code mod</Text>}
+          <Text color={t.accent} bold size="heading">Cockpit</Text>
+          {w >= 60 && <Text color={t.dim} size="footnote">a Claude Code mod</Text>}
         </Box>
         <Box gap={1} flexWrap="wrap">
-          {THEME_IDS.map(id => (
-            <Button key={`theme-${id}`} plain onPress={() => setTheme($, id as ThemeId)}>
-              {id === 'auto' ? (
-                <Text color={id === s.theme ? t.accent : t.dim}>{id === s.theme ? '[◐ auto]' : '◐'}</Text>
-              ) : (
-                <Text color={THEMES[id].accent} backgroundColor={THEMES[id].bg}>{id === s.theme ? '◉' : '●'}</Text>
-              )}
-            </Button>
-          ))}
-          <Text backgroundColor={t.track} color={t.dim}>{` ${run} `}</Text>
+          {v.desk ? (
+            <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
+          ) : (
+            THEME_IDS.map(id => (
+              <Button key={`theme-${id}`} plain onPress={() => setTheme($, id as ThemeId)}>
+                {id === 'auto' ? (
+                  <Text color={id === s.theme ? t.accent : t.dim}>{id === s.theme ? '[◐ auto]' : '◐'}</Text>
+                ) : (
+                  <Text color={THEMES[id].accent} backgroundColor={THEMES[id].bg}>{id === s.theme ? '◉' : '●'}</Text>
+                )}
+              </Button>
+            ))
+          )}
+          <Text backgroundColor={t.track} color={s.waiting ? BUSY : s.isWorking ? t.accent : t.dim}>{` ${run} `}</Text>
         </Box>
       </Box>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={2}>
         <Text color={t.dim}>{cut(v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/'), w)}</Text>
-        <Text color={t.dim}>
-          {s.repo.isRepo ? `⎇ ${s.repo.current}  ` : ''}
-          {s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}
+        <Text>
+          <Text color={t.accent}>{s.repo.isRepo ? `⎇ ${s.repo.current}  ` : ''}</Text>
+          <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}</Text>
         </Text>
       </Box>
     </Box>
@@ -160,16 +170,21 @@ export function Tabs($: $, v: V) {
   return (
     <Box flexDirection="column">
       <Box flexWrap="wrap">
-        {tabs.map(([id, label, badge]) => (
-          <Button key={`tab-${id}`} plain onPress={() => (id === 'git' ? Promise.all([set($, { tab: id }), refreshRepo($)]) : set($, { tab: id }))}>
-            <Text color={id === s.tab ? t.text : t.dim} bold={id === s.tab} backgroundColor={!fits && id === s.tab ? t.wash : undefined}>{` ${label}`}</Text>
-            {badge ? <Text backgroundColor={t.wash} color={t.deep}>{` ${badge} `}</Text> : <Text> </Text>}
-            {badge ? <Text> </Text> : <Text />}
-          </Button>
-        ))}
+        {tabs.map(([id, label, badge]) => {
+          const open = () => Promise.all([set($, { tab: id }), id === 'git' ? refreshRepo($) : id === 'agents' ? discoverAgentTypes($) : null])
+          return v.desk ? (
+            <Button key={`tab-${id}`} label={badge ? `${label} ${badge}` : label} variant={id === s.tab ? 'primary' : 'secondary'} onPress={open} />
+          ) : (
+            <Button key={`tab-${id}`} plain onPress={open}>
+              <Text color={id === s.tab ? t.text : t.dim} bold={id === s.tab} backgroundColor={!fits && id === s.tab ? t.wash : undefined}>{` ${label}`}</Text>
+              {badge ? <Text backgroundColor={t.wash} color={t.deep}>{` ${badge} `}</Text> : <Text> </Text>}
+              {badge ? <Text> </Text> : <Text />}
+            </Button>
+          )
+        })}
       </Box>
-      {fits ? (
-        <Text>
+      {fits && !v.desk ? (
+        <Text mono>
           {under}
           <Text color={t.divider}>{'─'.repeat(v.w - total)}</Text>
         </Text>
@@ -198,7 +213,7 @@ export function Overview($: $, v: V) {
       {needs !== '' && (
         <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between">
           <Box flexDirection="column">
-            <Text color={t.hi}>NEEDS YOU</Text>
+            <Text color={BUSY} bold>NEEDS YOU</Text>
             <Text color={t.text}>{needs}</Text>
           </Box>
           {!s.waiting && <Button key="needs" label="Open Git" variant="primary" onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />}
@@ -210,7 +225,7 @@ export function Overview($: $, v: V) {
         ) : (
           <Box flexDirection="column" flexShrink={0}>
             {ringRuns(p.pct, t.accent, t.track, t.text).map((runs, i) => (
-              <Text key={`ring-${i}`}>
+              <Text key={`ring-${i}`} mono>
                 {runs.map((r, j) => (
                   <Text key={`ring-${i}-${j}`} color={r.fg} backgroundColor={r.bg}>{r.t}</Text>
                 ))}
@@ -219,13 +234,13 @@ export function Overview($: $, v: V) {
           </Box>
         )}
         <Box flexDirection="column" gap={1}>
-          <Text color={t.text} bold>{cut(s.task || 'No task yet: send a prompt.', w >= 48 ? w - 18 : w)}</Text>
-          <Text color={t.dim}>{p.stepName}</Text>
+          <Text color={t.text} bold size="heading">{cut(s.task || 'No task yet: send a prompt.', w >= 48 ? w - 18 : w)}</Text>
+          <Text color={s.isWorking ? t.accent : t.dim}>{p.stepName}</Text>
           <Box columnGap={3} flexWrap="wrap">
-            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—'], ['Changes', diff], ['Cost', `$${s.cost.toFixed(2)}`]].map(([label, val]) => (
+            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? BUSY : t.text], ['Changes', diff, adds || dels ? OK : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
-                <Text color={t.dim}>{label}</Text>
-                <Text color={t.text}>{val}</Text>
+                <Text color={t.dim} size="footnote">{label}</Text>
+                <Text color={c} bold>{val}</Text>
               </Box>
             ))}
           </Box>
@@ -233,17 +248,17 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexWrap="wrap" columnGap={1}>
         {p.steps.map(x => (
-          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : x.st === 'done' ? t.surface : t.bg} color={x.st === 'pending' ? t.dim : t.text}>
-            <Text color={x.st === 'pending' ? t.faint : t.accent}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : '○'}`}</Text>
+          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : x.st === 'done' ? t.surface : undefined} color={x.st === 'pending' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'}>
+            <Text color={x.st === 'done' ? OK : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
         ))}
       </Box>
       <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
         <Box justifyContent="space-between">
-          <Text color={t.text}>Context window</Text>
+          <Text color={t.text} weight="semibold">Context window</Text>
           <Text>
-            <Text color={s.ctx.pct >= 80 ? t.hi : t.text}>{kTok(used)}</Text>
+            <Text color={s.ctx.pct >= 80 ? BAD : s.ctx.pct >= 50 ? BUSY : OK}>{kTok(used)}</Text>
             <Text color={t.dim}>{` / ${kTok(win)}`}</Text>
           </Text>
         </Box>
@@ -257,14 +272,14 @@ export function Overview($: $, v: V) {
             </Text>
           ))}
         </Box>
-        <Text color={t.dim}>{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
+        <Text color={s.ctx.pct >= 80 ? BAD : t.dim} size="footnote">{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
       </Box>
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
-          <Text color={t.text} bold>Decisions</Text>
+          <Text color={t.text} bold weight="semibold">Decisions</Text>
           <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me']]} onPick={k => set($, { mode: k })} />
         </Box>
-        <Text color={t.dim}>Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass</Text>
+        <Text color={t.dim} size="footnote">Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass</Text>
         {decs.length === 0 && <Text color={t.dim}>None yet.</Text>}
         <Rule v={v} />
         {decs.map(d => {
@@ -272,12 +287,14 @@ export function Overview($: $, v: V) {
           const open = s.ui.openDec === d.id
           return (
             <Box key={`dec-${d.id}`} flexDirection="column">
-              <Button key={`decb-${d.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openDec: open ? '' : d.id } }))}>
-                <Text color={t.text}>{cut(d.q, Math.max(10, w - 14))}</Text>
-                <Text color={t.deep}>{`  ${d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}`}</Text>
-              </Button>
+              <Box justifyContent="space-between" columnGap={2}>
+                <Button key={`decb-${d.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openDec: open ? '' : d.id } }))}>
+                  <Text color={t.text}>{cut(d.q, Math.max(10, w - 14))}</Text>
+                </Button>
+                <Text color={d.status === 'you' ? t.dim : t.deep}>{d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}</Text>
+              </Box>
               <Box justifyContent="space-between">
-                <Text color={t.deep}>{d.result || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
+                <Text color={d.status === 'decided' ? OK : d.status === 'split' ? BUSY : d.status === 'you' ? t.text : t.deep}>{d.result || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
                 <Text color={t.dim}>{fmt(d.at - (s.decisions[0]?.at ?? d.at))}</Text>
               </Box>
               {open && (
@@ -295,7 +312,7 @@ export function Overview($: $, v: V) {
                   {d.votes.length > 0 && (
                     <Box gap={1}>
                       {d.votes.map((vote, i) => (
-                        <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? t.accent : t.dim}>
+                        <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? OK : BAD}>
                           {vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
                         </Text>
                       ))}
@@ -319,12 +336,12 @@ export function Files($: $, v: V) {
   const { s, t, w } = v
   const adds = s.ops.reduce((a, o) => a + o.add, 0)
   const dels = s.ops.reduce((a, o) => a + o.del, 0)
-  const opColor = (op: string) => (op === 'Write' || op === 'Edit' ? t.hi : op === 'Delete' ? t.dim : t.text)
-  const lineColor = (k: string) => (k === 'a' ? [t.wash, t.deep] : k === 'd' ? [t.track, t.dim] : [t.bg, t.text])
+  const opColor = (op: string) => (op === 'Write' ? OK : op === 'Edit' ? t.hi : op === 'Delete' ? BAD : t.dim)
+  const lineColor = (k: string): [string | undefined, string] => (k === 'a' ? ['diffAdded', t.text] : k === 'd' ? ['diffRemoved', t.text] : [undefined, t.dim])
   const diffLines = (id: string, ls: { t: string; k: string }[]) =>
     ls.map((l, i) => {
       const [bg, c] = lineColor(l.k)
-      return <Text key={`${id}-l${i}`} backgroundColor={bg} color={c}>{pad(cut(l.t, w - 2), w - 2)}</Text>
+      return <Text key={`${id}-l${i}`} backgroundColor={bg} color={c} mono>{pad(cut(l.t, w - 2), w - 2)}</Text>
     })
   const rows = tree(s.ops, s.ui.collapsed, v.root)
   const sel = s.ops.filter(o => o.path.replace(/\\/g, '/').endsWith(s.ui.treeSel) && s.ui.treeSel)
@@ -332,31 +349,40 @@ export function Files($: $, v: V) {
     <Box flexDirection="column" gap={1}>
       <Box justifyContent="space-between">
         <Seg v={v} id="fview" value={s.ui.fileView} items={[['tree', 'Folders'], ['list', 'Activity']]} onPick={k => set($, st => ({ ui: { ...st.ui, fileView: k } }))} />
-        <Text color={t.dim}>{adds || dels ? `+${adds} −${dels}` : 'no changes'}</Text>
+        {adds || dels ? (
+          <Text>
+            <Text color={OK}>{`+${adds}`}</Text>
+            <Text color={BAD}>{` −${dels}`}</Text>
+          </Text>
+        ) : (
+          <Text color={t.dim}>no changes</Text>
+        )}
       </Box>
       {s.ops.length === 0 && <Text color={t.dim}>No file operations yet.</Text>}
       {s.ui.fileView === 'tree' && rows.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.divider}>
           {rows.map(n => (
-            <Button
-              key={`tree-${n.path}`}
-              plain
-              onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !st.ui.collapsed[n.path] } } } : { ui: { ...st.ui, treeSel: n.path } }))}
-            >
-              <Text backgroundColor={s.ui.treeSel === n.path ? t.wash : undefined}>
-                <Text color={t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (s.ui.collapsed[n.path] ? '▸ ' : '▾ ') : '  '}`}</Text>
-                <Text color={n.isDir ? (n.touched ? t.hi : t.text) : n.op === 'Delete' ? t.faint : n.op ? t.text : t.dim} strikethrough={n.op === 'Delete'}>
-                  {pad(n.name, Math.max(4, w - 6 - n.depth * 2 - n.tag.length - 3))}
+            <Box key={`tree-${n.path}`} justifyContent="space-between" columnGap={1}>
+              <Button
+                key={`treeb-${n.path}`}
+                plain
+                onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !st.ui.collapsed[n.path] } } } : { ui: { ...st.ui, treeSel: n.path } }))}
+              >
+                <Text backgroundColor={s.ui.treeSel === n.path ? t.wash : undefined} mono>
+                  <Text color={t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (s.ui.collapsed[n.path] ? '▸ ' : '▾ ') : '  '}`}</Text>
+                  <Text color={n.isDir ? (n.touched ? t.hi : t.text) : n.op === 'Delete' ? t.faint : n.op ? t.text : t.dim} strikethrough={n.op === 'Delete'}>
+                    {pad(n.name, Math.max(4, w - 6 - n.depth * 2 - n.tag.length - 3))}
+                  </Text>
                 </Text>
-                <Text color={opColor(n.op)}>{` ${n.tag}`}</Text>
-              </Text>
-            </Button>
+              </Button>
+              <Text color={opColor(n.op)}>{n.tag}</Text>
+            </Box>
           ))}
         </Box>
       )}
       {s.ui.fileView === 'tree' && sel.length > 0 && (
         <Box flexDirection="column">
-          <Text color={t.hi}>{cut(s.ui.treeSel, w)}</Text>
+          <Text color={t.hi} weight="semibold" mono>{cut(s.ui.treeSel, w)}</Text>
           {sel
             .slice()
             .reverse()
@@ -379,11 +405,13 @@ export function Files($: $, v: V) {
             const open = s.ui.openFile === o.id
             return (
               <Box key={`op-${o.id}`} flexDirection="column">
-                <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
-                  <Text color={opColor(o.op)}>{pad(o.op, 7)}</Text>
-                  <Text color={t.text}>{pad(cut(o.path.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', ''), w - 22), w - 22)}</Text>
-                  <Text color={t.dim}>{` ${pad(o.meta, Math.min(10, w - 12))} ${open ? '⌄' : '›'}`}</Text>
-                </Button>
+                <Box>
+                  <Text color={opColor(o.op)} mono>{pad(o.op, 7)}</Text>
+                  <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
+                    <Text color={t.text}>{pad(cut(o.path.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', ''), w - 22), w - 22)}</Text>
+                    <Text color={t.dim}>{` ${pad(o.meta, Math.min(10, w - 12))} ${open ? '⌄' : '›'}`}</Text>
+                  </Button>
+                </Box>
                 {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={1}>{diffLines(o.id, o.lines)}</Box>}
                 <Rule v={v} />
               </Box>
@@ -407,8 +435,8 @@ export function Tests($: $, v: V) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
-        <Text color={t.text}>{started ? `${pass} of ${all.length} cases passing${fail ? ` · ${fail} failing` : ''}` : 'Testers start after a change is written'}</Text>
-        <Text color={t.dim}>Two subagents: one proves it works, one tries to break it.</Text>
+        <Text color={fail ? BAD : started ? OK : t.text} weight="semibold">{started ? `${pass} of ${all.length} cases passing${fail ? ` · ${fail} failing` : ''}` : 'Testers start after a change is written'}</Text>
+        <Text color={t.dim} size="footnote">Two subagents: one proves it works, one tries to break it.</Text>
       </Box>
       <Check v={v} id="autotest" on={s.autoTest} label="Run both testers when a turn changes files" onPress={() => set($, st => ({ autoTest: !st.autoTest }))} />
       {cards.map(([key, icon, name, desc]) => {
@@ -418,26 +446,29 @@ export function Tests($: $, v: V) {
         const count = tz.status === 'idle' ? 'not started' : tz.status === 'running' ? `running · ${fmt(v.now - (tz.startedAt ?? v.now))}` : tz.status === 'error' ? 'could not start' : `${p}/${tz.cases.length} passed${f ? ` · ${f} failing` : ''}`
         const segW = tz.cases.length ? Math.max(1, Math.floor((w - 4 - tz.cases.length) / tz.cases.length)) : 0
         return (
-          <Box key={`tz-${key}`} flexDirection="column" borderStyle="round" borderColor={f ? t.text : t.divider} paddingX={1}>
+          <Box key={`tz-${key}`} flexDirection="column" borderStyle="round" borderColor={f ? BAD : tz.status === 'done' ? OK : tz.status === 'running' ? BUSY : t.divider} paddingX={1}>
             <Box justifyContent="space-between">
               <Box flexDirection="column">
-                <Text color={t.text}>{`${icon} ${name}`}</Text>
+                <Text>
+                  <Text color={f ? BAD : tz.status === 'done' ? OK : t.dim}>{`${icon} `}</Text>
+                  <Text color={t.text}>{name}</Text>
+                </Text>
                 <Text color={t.dim}>{desc}</Text>
               </Box>
-              <Text color={t.text}>{count}</Text>
+              <Text color={tz.status === 'running' ? BUSY : tz.status === 'error' || f ? BAD : tz.status === 'done' ? OK : t.dim}>{count}</Text>
             </Box>
             {tz.cases.length > 0 && (
-              <Text>
+              <Text mono>
                 {tz.cases.map((c, i) => (
-                  <Text key={`cb-${key}-${i}`} color={c.st === 'fail' ? t.text : t.accent}>{`${'━'.repeat(segW)} `}</Text>
+                  <Text key={`cb-${key}-${i}`} color={c.st === 'fail' ? BAD : OK}>{`${'━'.repeat(segW)} `}</Text>
                 ))}
               </Text>
             )}
-            {tz.status === 'running' && <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={t.lo} track={t.track} />}
+            {tz.status === 'running' && <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={BUSY} track={t.track} />}
             {tz.cases.map((c, i) => (
               <Box key={`case-${key}-${i}`} flexDirection="column">
                 <Text>
-                  <Text color={c.st === 'fail' ? t.text : t.hi}>{c.st === 'fail' ? '✗ ' : c.st === 'fixed' ? '↻ ' : '✓ '}</Text>
+                  <Text color={c.st === 'fail' ? BAD : c.st === 'fixed' ? BUSY : OK}>{c.st === 'fail' ? '✗ ' : c.st === 'fixed' ? '↻ ' : '✓ '}</Text>
                   <Text color={t.text}>{c.n}</Text>
                 </Text>
                 {c.err && <Text color={t.dim}>{`   ${c.err}`}</Text>}
@@ -459,10 +490,16 @@ export function Agents($: $, v: V) {
   const { s, t, w } = v
   const run = s.agents.filter(a => a.status === 'running').length
   const done = s.agents.filter(a => a.status === 'done').length
+  const types = s.agentTypes.length ? s.agentTypes : AGENT_TYPES
   return (
     <Box flexDirection="column" gap={1}>
-      <Box justifyContent="space-between">
-        <Text color={t.text}>{`${run} running · ${done} done · ${s.agents.length} total`}</Text>
+      <Box justifyContent="space-between" flexWrap="wrap">
+        <Text weight="semibold">
+          <Text color={run ? t.accent : t.dim}>{`${run} running`}</Text>
+          <Text color={t.dim}>{' · '}</Text>
+          <Text color={done ? OK : t.dim}>{`${done} done`}</Text>
+          <Text color={t.dim}>{` · ${s.agents.length} total`}</Text>
+        </Text>
         <Button key="spawn-toggle" label="+ New agent" onPress={() => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } }))} />
       </Box>
       {s.ui.spawnOpen && (
@@ -475,10 +512,12 @@ export function Agents($: $, v: V) {
             onInput={val => set($, st => ({ ui: { ...st.ui, spawnTask: val } }))}
             onSubmit={val => val.trim() && spawnAgent($, val.trim(), s.ui.spawnType)}
           />
-          <Box gap={2}>
-            <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={AGENT_TYPES.map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val } }))} />
+          <Box columnGap={2} flexWrap="wrap">
+            <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={[...types, ...(types.includes(s.ui.spawnType) ? [] : [s.ui.spawnType])].map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val } }))} />
+            <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={types.includes(s.ui.spawnType) ? '' : s.ui.spawnType} onInput={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} onSubmit={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} />
             <Button key="spawn-go" label="Start" variant="primary" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
           </Box>
+          <Text color={t.dim} size="footnote">{`${types.length} types: built-ins, agents/*.md in this project and ~/.claude, and each plugin's as plugin:name`}</Text>
         </Box>
       )}
       {s.agents.length === 0 && <Text color={t.dim}>No subagents yet. Testers, judges' work and agents Claude starts show here.</Text>}
@@ -488,17 +527,20 @@ export function Agents($: $, v: V) {
         .map(a => {
           const open = s.ui.openAgent === a.id
           const live = a.status === 'running'
+          const stc = live ? t.accent : a.status === 'done' ? OK : a.status === 'failed' ? BAD : t.faint
           const took = (a.endedAt ?? v.now) - a.startedAt
           return (
             <Box key={`ag-${a.id}`} flexDirection="column" borderStyle="round" borderColor={live ? t.accent : t.divider} paddingX={1}>
-              <Button key={`agb-${a.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openAgent: open ? '' : a.id } }))}>
-                <Text color={live ? t.accent : a.status === 'done' ? t.lo : t.faint}>● </Text>
-                <Text color={t.text}>{a.name}</Text>
-                <Text color={t.dim}>{a.type !== a.name ? `  ${a.type}  ` : '  '}</Text>
-                <Text color={live ? t.deep : t.dim}>{`[${{ running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' }[a.status]}] ${open ? '⌄' : '›'}`}</Text>
-              </Button>
+              <Box>
+                <Text color={stc}>● </Text>
+                <Button key={`agb-${a.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openAgent: open ? '' : a.id } }))}>
+                  <Text color={t.text}>{a.name}</Text>
+                  <Text color={t.dim}>{a.type !== a.name ? `  ${a.type}  ` : '  '}</Text>
+                  <Text color={live ? t.deep : t.dim}>{`[${{ running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' }[a.status]}] ${open ? '⌄' : '›'}`}</Text>
+                </Button>
+              </Box>
               <Text color={t.dim}>{cut(a.task, w * 2)}</Text>
-              {live ? <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={t.accent} track={t.track} /> : <Bar ui={v.ui} w={w - 4} frac={1} fill={a.status === 'done' ? t.accent : t.dim} track={t.track} />}
+              {live ? <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={t.accent} track={t.track} /> : <Bar ui={v.ui} w={w - 4} frac={1} fill={stc} track={t.track} />}
               <Box justifyContent="space-between">
                 <Text color={t.dim}>{`${a.tools} tool calls · ${fmt(took)}`}</Text>
                 <Box gap={1}>
@@ -556,12 +598,15 @@ export function Git($: $, v: V) {
   return (
     <Box flexDirection="column" gap={1}>
       <Box justifyContent="space-between" flexWrap="wrap">
-        <Text color={t.dim}>{`⎇ ${s.repo.current || '(no branch)'}${s.repo.ahead ? `  ↑${s.repo.ahead}` : ''}`}</Text>
+        <Text>
+          <Text color={t.accent}>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
+          <Text color={t.dim}>{s.repo.ahead ? `  ↑${s.repo.ahead}` : ''}</Text>
+        </Text>
         <Button key="git-refresh" label="↻ Refresh" plain onPress={() => refreshRepo($)} />
       </Box>
       <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
         <Box justifyContent="space-between" flexWrap="wrap">
-          <Text color={t.text}>Account</Text>
+          <Text color={t.text} weight="semibold">Account</Text>
           <Box gap={1}>
             <Button key="acct-detect" label="Detect" plain onPress={() => loadAccounts($)} />
             <Button key="acct-add" label="+ Add" plain onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: !st.ui.acctOpen } }))} />
@@ -604,7 +649,7 @@ export function Git($: $, v: V) {
       <Input key="git-scope" label="Scope" value={g.scope} onInput={val => setGit({ scope: val })} onSubmit={val => setGit({ scope: val })} />
       <Input key="git-subject" label="Subject" placeholder={subjectOf(s.task) || 'what this commit does'} value={g.subject} onInput={val => setGit({ subject: val })} onSubmit={val => setGit({ subject: val })} />
       <Box borderStyle="round" borderColor={t.lo} paddingX={1} flexDirection="column">
-        <Text color={subject ? t.text : t.dim}>{msg}</Text>
+        <Text color={subject ? t.hi : t.dim} mono>{msg}</Text>
         {g.body !== '' && <Text color={t.dim}>{g.body}</Text>}
       </Box>
       <Box flexDirection="column">
@@ -615,11 +660,13 @@ export function Git($: $, v: V) {
           </Button>
         )}
         {s.repo.changed.map(c => (
-          <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } }))}>
+          <Box key={`ch-${c.path}`}>
             <Text color={s.staged[c.path] !== false ? t.accent : t.faint}>{s.staged[c.path] !== false ? '▣ ' : '□ '}</Text>
-            <Text color={t.text}>{pad(cut(c.path, w - 16), w - 16)}</Text>
-            <Text color={t.dim}>{` ${c.meta}`}</Text>
-          </Button>
+            <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } }))}>
+              <Text color={t.text}>{pad(cut(c.path, w - 16), w - 16)}</Text>
+            </Button>
+            <Text color={c.meta === 'new' ? OK : c.meta === 'deleted' ? BAD : c.meta.startsWith('renamed') ? BUSY : t.dim}>{` ${c.meta}`}</Text>
+          </Box>
         ))}
       </Box>
       <Box borderStyle="round" borderColor={t.divider} paddingX={1} columnGap={2} flexWrap="wrap">
@@ -660,7 +707,7 @@ export function Git($: $, v: V) {
           {s.commits.map(c => (
             <Box key={`cm-${c.sha}`} flexDirection="column">
               <Text>
-                <Text color={t.hi}>{c.sha}</Text>
+                <Text color={t.accent} mono>{c.sha}</Text>
                 <Text color={t.text}>{` ${c.msg}`}</Text>
               </Text>
               <Text color={t.dim}>{c.meta}</Text>
@@ -678,12 +725,14 @@ export type { V }
 export function Card({ ui, t, w, id, dashed, icon, left, right, onPress }: { ui: UI; t: Theme; w: number; id: string; dashed: boolean; icon: string; left: RenderNode | RenderNode[]; right: string; onPress: () => unknown }) {
   const { Box, Button, Text } = ui
   return (
-    <Box borderStyle={dashed ? 'dashed' : 'round'} borderColor={t.lo} paddingX={1} width={w}>
-      <Button key={`card-${id}`} plain onPress={onPress}>
+    <Box borderStyle={dashed ? 'dashed' : 'round'} borderColor={t.lo} paddingX={1} width={w} justifyContent="space-between" columnGap={2}>
+      <Box>
         <Text color={t.hi}>{`${icon} `}</Text>
-        {left}
-        <Text color={t.hi}>{`  ${right}`}</Text>
-      </Button>
+        <Button key={`card-${id}`} plain onPress={onPress}>
+          {left}
+        </Button>
+      </Box>
+      <Text color={t.hi}>{right}</Text>
     </Box>
   )
 }
@@ -693,7 +742,7 @@ export function seatDots(ui: UI, t: Theme, d: Decision) {
   const { Text } = ui
   const top = tally(d).top
   return d.votes.map((v, i) => (
-    <Text key={`dot-${d.id}-${i}`} color={v < 0 ? t.faint : v === top ? t.accent : t.dim}>{v < 0 || v !== top ? '○' : '●'}</Text>
+    <Text key={`dot-${d.id}-${i}`} color={v < 0 ? t.faint : v === top ? OK : t.dim}>{v < 0 || v !== top ? '○' : '●'}</Text>
   ))
 }
 
@@ -708,11 +757,13 @@ export function TesterCard($: $, ui: UI, t: Theme, s: Ph, now: number) {
         const f = tz.cases.filter(c => c.st === 'fail').length
         const status = tz.status === 'idle' ? 'not run' : tz.status === 'running' ? `running · ${fmt(now - (tz.startedAt ?? now))}` : tz.status === 'error' ? 'could not start' : `${tz.cases.length - f}/${tz.cases.length} passed${f ? ` · ${f} failing` : ''}`
         return (
-          <Button key={`tcard-${key}`} plain onPress={() => set($, { tab: 'tests' })}>
-            <Text color={f ? t.text : t.hi}>{`${icon} `}</Text>
-            <Text color={t.text}>{name}</Text>
-            <Text color={f ? t.text : t.deep}>{`   ${status}`}</Text>
-          </Button>
+          <Box key={`tc-${key}`} columnGap={1}>
+            <Text color={f ? BAD : tz.status === 'done' ? OK : tz.status === 'running' ? BUSY : t.dim}>{icon}</Text>
+            <Button key={`tcard-${key}`} plain onPress={() => set($, { tab: 'tests' })}>
+              <Text color={t.text}>{name}</Text>
+            </Button>
+            <Text color={f ? BAD : tz.status === 'done' ? OK : tz.status === 'running' ? BUSY : t.dim}>{status}</Text>
+          </Box>
         )
       })}
       <Button key="tcard-hide" label="Hide" plain dimColor onPress={() => set($, st => ({ ui: { ...st.ui, testsHidden: true } }))} />

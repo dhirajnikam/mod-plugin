@@ -30,6 +30,11 @@ export const THEME_IDS: ThemeId[] = ['auto', ...(Object.keys(THEMES) as Palette[
 export const themeOf = (s: { theme: ThemeId; isDarkTerm: boolean }): Theme =>
   THEMES[s.theme === 'auto' ? (s.isDarkTerm ? 'black' : 'white') : s.theme]
 
+// Status colours by meaning: Claude Code's own theme keys, so they follow the person's theme on every surface
+export const OK = 'success'
+export const BAD = 'error'
+export const BUSY = 'warning'
+
 // Context legend shades, darkest first, as the design ramps the accent
 export const ctxShades = (t: Theme) => [t.deep, t.accent, t.lo, t.faint]
 

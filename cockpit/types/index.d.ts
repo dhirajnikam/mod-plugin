@@ -101,6 +101,8 @@ export type Ph = {
   testers: { pos: Tester; neg: Tester }
   autoTest: boolean
   agents: Agent[]
+  // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
+  agentTypes: string[]
   git: GitForm
   repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[] }
   staged: Record<string, boolean>

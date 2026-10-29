@@ -2,11 +2,11 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Account, Agent, Changed, Decision, Ph, Tester, ThemeId } from '../types'
-import { branchName, commitMsg, nJ, parseCases, tally } from './logic'
+import { AGENT_TYPES, branchName, commitMsg, nJ, parseCases, tally } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-3' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-4' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -237,6 +237,24 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
     const was = s.agents.find(x => x.id === a.id)
     return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [] }].slice(-40) }
   })
+}
+
+// Agent types the model can dispatch: the built-ins, the project's and your own agents/*.md, each installed plugin's as <plugin>:<name>, and any type seen starting
+export async function discoverAgentTypes($: $) {
+  const names = async (dir: string) => (await $.fs.list(dir).catch(() => [])).filter(e => e.name.endsWith('.md')).map(e => e.name.slice(0, -3))
+  const home = (await $.env.get('HOME').catch(() => undefined)) ?? (await $.env.get('USERPROFILE').catch(() => undefined)) ?? ''
+  const found = [...(await names('.claude/agents')), ...(home ? await names(`${home}/.claude/agents`) : [])]
+  if (home) {
+    const cache = `${home}/.claude/plugins/cache`
+    for (const mk of await $.fs.list(cache).catch(() => [])) {
+      for (const pl of await $.fs.list(`${cache}/${mk.name}`).catch(() => [])) {
+        for (const ver of await $.fs.list(`${cache}/${mk.name}/${pl.name}`).catch(() => [])) {
+          for (const n of await names(`${cache}/${mk.name}/${pl.name}/${ver.name}/agents`)) found.push(`${pl.name}:${n}`)
+        }
+      }
+    }
+  }
+  await set($, s => ({ agentTypes: [...new Set([...AGENT_TYPES, ...s.agentTypes, ...found, ...s.agents.map(a => a.type)])].filter(x => !x.startsWith('Tester')) }))
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
