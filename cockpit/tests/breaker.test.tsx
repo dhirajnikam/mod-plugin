@@ -35,6 +35,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000, percent: 25, breakdown: { categories: [{ name: 'Messages', tokens: 30000 }, { name: 'System prompt', tokens: 20000 }], totalTokens: 50000 } }, rateLimits: [], cost: { usd: 1.5 } } }))
   on('model.complete', async (_: unknown, e: any) => {
     if (String(e.system ?? '').includes('subagent definitions')) return { value: { isAnswered: true, text: 'Here: {"name": "API Guard", "description": "Checks API changes for breaking changes", "tools": ["Read", "Grep", "Nuke"], "prompt": "You check API changes. End with REPORT: and HANDOFF: lines."}', usage: { inputTokens: 1, outputTokens: 1 } } }
+    if (String(e.prompt).startsWith('Break this task')) return { value: { isAnswered: true, text: '[{"step": "Read the limiter code", "kind": "Explore"}, {"step": "Add the rate limit", "kind": "Implement"}, {"step": "Run the tests", "kind": "Verify"}]', usage: { inputTokens: 1, outputTokens: 1 } } }
     const isScore = String(e.prompt).startsWith('Rate how complex')
     const text = isScore ? `{"score": ${st.score ?? 2}, "signals": ["small", "reversible"]}` : String(((st.votes ?? [1, 1, 1])[seat++ % (st.votes ?? [1]).length] ?? 0) + 1)
     return { value: { isAnswered: true, text, usage: { inputTokens: 1, outputTokens: 1 } } }

@@ -1,5 +1,5 @@
 import { atom, read } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { Decision, Tab, ThemeId } from '../types'
 import {
@@ -13,6 +13,13 @@ import {
   TESTERS,
   changedFiles,
   isOwnStart,
+  loadPrefs,
+  loadHistory,
+  writeSteps,
+  buildMemory,
+  updateMemory,
+  repoRoot as repoRootOf,
+  saveHistory,
   judge,
   loadAccounts,
   loadGitPrefs,
@@ -28,14 +35,15 @@ import {
   setTheme,
   trackAgent,
 } from './actions'
-import { FLOWS, PIPELINES, activityOf, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
+import { FLOWS, PIPELINES, activityOf, applyPlan, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
+import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
 import { BAD, BUSY, OK, THEME_IDS, ctxShades, themeOf } from './theme'
 import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './views'
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-14' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-16' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -53,6 +61,11 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     root = await $.session.cwd()
+    // Focus, theme and the rest first: what draws next reads them
+    await loadPrefs($)
+    await loadHistory($)
+    // The codebase memory, fresh each session, in the background
+    void buildMemory($).catch(() => null)
     const bad = selfCheck()
     if (bad.length) $.ui.log(`cockpit self-check failed: ${JSON.stringify(bad)}`)
     await $.command.register({
@@ -107,6 +120,16 @@ export const register: Register = on => {
       return { text: `Focus ${isOn ? 'on: only your prompts, replies and progress show' : 'off'}` }
     }
     if (verb === 'flow') {
+      if (arg.toLowerCase() === 'task') {
+        await pickFlow($, 'task')
+        await openPane($)
+        return { text: 'Task flow: the steps written for this task' }
+      }
+      if (arg.toLowerCase() === 'plan') {
+        await pickFlow($, 'plan')
+        await openPane($)
+        return { text: "Plan flow: the steps are Claude's own task list" }
+      }
       const f = FLOWS.find(x => x.name === arg.toLowerCase())
       if (!f) return { text: `Flows: ${FLOWS.map(x => `${x.name} (${x.steps.join(' › ')})`).join(', ')}` }
       if (!(await read($, S)).flows.length) return { text: 'No flow yet: send a prompt first.' }
@@ -135,6 +158,8 @@ export const register: Register = on => {
         // The previous flow closes if it was still open; this prompt opens a new one
         flows: [...s.flows.map(f => (f.status === 'running' ? { ...f, status: 'aborted' as const, endedAt: now } : f)), { id: `f${now}`, task, startedAt: now, status: 'running' as const, reached: ['Understand'], ops: 0, add: 0, del: 0, decisions: 0, commit: '' }].slice(-30),
       }))
+      // Its own steps, in the background so the prompt is not held
+      void writeSteps($, `f${now}`, e.text.trim()).catch(() => null)
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -146,7 +171,10 @@ export const register: Register = on => {
     if (e.agentId) {
       const what = String(input.file_path ?? input.pattern ?? input.command ?? input.description ?? '').split('\n')[0]?.slice(0, 80) ?? ''
       await set($, s => ({ agents: s.agents.map(a => (a.id === e.agentId ? { ...a, tools: a.tools + 1, log: [...a.log, { at: now, t: `${e.tool} ${what}` }].slice(-40) } : a)) }))
-      return next(e)
+      const r = await next(e)
+      // The codebase memory follows every edit, an agent's too
+      if (/^(Edit|Write|NotebookEdit|MultiEdit)$/.test(e.tool)) await updateMemory($, String(input.file_path ?? input.notebook_path ?? ''))
+      return r
     }
     const op = toOp(e.tool, input, e.tool_use_id ?? `op${now}`, now)
     const step = stepOf(e.tool, input)
@@ -157,7 +185,45 @@ export const register: Register = on => {
       ...(step && !s.reached.includes(step) ? { reached: [...s.reached, step] } : {}),
       flows: s.flows.map((f, i) => (i === s.flows.length - 1 && f.status === 'running' ? { ...f, ops: f.ops + (op ? 1 : 0), add: f.add + (op?.add ?? 0), del: f.del + (op?.del ?? 0), reached: step && !f.reached.includes(step) ? [...f.reached, step] : f.reached } : f)),
     }))
-    return next(e)
+    const r = await next(e)
+    if (op && (op.op === 'Write' || op.op === 'Edit')) await updateMemory($, op.path)
+    return r
+  }).catch(($, e, next) => next(e))
+
+  // The codebase memory in Claude's system prompt: the features, their files and how they connect
+  on('prompt.compose', async ($, e, next) => {
+    const r = await next(e)
+    const files = (await read($, S)).memory.files
+    if (!Object.keys(files).length) return r
+    return { ...r, sections: [...r.sections, { id: 'cockpit:memory', text: memoryText(files), scope: 'session' as const }] }
+  }).catch(($, e, next) => next(e))
+
+  // Claude's own task list: while it keeps one, the current flow's steps are its tasks, live
+  on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
+    const r = await next(e)
+    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    return r
+  }).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'TaskCreate' }, async ($, e, next) => {
+    const r = await next(e)
+    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    return r
+  }).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'TaskUpdate' }, async ($, e, next) => {
+    const r = await next(e)
+    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    return r
+  }).catch(($, e, next) => next(e))
+  // This app's own task list, and the wrap-up that ticks it off
+  on('tool.call', { tool: 'mcp__ccd_turn__update_plan' }, async ($, e, next) => {
+    const r = await next(e)
+    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    return r
+  }).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'mcp__ccd_turn__wrap_up' }, async ($, e, next) => {
+    const r = await next(e)
+    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    return r
   }).catch(($, e, next) => next(e))
 
   // Claude's questions: judges vote in auto mode, the person answers in ask mode or on a split
@@ -237,6 +303,7 @@ export const register: Register = on => {
         await refreshRepo($)
         await decideCommit($)
       }
+      await saveHistory($)
       return r
     }
     await set($, st => {
@@ -254,11 +321,14 @@ export const register: Register = on => {
     await measure($)
     const s = await read($, S)
     if (changesAtStart !== null && s.repo.changed.length && changesOf(s.repo.changed) !== changesAtStart) changedThisTurn = true
+    // Files a shell command or script changed reach the memory here
+    if (changedThisTurn) for (const c of s.repo.changed.slice(0, 40)) await updateMemory($, `${await repoRootOf($)}/${c.path}`)
     changesAtStart = null
     const commitAfterTests = s.git.commitMode !== 'manual' && s.git.autoWhen === 'tests'
     if (changedThisTurn && (s.autoVerify || commitAfterTests)) await startPipeline($, 'verify')
     if (changedThisTurn && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
     changedThisTurn = false
+    await saveHistory($)
     return r
   })
 
@@ -590,4 +660,13 @@ export const register: Register = on => {
     )
   })
 
+}
+
+// The current flow's plan after one of Claude's plan tools ran (a refused call changes nothing)
+async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknown) {
+  if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny)) return
+  const result = 'result' in r ? (r as { result?: unknown }).result : undefined
+  await set($, s => ({
+    flows: s.flows.map((f, i) => (i === s.flows.length - 1 ? { ...f, plan: applyPlan(f.plan ?? [], tool, e as Record<string, unknown>, result, s.flows.slice(0, -1).map(x => x.plan ?? [])) } : f)),
+  }))
 }

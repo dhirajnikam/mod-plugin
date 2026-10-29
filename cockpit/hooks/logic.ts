@@ -1,4 +1,4 @@
-import type { Agent, Decision, FileOp, GitForm, Line, Ph, TestCase } from '../types'
+import type { Agent, Decision, FileOp, GitForm, Line, Ph, PlanItem, TestCase } from '../types'
 
 // Every step a flow can reach, in order. A flow shows its own template's steps plus any it reaches beyond them
 export const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
@@ -203,8 +203,30 @@ export function stepOf(tool: string, input: Record<string, unknown>) {
 }
 
 // Progress of one flow: its template's steps and any reached beyond them, the last reached active while work runs
-export function progressOf(task: string, reached: string[], isWorking: boolean, kind?: string) {
-  const flow = flowOf(task, reached, kind)
+// Progress of one flow. Its steps are Claude's own task list while it keeps one (each task's status as Claude set it),
+// else the flow template the words of the prompt pick, with any step reached beyond it added. A step done counts 1,
+// the one in progress ½: progress is that over the number of steps. A flow picked by hand stands over both
+export function progressOf(task: string, reached: string[], isWorking: boolean, kind?: string, plan: PlanItem[] = [], own: { name: string; kind: string }[] = []) {
+  const template = !!kind && kind !== 'plan' && kind !== 'task'
+  // Steps written for the task: the furthest one whose kind of work was reached is in progress, the ones before it done
+  if (own.length && !template && (kind === 'task' || !plan.length)) {
+    const last = own.reduce((m, x, i) => (reached.includes(x.kind) ? i : m), -1)
+    const steps = own.map((x, i) => ({ name: x.name, st: i < last || (i === last && !isWorking && reached.length > 0) ? 'done' : i === last ? 'active' : 'pending' }))
+    const done = steps.filter(x => x.st === 'done').length
+    const active = steps.filter(x => x.st === 'active').length
+    const at = steps.find(x => x.st === 'active')
+    const flow = { name: 'task', label: 'Task', steps: steps.map(x => x.name), what: 'steps written for this task' }
+    return { flow, steps, done, active, pct: Math.round(((done + active / 2) / steps.length) * 100), stepName: at ? at.name : reached.length ? 'Idle' : 'Ready' }
+  }
+  if (plan.length && !template) {
+    const steps = plan.map(p => ({ name: p.text.length > 48 ? `${p.text.slice(0, 47)}…` : p.text, st: p.st === 'completed' ? 'done' : p.st === 'in_progress' ? 'active' : 'pending' }))
+    const done = steps.filter(x => x.st === 'done').length
+    const active = steps.filter(x => x.st === 'active').length
+    const at = steps.find(x => x.st === 'active')
+    const flow = { name: 'plan', label: 'Plan', steps: steps.map(x => x.name), what: "Claude's own task list" }
+    return { flow, steps, done, active, pct: Math.round(((done + active / 2) / steps.length) * 100), stepName: at ? at.name : done === steps.length ? 'Done' : isWorking ? 'Working' : 'Idle' }
+  }
+  const flow = flowOf(task, reached, template ? kind : undefined)
   const names = STEPS.filter(n => flow.steps.includes(n) || reached.includes(n))
   const last = names.reduce((m, name, i) => (reached.includes(name) ? i : m), -1)
   const steps = names.map((name, i) => ({
@@ -212,12 +234,66 @@ export function progressOf(task: string, reached: string[], isWorking: boolean, 
     st: i < last || (i === last && !isWorking && reached.length > 0) ? 'done' : i === last ? 'active' : 'pending',
   }))
   const done = steps.filter(x => x.st === 'done').length
-  const active = steps.some(x => x.st === 'active') ? 0.5 : 0
-  const pct = Math.round(((done + active) / names.length) * 100)
+  const active = steps.filter(x => x.st === 'active').length
+  const pct = Math.round(((done + active / 2) / names.length) * 100)
   const at = steps.find(x => x.st === 'active')
-  return { flow, steps, pct, stepName: at ? at.name : reached.length ? 'Idle' : 'Ready' }
+  return { flow, steps, done, active, pct, stepName: at ? at.name : reached.length ? 'Idle' : 'Ready' }
 }
-export const progress = (s: Ph) => progressOf(s.task, s.reached, s.isWorking, s.flows[s.flows.length - 1]?.kind)
+// Steps a model wrote for a task, kept only where each names a known kind of work
+const KINDS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
+export function parseSteps(text: string) {
+  try {
+    const arr = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]') as { step?: unknown; kind?: unknown }[]
+    return arr
+      .map(x => ({ name: String(x.step ?? '').trim().slice(0, 60), kind: KINDS.find(k => k.toLowerCase() === String(x.kind ?? '').toLowerCase()) ?? '' }))
+      .filter(x => x.name && x.kind)
+      .slice(0, 7)
+  } catch {
+    return []
+  }
+}
+
+export const progress = (s: Ph) => {
+  const f = s.flows[s.flows.length - 1]
+  return progressOf(s.task, s.reached, s.isWorking, f?.kind, f?.plan, f?.steps)
+}
+
+// Claude's task list after one of its plan tools: TodoWrite sends the whole list; TaskCreate adds one (its id is in the
+// result), TaskUpdate changes or deletes one by id. An update to a task of an earlier prompt's plan carries that plan over
+export function applyPlan(plan: PlanItem[], tool: string, input: Record<string, unknown>, result: unknown, earlier: PlanItem[][] = []): PlanItem[] {
+  const st = (x: unknown): PlanItem['st'] => (x === 'completed' || x === 'in_progress' ? x : 'pending')
+  // This app's task list: items replace it; advance finishes the task in progress and starts the next; done and start
+  // name tasks by their 1-based place; the turn's wrap-up ticks off the rest
+  if (tool === 'mcp__ccd_turn__update_plan') {
+    if (Array.isArray(input.items)) return (input.items as Record<string, unknown>[]).map((t, i) => ({ id: `p${i}`, text: String(t.content ?? ''), st: st(t.status) })).filter(p => p.text)
+    let next = plan.map(p => ({ ...p }))
+    if (input.advance === true) {
+      const at = next.findIndex(p => p.st === 'in_progress')
+      if (at >= 0) next[at] = { ...next[at]!, st: 'completed' }
+      const go = next.findIndex((p, i) => i > at && p.st === 'pending')
+      if (go >= 0) next[go] = { ...next[go]!, st: 'in_progress' }
+    }
+    for (const n of Array.isArray(input.done) ? (input.done as number[]) : []) if (next[n - 1]) next[n - 1] = { ...next[n - 1]!, st: 'completed' }
+    if (typeof input.start === 'number' && next[input.start - 1]) next = next.map((p, i) => (i === (input.start as number) - 1 ? { ...p, st: 'in_progress' } : p.st === 'in_progress' ? { ...p, st: 'completed' } : p))
+    return next
+  }
+  if (tool === 'mcp__ccd_turn__wrap_up') return plan.map(p => ({ ...p, st: 'completed' as const }))
+  if (tool === 'TodoWrite') {
+    const todos = Array.isArray(input.todos) ? (input.todos as Record<string, unknown>[]) : []
+    return todos.map((t, i) => ({ id: `t${i}`, text: String(t.content ?? ''), st: st(t.status) })).filter(p => p.text)
+  }
+  if (tool === 'TaskCreate') {
+    const id = String(((result as { task?: { id?: unknown } } | undefined)?.task?.id) ?? `c${plan.length}`)
+    return [...plan.filter(p => p.id !== id), { id, text: String(input.subject ?? ''), st: 'pending' as const }].filter(p => p.text)
+  }
+  if (tool === 'TaskUpdate') {
+    const id = String(input.taskId ?? '')
+    const base = plan.some(p => p.id === id) ? plan : earlier.slice().reverse().find(e => e.some(p => p.id === id)) ?? plan
+    if (input.status === 'deleted') return base.filter(p => p.id !== id)
+    return base.map(p => (p.id === id ? { ...p, ...(input.subject ? { text: String(input.subject) } : {}), ...(input.status ? { st: st(input.status) } : {}) } : p))
+  }
+  return plan
+}
 
 export function tally(d: Decision) {
   const n = d.votes.length
@@ -354,6 +430,12 @@ export function selfCheck() {
     [flowOf('what is x', ['Understand', 'Explore', 'Implement']).name, 'build'],
     [flowOf('what is x', ['Understand', 'Explore', 'Implement'], 'answer').name, 'answer'],
     [progressOf('why?', ['Understand', 'Explore', 'Answer'], false).pct, 100],
+    [progressOf('x', ['Understand', 'Explore', 'Implement'], true, undefined, [], [{ name: 'Read the hooks', kind: 'Explore' }, { name: 'Fix the path', kind: 'Implement' }, { name: 'Run the tests', kind: 'Verify' }, { name: 'Commit', kind: 'Commit' }]).pct, 38],
+    [parseSteps('ok: [{"step":"Read the hooks","kind":"Explore"},{"step":"x","kind":"Nope"},{"step":"Fix it","kind":"implement"}]').map(x => x.kind).join(), 'Explore,Implement'],
+    [progressOf('x', [], true, undefined, [{ id: 'a', text: 'a', st: 'completed' }, { id: 'b', text: 'b', st: 'in_progress' }, { id: 'c', text: 'c', st: 'pending' }, { id: 'd', text: 'd', st: 'pending' }]).pct, 38],
+    [applyPlan([], 'TaskUpdate', { taskId: '2', status: 'completed' }, {}, [[{ id: '2', text: 'old', st: 'pending' }]]).map(p => p.st).join(), 'completed'],
+    [applyPlan([{ id: 'a', text: 'a', st: 'in_progress' }, { id: 'b', text: 'b', st: 'pending' }], 'mcp__ccd_turn__update_plan', { advance: true }, {}).map(p => p.st).join(), 'completed,in_progress'],
+    [applyPlan([{ id: 'a', text: 'a', st: 'pending' }, { id: 'b', text: 'b', st: 'pending' }, { id: 'c', text: 'c', st: 'pending' }], 'mcp__ccd_turn__update_plan', { done: [1], start: 3 }, {}).map(p => p.st).join(), 'completed,pending,in_progress'],
     [progressOf('add x', ['Understand', 'Explore', 'Decide', 'Implement'], true).steps.map(x => x.name).join(), 'Understand,Explore,Decide,Implement,Verify,Commit'],
     [parseCases('CASE PASS works\nCASE FAIL bad :: got 200').map(c => c.st).join(), 'pass,fail'],
     [tally({ id: 'd', q: '', opts: ['a', 'b'], at: 0, score: 5, signals: [], votes: [0, 0, 0, 0, 1, -1], status: 'voting', result: '' }).passes, true],

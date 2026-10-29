@@ -1,18 +1,142 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Changed, Decision, GitForm, Pending, Ph, ThemeId } from '../types'
-import { AGENT_TYPES, EXPERTS, PIPELINES, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
+import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId } from '../types'
+import { importers, isCode, memoryKey, memoryMarkdown, parseImports, resolveImport } from './memory'
+import { AGENT_TYPES, EXPERTS, PIPELINES, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-14' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-16' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 
+// The choices that outlast a session, a reload and a change of the state's shape: kept in the store, read at session start
+const PREFS = ['focus', 'theme', 'mode', 'autoVerify', 'testAgents'] as const
 export async function set($: $, patch: Patch) {
-  await update($, S, s => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }))
+  let saved: Record<string, unknown> | null = null
+  await update($, S, s => {
+    const n = { ...s, ...(typeof patch === 'function' ? patch(s) : patch) }
+    if (PREFS.some(k => n[k] !== s[k])) saved = Object.fromEntries(PREFS.map(k => [k, n[k]]))
+    return n
+  })
+  if (saved) await $.store.set('prefs', saved).catch(() => null)
+}
+
+// Cockpit's folder in the repository, kept out of git (and so out of every commit) by its own .gitignore
+async function cockpitDir($: $) {
+  const root = await repoRoot($)
+  if (!root) return ''
+  const dir = `${root}/.cockpit`
+  if (!(await $.fs.exists(`${dir}/.gitignore`).catch(() => true))) await $.fs.write(`${dir}/.gitignore`, '# Cockpit keeps its history and codebase memory here, out of git\n*\n').catch(() => null)
+  return dir
+}
+
+// What a run was, without its log and brief
+const summary = (a: Agent): Agent => ({ ...a, log: [], prompt: '' })
+
+// The repository's history: every finished flow and agent run, and Cockpit's commits, across sessions
+export async function saveHistory($: $) {
+  const dir = await cockpitDir($)
+  if (!dir) return
+  const s = await read($, S)
+  const flows = [...s.past, ...s.flows.filter(f => f.status !== 'running')]
+  const agents = [...s.pastAgents, ...s.agents.filter(a => a.status !== 'running').map(summary)]
+  const dedupe = <T extends { id: string }>(xs: T[]) => [...new Map(xs.map(x => [x.id, x])).values()]
+  const data = { version: 1, savedAt: await $.clock.now(), flows: dedupe(flows).slice(-200), agents: dedupe(agents).slice(-100), commits: s.commits.slice(0, 50) }
+  await $.fs.write(`${dir}/history.json`, JSON.stringify(data, null, 1)).catch(() => null)
+}
+
+export async function loadHistory($: $) {
+  const dir = await cockpitDir($)
+  if (!dir) return
+  const text = await $.fs.read(`${dir}/history.json`).catch(() => '')
+  if (!text) return
+  try {
+    const d = JSON.parse(text) as { flows?: Flow[]; agents?: Agent[]; commits?: Commit[] }
+    await set($, s => ({
+      past: (d.flows ?? []).filter(f => !s.flows.some(x => x.id === f.id)),
+      pastAgents: (d.agents ?? []).filter(a => !s.agents.some(x => x.id === a.id)),
+      commits: [...s.commits, ...(d.commits ?? []).filter(c => !s.commits.some(x => x.sha === c.sha))].slice(0, 50),
+    }))
+  } catch {
+    // A history file that does not parse is left as it is and read as empty
+  }
+}
+
+// The steps of this prompt's task, written by a quick model in the background; the template stands until they come
+export async function writeSteps($: $, flowId: string, task: string) {
+  const r = await $.model
+    .complete({
+      model: 'haiku',
+      maxTokens: 400,
+      system: 'You plan coding work. Answer with JSON only.',
+      prompt: `Break this task for a coding assistant into 3 to 6 steps, in the order they will happen, each under 7 words and specific to this task (name the files or features where you can). Tag each step with the kind of work that reaches it, one of: Understand, Explore, Decide, Implement, Verify, Commit, Answer. A question ends in Answer; a change to code ends in Verify, then Commit. Answer with JSON only: [{"step": "...", "kind": "..."}].\n\nTask: ${task.slice(0, 800)}`,
+    })
+    .catch(() => null)
+  const steps = r && r.isAnswered ? parseSteps(r.text) : []
+  if (steps.length >= 2) await set($, s => ({ flows: s.flows.map(f => (f.id === flowId ? { ...f, steps } : f)) }))
+}
+
+// The codebase memory, built from every source file's imports at session start (in the background) and kept in
+// .cockpit/memory.json and .cockpit/MEMORY.md
+// ponytail: 1500 files and 300 KB a file; a bigger repository is mapped in part, by git's order
+export async function buildMemory($: $) {
+  const root = await repoRoot($)
+  const r = await git($, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+  if (!root || r.exitCode !== 0) return
+  const all = r.stdout.split('\0').filter(Boolean)
+  const has = new Set(all)
+  const src = all.filter(isCode).slice(0, 1500)
+  const files: Record<string, string[]> = {}
+  for (let i = 0; i < src.length; i += 24) {
+    await Promise.all(
+      src.slice(i, i + 24).map(async p => {
+        const text = await $.fs.read(`${root}/${p}`).catch(() => '')
+        files[p] = text.length > 300_000 ? [] : [...new Set(parseImports(p, text).map(x => resolveImport(p, x, f => has.has(f))).filter((x): x is string => !!x))]
+      }),
+    )
+  }
+  await set($, { memory: { at: await $.clock.now(), files } })
+  await saveMemory($)
+}
+
+// One file again after an edit: its imports now, the file's entry dropped when it is gone
+export async function updateMemory($: $, path: string) {
+  const s = await read($, S)
+  const root = await repoRoot($)
+  if (!root || !s.memory.at) return
+  const abs = path.startsWith('/') || /^[A-Za-z]:/.test(path) ? path.replace(/\\/g, '/') : `${await $.session.cwd().catch(() => root)}/${path}`
+  const rel = abs.startsWith(`${root}/`) ? abs.slice(root.length + 1) : memoryKey(s.memory.files, path)
+  if (!rel || !isCode(rel)) return
+  const text = await $.fs.read(`${root}/${rel}`).catch(() => null)
+  const known = new Set(Object.keys(s.memory.files))
+  const imports = text === null ? null : [...new Set(parseImports(rel, text).map(x => resolveImport(rel, x, f => known.has(f) || f === rel)).filter((x): x is string => !!x))]
+  const at = await $.clock.now()
+  await set($, st => {
+    const files = { ...st.memory.files }
+    if (imports === null) delete files[rel]
+    else files[rel] = imports
+    return { memory: { at, files } }
+  })
+  await saveMemory($)
+}
+
+async function saveMemory($: $) {
+  const dir = await cockpitDir($)
+  if (!dir) return
+  const m = (await read($, S)).memory
+  const by = importers(m.files)
+  await $.fs.write(`${dir}/memory.json`, JSON.stringify({ version: 1, builtAt: m.at, files: Object.fromEntries(Object.entries(m.files).map(([f, uses]) => [f, { uses, usedBy: by[f] ?? [] }])) }, null, 1)).catch(() => null)
+  await $.fs.write(`${dir}/MEMORY.md`, memoryMarkdown(m.files, new Date(m.at).toISOString().slice(0, 16).replace('T', ' '))).catch(() => null)
+}
+
+export async function loadPrefs($: $) {
+  const p = (await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined
+  if (!p || typeof p !== 'object') return
+  const pick = Object.fromEntries(PREFS.filter(k => k in p && p[k] !== undefined).map(k => [k, p[k]]))
+  await update($, S, s => ({ ...s, ...pick }))
 }
 
 export async function toast($: $, text: string) {
@@ -418,7 +542,11 @@ export async function createAgent($: $, describe: string) {
 // An expert's brief: the task, the files touched, and the reports of the experts before it
 function expertPrompt(s: Ph, prior: string[]) {
   const touched = [...new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path))].slice(-12)
-  return `Task: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}\n\nPRIOR REPORTS:\n${prior.length ? prior.map((r, i) => `--- ${i + 1} ---\n${r}`).join('\n\n') : '(none: you are first)'}`
+  // From the codebase memory: the files that import what changed, which the change reaches too
+  const by = importers(s.memory.files)
+  const keys = touched.map(p => memoryKey(s.memory.files, p)).filter(Boolean)
+  const reach = [...new Set(keys.flatMap(k => by[k] ?? []))].filter(f => !keys.includes(f)).slice(0, 20)
+  return `Task: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}${reach.length ? `\nAlso affected (they import the changed files): ${reach.join(', ')}` : ''}\n\nPRIOR REPORTS:\n${prior.length ? prior.map((r, i) => `--- ${i + 1} ---\n${r}`).join('\n\n') : '(none: you are first)'}`
 }
 
 // Starts one expert; returns its agent id ('' when the start handed none back: the agent.spawn hook records it), or null when refused

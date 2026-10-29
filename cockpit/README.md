@@ -16,7 +16,31 @@ A Claude Code mod that shows what a session is doing and gives you its controls,
 
 ## Flows
 
-Every prompt opens a flow, and each flow picks one of four predefined templates from the words of the prompt: **Build** (Understand › Explore › Implement › Verify › Commit) for a feature, fix or refactor; **Docs** (no Verify) when the prompt is about the README, docs or comments; **Check** (Understand › Explore › Verify › Answer) for review, verify, lint, "make sure" or "run the tests"; **Answer** (Understand › Explore › Answer) for a question. Progress is the share of that flow's steps reached, so a question is done when it is answered and a build sits at 60% until its commit. The steps are dynamic: one reached beyond the template is added (a Decide when Claude asks you something, a Verify when tests run in an Answer flow), and a question that starts editing files becomes a Build, so Commit joins its steps. The ring, the chips, the band's Progress bar and each flow's row all measure against the flow's own steps. When the words pick wrong, `/cockpit flow <name>` or the **Flow** picker under the step chips puts the current prompt on another flow, and that choice stands.
+Every prompt opens a flow, and its steps come from the work itself, in this order:
+
+- **Claude's task list, when it keeps one.** As soon as Claude writes a plan (this app's task list, TodoWrite, or TaskCreate and TaskUpdate), the flow's steps are its tasks, each with the status Claude gave it, updated live as tasks are added, started, finished or ticked off at the turn's end. An update to a task from an earlier prompt's plan carries that plan over.
+- **Steps written for the task.** Otherwise a quick model writes three to six steps for this prompt, specific to it ("Read the limiter code", "Add the rate limit", "Run the tests"), in the background so the prompt is not held. Each is tagged with the kind of work that reaches it (exploring, deciding, editing, testing, committing, answering), so tool calls move it.
+- **A template, until then.** While the steps are being written, or if they cannot be: **Build** (Understand › Explore › Implement › Verify › Commit), **Docs** (no Verify), **Check** (Understand › Explore › Verify › Answer) or **Answer** (Understand › Explore › Answer), picked from the words of the prompt, with any step reached beyond it added. These five words are Cockpit's generic phases; they show only when there is nothing better.
+
+**Progress** is `(steps done + ½ × steps in progress) ÷ steps`, rounded. On a task list, done and in progress are the tasks' own statuses. On a template, the step furthest reached is in progress while the turn runs and done once it ends, and every step before it counts as done. The Overview shows the sum under the step chips, for example `1 of 3 steps done + 1 in progress at ½ = 50%`. The ring, the chips, the band's Progress bar and each flow's row all use it.
+
+`/cockpit flow <plan|task|build|docs|check|answer>`, or the **Flow** picker under the step chips, puts the current prompt on another flow; the choice stands.
+
+## Codebase memory
+
+At each session start Cockpit maps the repository from its imports (TypeScript, JavaScript, Dart, CSS, Python and the like): every source file, the files it imports and the files that import it, grouped into **features** (folders, two levels deep) with the features each one uses and is used by. After every edit, Claude's or an agent's, and after a turn whose shell commands changed files, it reads that file again.
+
+- **Activity** shows it: the **Impact** of the file chosen in the tree, or else the one edited last (what it uses, what imports it, and every file and feature a change to it reaches, to check), and with neither, the features and how they connect. ↻ maps the repository again.
+- **Claude reads it** every turn, as a short section of its system prompt: the features, their files and links, so it knows what a change reaches before making it.
+- **The testers get it**: each expert's brief lists the files that import the changed ones.
+- **It is kept in the repository** as `.cockpit/memory.json` and a readable `.cockpit/MEMORY.md`.
+
+Feature descriptions are the folders' names for now; a model-written line for each feature is a later step.
+
+## What is kept, and where
+
+- **In the repository**, in `.cockpit/` at its top folder: `history.json` (every finished flow and agent run, and Cockpit's commits, across sessions: the Overview lists earlier sessions, and each agent's last result outlasts the session) and the codebase memory. The folder has its own `.gitignore` of `*`, so none of it is committed, auto-commit included.
+- **In Cockpit's own store**, across sessions and reloads: Focus, the theme, the decision mode, and the Agents settings; the Git settings and account, per repository; the agents you made.
 
 ## Live figures
 
@@ -24,7 +48,7 @@ Timers, bars and the context window redraw every second while a turn, a tester o
 
 ## Focus
 
-Focus is **on** by default. While it is on, the chat shows only your prompts, Claude's replies and the activity line. Tool cards and the "Done in" lines are hidden (errors still show), the band above the prompt shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with the **◉ Focus** button on the band or `/cockpit focus [on|off]`.
+Focus is **on** by default, and what you choose is kept: across sessions, reloads and updates of the mod. While it is on, the chat shows only your prompts, Claude's replies and the activity line. Tool cards and the "Done in" lines are hidden (errors still show), the band above the prompt shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with the **◉ Focus** button on the band or `/cockpit focus [on|off]`.
 
 ## Colours
 
@@ -64,7 +88,7 @@ In **Auto · judge** mode, a quick model rates each question Claude asks from 0 
 | `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch theme (or click the dots in the pane header) |
 | `/cockpit mode <auto\|ask>` | who answers Claude's questions |
 | `/cockpit tab <overview\|files\|tests\|agents\|git>` | open a tab (`git` reads the repo again) |
-| `/cockpit flow <build\|docs\|check\|answer>` | put the current prompt on that flow (or pick it under the step chips) |
+| `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current prompt on that flow (or pick it under the step chips) |
 | `/cockpit test` | run the Verify pipeline now |
 
 ## Agents in auto mode

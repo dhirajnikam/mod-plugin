@@ -101,7 +101,13 @@ export type Flow = {
   commit: string
   // A flow picked by hand (/cockpit flow, or the picker); else the words of the task choose
   kind?: string
+  // Claude's own task list for this prompt (TodoWrite, or TaskCreate and TaskUpdate): the flow's steps while it has one
+  plan?: PlanItem[]
+  // Steps written for this prompt's task, each tagged with the kind of work that reaches it
+  steps?: { name: string; kind: string }[]
 }
+
+export type PlanItem = { id: string; text: string; st: 'pending' | 'in_progress' | 'completed' }
 
 // One commit of the graph: refs as `git log %D` names them (HEAD -> main, origin/main, tag: v1)
 export type LogCommit = { sha: string; parents: string[]; refs: string[]; msg: string; when: string; author: string }
@@ -124,6 +130,11 @@ export type Ph = {
   reached: string[]
   // Every prompt's work, oldest first; the last one is the current flow
   flows: Flow[]
+  // Earlier sessions' flows and agent runs, read from the repository's .cockpit/history.json
+  past: Flow[]
+  pastAgents: Agent[]
+  // The codebase memory: each source file (from the repository root) and the files it imports; at: when it was built
+  memory: { at: number; files: Record<string, string[]> }
   ops: FileOp[]
   // Every path of the project, relative to the root: the Activity tree's skeleton
   project: string[]

@@ -6,6 +6,7 @@ import {
   commit,
   confirmPending,
   createAgent,
+  buildMemory,
   discoverAgentTypes,
   loadProject,
   runExpert,
@@ -60,6 +61,7 @@ import {
   tree,
 } from './logic'
 import type { IconState } from './logic'
+import { features as featureList, impactOf, memoryKey } from './memory'
 import { pickFlow, setGit as setGitPref } from './actions'
 import { BAD, BUSY, OK, THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
@@ -109,7 +111,7 @@ const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, Math.max(1, 
 function Seg<K extends string>({ v, id, items, value, onPick }: { v: V; id: string; items: [K, string][]; value: K; onPick: (k: K) => unknown }) {
   const { Box, Button, Text } = v.ui
   return (
-    <Box flexWrap="wrap">
+    <Box flexWrap="wrap" columnGap={v.desk ? 'sm' : 0} rowGap={v.desk ? 'sm' : 0}>
       {items.map(([k, label]) =>
         v.desk ? (
           <Button key={`${id}-${k}`} label={label} variant={k === value ? 'primary' : 'secondary'} onPress={() => onPick(k)} />
@@ -301,8 +303,16 @@ export function Overview($: $, v: V) {
       {s.flows.length > 0 && (
         <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
           <Text color={t.dim} size="footnote">Flow</Text>
-          <Seg v={v} id="flow" value={p.flow.name} items={FLOWS.map(f => [f.name, f.label] as [string, string])} onPick={k => pickFlow($, k)} />
+          <Seg v={v} id="flow" value={p.flow.name} items={[...(s.flows[s.flows.length - 1]?.plan?.length ? [['plan', 'Plan'] as [string, string]] : []), ...(s.flows[s.flows.length - 1]?.steps?.length ? [['task', 'Task'] as [string, string]] : []), ...FLOWS.map(f => [f.name, f.label] as [string, string])]} onPick={k => pickFlow($, k)} />
         </Box>
+      )}
+      {s.flows.length > 0 && (
+        <Text size="footnote" wrap="wrap">
+          <Text color={t.dim}>{`${p.done} of ${p.steps.length} steps done`}</Text>
+          {p.active > 0 && <Text color={BUSY}>{` + ${p.active} in progress at ½`}</Text>}
+          <Text color={t.dim}>{` = ${p.pct}%  ·  `}</Text>
+          <Text color={t.faint}>{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${s.flows[s.flows.length - 1]?.kind ? ', your pick' : ''}`}</Text>
+        </Text>
       )}
       {flows.length === 0 && (
         <Box flexDirection="column">
@@ -313,7 +323,7 @@ export function Overview($: $, v: V) {
               <Text color={t.dim}>{` · ${f.steps.join(' › ')} · ${f.what}`}</Text>
             </Text>
           ))}
-          <Text color={t.dim} size="footnote" wrap="wrap">Each prompt picks a flow from its words; a step reached beyond it is added, and a question that edits files becomes a Build.</Text>
+          <Text color={t.dim} size="footnote" wrap="wrap">Each prompt picks a flow from its words; a step reached beyond it is added, and a question that edits files becomes a Build. Once Claude writes a task list, its tasks become the steps, live.</Text>
         </Box>
       )}
       {flows.length > 0 && (
@@ -332,7 +342,7 @@ export function Overview($: $, v: V) {
             const live = f.status === 'running'
             const col = live ? BUSY : f.status === 'done' ? OK : BAD
             const took = (f.endedAt ?? v.now) - f.startedAt
-            const fp = progressOf(f.task, f.reached, live, f.kind)
+            const fp = progressOf(f.task, f.reached, live, f.kind, f.plan, f.steps)
             return (
               <Box key={`fl-${f.id}`} flexDirection="column">
                 <Box columnGap={sp(v, 1)}>
@@ -366,6 +376,25 @@ export function Overview($: $, v: V) {
               </Box>
             )
           })}
+        </Box>
+      )}
+      {s.past.length > 0 && (
+        <Box flexDirection="column">
+          <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+            <Text color={t.text} weight="semibold">{`Earlier sessions (${s.past.length})`}</Text>
+            <Text color={t.faint} size="footnote">kept in .cockpit/history.json</Text>
+          </Box>
+          {s.past.slice(-8).reverse().map(f => (
+            <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
+              <Text color={f.status === 'done' ? OK : BAD}>{f.status === 'done' ? '✓' : '✕'}</Text>
+              <Text color={t.faint} size="footnote" mono>{fmt((f.endedAt ?? f.startedAt) - f.startedAt)}</Text>
+              <Box flexGrow={1} flexShrink={1}>
+                <Text color={t.dim} wrap="truncate-end">{f.task}</Text>
+              </Box>
+              {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
+              {f.commit !== '' && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+            </Box>
+          ))}
         </Box>
       )}
       <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
@@ -449,6 +478,53 @@ export function Overview($: $, v: V) {
 
 // Activity: the files touched as a tree, the one being worked on pulsing, and under it the live feed of every file
 // operation and every agent's tool calls, newest first; pressing a file narrows the feed to it
+// Memory: the codebase map. For the file chosen in the tree, or else the one edited last: what it uses, what imports it,
+// and every file and feature a change to it reaches. With neither, the features and how they connect
+function Memory($: $, v: V) {
+  const { Box, Button, Text } = v.ui
+  const { s, t } = v
+  const files = s.memory.files
+  const count = Object.keys(files).length
+  const lastEdit = [...s.ops].reverse().find(o => o.op === 'Write' || o.op === 'Edit')
+  const key = memoryKey(files, s.ui.treeSel || lastEdit?.path || '')
+  const im = key ? impactOf(files, key) : null
+  const fs = featureList(files)
+  const names = (xs: string[], n = 4) => (xs.length ? `${xs.slice(0, n).map(x => x.split('/').pop()).join(' · ')}${xs.length > n ? ` +${xs.length - n}` : ''}` : '—')
+  const row = (label: string, value: string, c: string) => (
+    <Text key={`im-${label}`} size="footnote" wrap="truncate-end">
+      <Text color={t.faint}>{`${label.padEnd(9)}`}</Text>
+      <Text color={c}>{value}</Text>
+    </Text>
+  )
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={im && im.usedBy.length ? BUSY : t.divider} paddingX={1}>
+      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+        <Text wrap="truncate-end">
+          <Text color={t.text} weight="semibold">{im ? `Impact · ${key.split('/').pop()}` : 'Memory'}</Text>
+          <Text color={t.dim} size="footnote">{im ? `  in ${im.feature}` : count ? `  ${count} files · ${fs.length} features · ${fmt(Math.max(0, v.now - s.memory.at))} ago` : '  mapping the codebase…'}</Text>
+        </Text>
+        <Button key="mem-rebuild" label="↻" plain onPress={() => buildMemory($)} />
+      </Box>
+      {im ? (
+        <Box flexDirection="column">
+          {row('uses', names(im.uses), t.text)}
+          {row('used by', im.usedBy.length ? names(im.usedBy) : 'nothing imports it', im.usedBy.length ? BUSY : OK)}
+          {row('reaches', im.affected.length ? `${im.affected.length} file${im.affected.length === 1 ? '' : 's'}${im.features.length ? ` in ${im.features.join(', ')}` : ''}: check them` : 'only this file', im.affected.length ? BUSY : OK)}
+        </Box>
+      ) : (
+        fs.slice(0, 8).map(f => (
+          <Text key={`ft-${f.name}`} size="footnote" wrap="truncate-end">
+            <Text color={t.accent}>{f.name}</Text>
+            <Text color={t.dim}>{`  ${f.files.length} file${f.files.length === 1 ? '' : 's'}`}</Text>
+            {f.uses.length > 0 && <Text color={t.faint}>{`  → ${f.uses.join(', ')}`}</Text>}
+            {f.usedBy.length > 0 && <Text color={t.faint}>{`  ← ${f.usedBy.join(', ')}`}</Text>}
+          </Text>
+        ))
+      )}
+    </Box>
+  )
+}
+
 export function Files($: $, v: V) {
   const { Box, Button, Text } = v.ui
   const { s, t, w } = v
@@ -527,6 +603,7 @@ export function Files($: $, v: V) {
         </Box>
         {live && marquee()}
       </Box>
+      {Memory($, v)}
       {rows_.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
       {rows_.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
@@ -617,7 +694,7 @@ export function Agents($: $, v: V) {
   const { Box, Button, Input, Select, Svg, Text } = v.ui
   const { s, t } = v
   const types = s.agentTypes.length ? s.agentTypes : AGENT_TYPES
-  const latestOf = (type: string) => s.agents.filter(a => a.type === type).pop()
+  const latestOf = (type: string) => [...s.pastAgents, ...s.agents].filter(a => a.type === type).pop()
   const pipe = s.pipeline
   const running = s.agents.filter(a => a.status === 'running').length
   const finished = s.agents.filter(a => a.status === 'done').length
@@ -637,7 +714,7 @@ export function Agents($: $, v: V) {
   const reportOf = (a?: Agent) => a?.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice(7).trim() ?? ''
   // The two testers on a run: the positive (Prover) and the negative (Breaker), each its latest
   const testsOf = (id: string) => {
-    const mine = s.agents.filter(x => x.for === id)
+    const mine = [...s.pastAgents, ...s.agents].filter(x => x.for === id)
     return { pos: mine.filter(x => x.type === TESTERS[0]).pop(), neg: mine.filter(x => x.type === TESTERS[1]).pop() }
   }
   const verdict = (x: Agent | undefined, label: string, sign: string, waiting: boolean) => {

@@ -6,7 +6,7 @@ const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', compone
 const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
   let seat = 0
@@ -34,6 +34,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('session.cwd', async () => ({ value: '/repo' }))
   on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000, percent: 25, breakdown: { categories: [{ name: 'Messages', tokens: 30000 }, { name: 'System prompt', tokens: 20000 }], totalTokens: 50000 } }, rateLimits: [], cost: { usd: 1.5 } } }))
   on('model.complete', async (_: unknown, e: any) => {
+    if (String(e.prompt).startsWith('Break this task') && st.noSteps) return { value: { isAnswered: false, reason: 'empty-reply' } } as never
+    if (String(e.prompt).startsWith('Break this task')) return { value: { isAnswered: true, text: '[{"step": "Read the limiter code", "kind": "Explore"}, {"step": "Add the rate limit", "kind": "Implement"}, {"step": "Run the tests", "kind": "Verify"}]', usage: { inputTokens: 1, outputTokens: 1 } } }
     const isScore = String(e.prompt).startsWith('Rate how complex')
     const text = isScore ? `{"score": ${st.score ?? 2}, "signals": ["small", "reversible"]}` : String(((st.votes ?? [1, 1, 1])[seat++ % (st.votes ?? [1]).length] ?? 0) + 1)
     return { value: { isAnswered: true, text, usage: { inputTokens: 1, outputTokens: 1 } } }
@@ -203,7 +205,8 @@ test('file operations build the Files tab, the chat cards and the progress steps
   await $.command.run({ command: 'cockpit', args: 'focus off' } as never)
   const b = await $.ui.mount(band as never)
   const bd = JSON.stringify(await b.drawn())
-  expect(bd).toContain('Verify')
+  // The steps written for this task, reached by the kind of work done
+  expect(bd).toContain('Run the tests')
   expect(bd).toMatch(/[5-9]\d%/)
   await b.unmount()
   // Each prompt is a flow: this one shows in the Overview with its steps, changes and state
@@ -225,7 +228,8 @@ test('file operations build the Files tab, the chat cards and the progress steps
 })
 
 test('each prompt picks a flow; a question reaches Answer at turn end, a build waits for its commit', async ($, on) => {
-  stand($, on)
+  // No steps written for the task: the templates stand
+  stand($, on, { noSteps: true })
   // Before the first prompt the Overview lists the predefined flows
   let ui = await $.ui.mount(pane('overview') as never)
   expect(JSON.stringify(await ui.drawn())).toContain('Understand › Explore › Answer')
@@ -260,6 +264,56 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   await ui.press({ key: 'flow-docs' })
   expect(JSON.stringify(await ui.drawn())).toContain('Docs flow')
   expect(JSON.stringify(await $.command.run({ command: 'cockpit', args: 'flow nope' } as never))).toContain('Flows: build')
+  await ui.unmount()
+})
+
+test('each prompt gets steps written for its task, moved by the kind of work done', async ($, on) => {
+  stand($, on)
+  await $.prompt.submit({ text: 'add rate limiting', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/repo/src/limit.ts', tool_use_id: 'r1' } as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ui = await $.ui.mount(pane('overview') as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain(' Read the limiter code ')
+  expect(d).toContain(' Add the rate limit ')
+  expect(d).toContain('steps written for this task')
+  expect(d).toContain('0 of 3 steps done')
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/limit.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('1 of 3 steps done')
+  // A template picked by hand stands over them
+  await ui.press({ key: 'flow-build' })
+  expect(JSON.stringify(await ui.drawn())).toContain('steps from the Build flow, your pick')
+  await ui.unmount()
+})
+
+test("while Claude keeps a task list, the flow's steps are its tasks and progress counts them", async ($, on) => {
+  stand($, on)
+  await $.prompt.submit({ text: 'add rate limiting', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'TodoWrite', tool_use_id: 'td1', todos: [
+    { content: 'Find the login handler', status: 'completed', activeForm: 'Finding' },
+    { content: 'Add the limiter', status: 'in_progress', activeForm: 'Adding' },
+    { content: 'Write a test', status: 'pending', activeForm: 'Writing' },
+  ] } as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ui = await $.ui.mount(pane('overview') as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain(' Add the limiter ')
+  expect(d).toContain('1 of 3 steps done')
+  expect(d).toContain(' + 1 in progress at ½')
+  expect(d).toContain(' = 50%')
+  expect(d).toContain("steps from Claude's task list")
+  // One task at a time: a new task joins, and an update moves it
+  await $.tool.call({ tool: 'TaskCreate', tool_use_id: 'tc1', subject: 'Update the docs', description: 'x' } as never)
+  await $.tool.call({ tool: 'TaskUpdate', tool_use_id: 'tu1', taskId: 'c3', status: 'completed' } as never)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('2 of 4 steps done')
+  // A template picked by hand stands over the plan; Plan takes it back
+  await ui.press({ key: 'flow-build' })
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('steps from the Build flow, your pick')
+  await ui.press({ key: 'flow-plan' })
+  expect(JSON.stringify(await ui.drawn())).toContain("steps from Claude's task list")
   await ui.unmount()
 })
 
