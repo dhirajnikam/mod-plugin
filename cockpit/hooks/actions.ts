@@ -2,11 +2,11 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Account, Agent, Changed, Decision, GitForm, Pending, Ph, ThemeId } from '../types'
-import { AGENT_TYPES, PIPELINES, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
+import { AGENT_TYPES, EXPERTS, PIPELINES, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-11' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-13' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -24,8 +24,22 @@ export async function note($: $, text: string) {
   await $.session.append({ message: { type: 'system', content: [{ type: 'text', text }] } }).catch(() => null)
 }
 
+// The repository's top folder, per session folder: git names changed files from there, so a session working in a
+// subfolder (cockpit/) must run git there too, or `git add cockpit/x` looks for cockpit/cockpit/x
+const roots = new Map<string, string>()
+export async function repoRoot($: $) {
+  const cwd = await $.session.cwd().catch(() => '')
+  const known = roots.get(cwd)
+  if (known !== undefined) return known
+  const r = await $.process.run(['git', 'rev-parse', '--show-toplevel']).catch(() => ({ exitCode: 1, stdout: '', stderr: '' }))
+  const top = r.exitCode === 0 && /^([A-Za-z]:)?[\\/]/.test(r.stdout.trim()) ? r.stdout.trim() : cwd
+  roots.set(cwd, top)
+  return top
+}
+
 async function git($: $, args: string[]) {
-  return $.process.run(['git', ...args]).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+  const cwd = await repoRoot($)
+  return $.process.run(['git', ...args], cwd ? { cwd } : {}).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
 }
 
 const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
@@ -43,7 +57,8 @@ export const subjectOf = (task: string) => {
 // Branch, ahead count, local branches and uncommitted files with their line counts
 // The project's paths: git's view (tracked and untracked, ignored left out), or a shallow walk outside a repository
 export async function loadProject($: $) {
-  const r = await git($, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+  // From the session's folder, as the Activity tree shows paths
+  const r = await $.process.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard']).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
   let project = r.exitCode === 0 ? r.stdout.split('\0').filter(Boolean) : []
   if (r.exitCode !== 0) {
     // ponytail: depth 3 and 3000 paths; git gives the full view where it exists
@@ -163,7 +178,7 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
     if (p.exitCode === 0 && g.pr) {
       const base = g.base || s.repo.current
       const pr = await $.process
-        .run(['gh', 'pr', 'create', '--base', base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])])
+        .run(['gh', 'pr', 'create', '--base', base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])], { cwd: (await repoRoot($)) || '.' })
         .catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
       extra.push(pr.exitCode === 0 ? `${g.draft ? 'draft PR' : 'PR'} → ${base} ${pr.stdout.trim()}` : `PR failed: ${firstLine(pr)}`)
     }
@@ -297,13 +312,21 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
   return t.passes ? winner : ''
 }
 
-// Starts a subagent in the background and settles once it has started, with its id. A start the auto-mode classifier
-// gave no verdict for (it is asked only for a model's request) is, as its message says, made once more.
+// Spawns started from the pane right now, each its type and exact prompt: the tool.check hook puts these to the person
+const ownStarts: { type: string; prompt: string }[] = []
+export function isOwnStart(input: unknown) {
+  const i = (input ?? {}) as Record<string, unknown>
+  return ownStarts.some(o => o.type === (i.subagent_type ?? 'general-purpose') && o.prompt === i.prompt)
+}
+
+// Starts a subagent in the background and settles once it has started, with its id
 export async function startAgent($: $, a: { prompt: string; description: string; type: string }) {
-  const call = () => $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type }).catch(e => ({ deny: String(e) }))
-  let r = await call()
-  if ('deny' in r && r.deny && /no verdict/i.test(r.deny)) r = await call()
-  if ('deny' in r && r.deny) return { deny: /no verdict/i.test(r.deny) ? 'auto mode gave no verdict twice; ask Claude to start it from the chat' : r.deny }
+  const own = { type: a.type, prompt: a.prompt }
+  ownStarts.push(own)
+  const r = await $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type })
+    .catch(e => ({ deny: String(e) }))
+    .finally(() => ownStarts.splice(ownStarts.indexOf(own), 1))
+  if ('deny' in r && r.deny) return { deny: r.deny }
   return { agentId: 'agentId' in r && r.agentId ? r.agentId : '' }
 }
 
@@ -322,6 +345,53 @@ export async function registerExperts($: $) {
     const spec = { name, description: head.description || `Cockpit's ${name}`, prompt: (m[2] ?? '').trim(), ...(head.model ? { model: head.model } : {}), ...(tools.length ? { tools } : {}) }
     await $.agent.register(spec).catch(e => $.ui.log(`cockpit: could not register the ${spec.name}: ${String(e)}`))
   }
+  // And the agents made from a description, kept in the store across sessions
+  const made = ((await $.store.get('agents').catch(() => undefined)) ?? []) as MadeAgent[]
+  const custom: Ph['custom'] = []
+  for (const m of made) {
+    const r = await $.agent.register(m).catch(() => null)
+    if (r) custom.push({ type: r.agent, name: expertName(r.agent), what: m.description })
+  }
+  await set($, { custom })
+}
+
+type MadeAgent = { name: string; description: string; prompt: string; tools?: string[] }
+const TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch']
+
+// An agent from the person's own words: a model writes its definition, Cockpit registers it as cockpit:<name>
+// (runnable at once, here and by Claude) and keeps it in the store for later sessions
+export async function createAgent($: $, describe: string) {
+  if ((await read($, S)).creating) return toast($, 'Still making the last agent')
+  await set($, { creating: describe })
+  try {
+    const r = await $.model.complete({
+      model: 'sonnet',
+      maxTokens: 3000,
+      system: 'You write Claude Code subagent definitions. Answer with one JSON object and nothing else.',
+      prompt: `The person wants this agent:\n${describe}\n\nAnswer with JSON: {"name": short kebab-case, 2 to 40 characters, "description": one line saying what it does and when to use it, "tools": the tools it needs from ${JSON.stringify(TOOLS)}, or [] for every tool, "prompt": its whole system prompt in the second person: its role, how it works step by step, what it must not do, and that its answer ends with a line "REPORT: <one line of what it found or did>" and a line "HANDOFF: <what the next agent should look at>"}`,
+    })
+    const json = r.isAnswered ? r.text.match(/\{[\s\S]*\}/)?.[0] : undefined
+    const raw = json ? (JSON.parse(json) as Partial<MadeAgent>) : {}
+    const name = String(raw.name ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+    if (!name || !raw.description || !raw.prompt) return toast($, r.isAnswered ? 'Could not make the agent: the definition came back incomplete' : `Could not make the agent: ${r.reason}`)
+    if (EXPERTS.some(x => x.type === `cockpit:${name}`)) return toast($, `"${name}" is one of Cockpit's own experts: describe it differently`)
+    const tools = (raw.tools ?? []).filter(t => TOOLS.includes(t))
+    const spec: MadeAgent = { name, description: String(raw.description), prompt: String(raw.prompt), ...(tools.length ? { tools } : {}) }
+    const reg = await $.agent.register(spec).catch(e => ({ deny: String(e) }))
+    if ('deny' in reg) return toast($, `Could not register the agent: ${reg.deny}`)
+    const made = ((await $.store.get('agents').catch(() => undefined)) ?? []) as MadeAgent[]
+    await $.store.set('agents', [...made.filter(m => m.name !== name), spec])
+    await set($, s => ({
+      custom: [...s.custom.filter(c => c.type !== reg.agent), { type: reg.agent, name: expertName(reg.agent), what: spec.description }],
+      agentTypes: s.agentTypes.includes(reg.agent) ? s.agentTypes : [...s.agentTypes, reg.agent],
+      ui: { ...s.ui, describe: '', spawnOpen: false },
+    }))
+    await toast($, `Made the ${expertName(reg.agent)} agent: it is on the team board, and ▶ runs it from your next prompt on`)
+  } catch (e) {
+    await toast($, `Could not make the agent: ${String(e)}`)
+  } finally {
+    await set($, { creating: '' })
+  }
 }
 
 // An expert's brief: the task, the files touched, and the reports of the experts before it
@@ -338,6 +408,8 @@ export async function runExpert($: $, type: string, prior: string[] = []) {
   const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type })
   await set($, { starting: null })
   if ('deny' in r) {
+    // In the chat too: a toast is gone in seconds and never reaches the transcript
+    await note($, `⧉ ${name} could not start: ${r.deny}`)
     await toast($, `${name} could not start: ${r.deny}`)
     return null
   }
@@ -350,7 +422,7 @@ export async function runExpert($: $, type: string, prior: string[] = []) {
 let startingPipeline = false
 
 // A pipeline: the experts in turn, each handed the reports so far
-export async function startPipeline($: $, name: string) {
+export async function startPipeline($: $, name: string, opts: { for?: string; prior?: string[] } = {}) {
   const def = PIPELINES.find(p => p.name === name)
   if (!def) return
   const s = await read($, S)
@@ -360,12 +432,12 @@ export async function startPipeline($: $, name: string) {
   try {
     const at = await $.clock.now()
     await set($, st => ({
-      pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: [], at },
+      pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: opts.prior ?? [], at, ...(opts.for ? { for: opts.for } : {}) },
       reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'],
       // The last flow, running or just closed: Verify runs after the turn that changed the files
       flows: st.flows.map((f, i) => (i === st.flows.length - 1 && !f.reached.includes('Verify') ? { ...f, reached: [...f.reached, 'Verify'] } : f)),
     }))
-    await bindExpert($, await runExpert($, def.steps[0] ?? '', []))
+    await bindExpert($, await runExpert($, def.steps[0] ?? '', opts.prior ?? []))
   } finally {
     startingPipeline = false
   }
@@ -403,11 +475,11 @@ export async function advancePipeline($: $, agentId: string, answer: string, abo
 }
 
 // An agent's answer arrived: its cases and report go on its record
-export async function finishAgent($: $, agentId: string, answer: string, aborted: boolean) {
+export async function finishAgent($: $, agentId: string, answer: string, aborted: boolean, failed = false) {
   const at = await $.clock.now()
   const cases = parseCases(answer)
   const report = parseReport(answer)
-  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.status === 'running' ? { ...a, status: aborted ? 'stopped' : 'done', endedAt: at, cases, report, log: [...a.log, { at, t: 'Done · report ready' }] } : a)) }))
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.status === 'running' ? { ...a, status: aborted ? 'stopped' : failed ? 'failed' : 'done', endedAt: at, cases, report, log: [...a.log, { at, t: failed ? 'Failed · the run ended on an error' : 'Done · report ready' }] } : a)) }))
   const a = (await read($, S)).agents.find(x => x.id === agentId)
   if (a && cases.length) {
     const fail = cases.filter(c => c.st === 'fail').length
@@ -418,11 +490,31 @@ export async function finishAgent($: $, agentId: string, answer: string, aborted
 
 export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'>) {
   const at = await $.clock.now()
-  // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count
+  // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count.
+  // A tester a Verify pipeline started on an agent's work is tagged with that agent
   await set($, s => {
     const was = s.agents.find(x => x.id === a.id)
-    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '' }].slice(-40) }
+    const p = s.pipeline
+    const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
+    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
   })
+}
+
+// The positive and the negative tester
+export const TESTERS = ['cockpit:prover', 'cockpit:breaker']
+// A run that wrote or edited a file
+export const changedFiles = (a: Agent) => a.log.some(l => /^(Edit|Write|NotebookEdit|MultiEdit) /.test(l.t))
+
+// Tests an agent's run: the Verify pipeline (the Prover proves it works, then the Breaker tries to break it), briefed
+// with what that agent was asked and reported. auto: after a run that changed files, while the setting is on, and
+// never on a tester's own run or while another pipeline runs
+export async function testAgent($: $, id: string, auto: boolean) {
+  const s = await read($, S)
+  const a = s.agents.find(x => x.id === id)
+  if (!a || a.status !== 'done' || TESTERS.includes(a.type)) return
+  if (auto && (!s.testAgents || !changedFiles(a) || s.pipeline)) return
+  const prior = [`${a.name} (the agent whose work you are testing):\nIts task: ${a.task}\n${a.report || '(it left no report: read the files it changed)'}`]
+  await startPipeline($, 'verify', { for: id, prior })
 }
 
 // Agent types the model can dispatch: the built-ins, the project's and your own agents/*.md, each installed plugin's as <plugin>:<name>, and any type seen starting
@@ -447,7 +539,10 @@ export async function spawnAgent($: $, task: string, type: string) {
   await set($, { starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task } })
   const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
   await set($, { starting: null })
-  if ('deny' in r) return toast($, `Could not start the agent: ${r.deny}`)
+  if ('deny' in r) {
+    await note($, `⧉ ${type} could not start: ${r.deny}`)
+    return toast($, `Could not start the agent: ${r.deny}`)
+  }
   if (r.agentId) await trackAgent($, { id: r.agentId, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task })
   await set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '', openAgent: r.agentId } }))
   await toast($, `Started ${type}`)
@@ -486,7 +581,17 @@ export async function openPane($: $) {
 // The Git tab's settings, kept per repository across sessions: what you chose stays until you change it
 const GIT_PREFS: (keyof GitForm)[] = ['branchAuto', 'branchPattern', 'ticket', 'user', 'base', 'type', 'msgPattern', 'commitMode', 'autoWhen', 'setupDone', 'breaking', 'push', 'pr', 'draft', 'signoff', 'gpg', 'preTest']
 async function prefsKey($: $) {
-  return `git:${await $.session.cwd()}`
+  return `git:${await repoRoot($)}`
+}
+// Settings saved under a session folder inside the repository (before they were kept per repository) move to it
+async function moveSaved($: $, kind: 'git' | 'account') {
+  const cwd = await $.session.cwd().catch(() => '')
+  const root = await repoRoot($)
+  if (!cwd || cwd === root) return
+  const old = await $.store.get(`${kind}:${cwd}`)
+  if (old === undefined || old === null) return
+  await $.store.set(`${kind}:${root}`, old)
+  await $.store.set(`${kind}:${cwd}`, null)
 }
 
 // The current flow's template, chosen by hand
@@ -501,6 +606,7 @@ export async function setGit($: $, patch: Partial<GitForm>) {
 }
 
 export async function loadGitPrefs($: $) {
+  await moveSaved($, 'git')
   const saved = (await $.store.get(await prefsKey($))) as Partial<GitForm> | undefined
   if (saved) await set($, s => ({ git: { ...s.git, ...saved } }))
 }
@@ -515,7 +621,8 @@ export async function setTheme($: $, theme: ThemeId) {
 // Accounts: the ones saved across sessions, plus the global git identity and each gh login found on this machine
 export async function loadAccounts($: $) {
   const saved = ((await $.store.get('accounts')) as Account[] | undefined) ?? []
-  const chosen = ((await $.store.get(`account:${await $.session.cwd()}`)) as string | undefined) ?? ((await $.store.get('accountId')) as string | undefined) ?? ''
+  await moveSaved($, 'account')
+  const chosen = ((await $.store.get(`account:${await repoRoot($)}`)) as string | undefined) ?? ((await $.store.get('accountId')) as string | undefined) ?? ''
   const name = (await git($, ['config', '--global', 'user.name'])).stdout.trim()
   const email = (await git($, ['config', '--global', 'user.email'])).stdout.trim()
   const st = await $.process.run(['gh', 'auth', 'status']).catch(() => null)
@@ -539,7 +646,7 @@ export async function saveAccount($: $, a: Account) {
   await $.store.set('accounts', accounts.filter(x => x.id !== 'global' && !x.id.startsWith('gh-') || x.id === acct.id))
   await set($, st => ({ accounts, accountId: acct.id, ui: { ...st.ui, acctOpen: false, acct: { id: '', label: '', name: '', email: '', gh: '' } } }))
   await $.store.set('accountId', acct.id)
-  await $.store.set(`account:${await $.session.cwd()}`, acct.id)
+  await $.store.set(`account:${await repoRoot($)}`, acct.id)
   await toast($, `Saved account ${acct.label}`)
 }
 
@@ -553,7 +660,7 @@ export async function removeAccount($: $, id: string) {
 export async function useAccount($: $, id: string) {
   await set($, { accountId: id })
   await $.store.set('accountId', id)
-  await $.store.set(`account:${await $.session.cwd()}`, id)
+  await $.store.set(`account:${await repoRoot($)}`, id)
 }
 
 // Write the chosen identity into this repository's own git config

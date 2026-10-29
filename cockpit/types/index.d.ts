@@ -45,10 +45,13 @@ export type Agent = {
   // From the agent's answer: its CASE lines (the testers), and its REPORT and HANDOFF lines (the experts)
   cases: TestCase[]
   report: string
+  // A tester's run: the id of the agent whose work it tests
+  for?: string
 }
 
 // A chain of experts on one task; each gets the reports of the ones before it
-export type Pipeline = { name: string; steps: string[]; index: number; agentId: string; reports: string[]; at: number }
+// for: the agent whose work a Verify pipeline tests
+export type Pipeline = { name: string; steps: string[]; index: number; agentId: string; reports: string[]; at: number; for?: string }
 
 export type GitForm = {
   branch: string
@@ -125,12 +128,18 @@ export type Ph = {
   waiting: string
   // Run the Verify experts after each turn that changes files
   autoVerify: boolean
+  // Run the positive and the negative tester on each agent's run that changed files
+  testAgents: boolean
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by
   starting: { name: string; type: string; task: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
+  // Agents made from a description in the pane, as cockpit:<name>; their definitions are kept in the store
+  custom: { type: string; name: string; what: string }[]
+  // A description being turned into an agent right now
+  creating: string
   git: GitForm
   // log: the repository's recent commits, newest first
   repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[]; log: { sha: string; msg: string; when: string }[] }
@@ -155,6 +164,7 @@ export type Ph = {
     spawnOpen: boolean
     spawnTask: string
     spawnType: string
+    describe: string
     acctOpen: boolean
     acct: Account
     // The setup wizard's step, the token being typed, and the gh web login's note

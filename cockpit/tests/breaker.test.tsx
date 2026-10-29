@@ -7,9 +7,9 @@ const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', compone
 const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), log.specs.push(e), st.regDeny ? { deny: 'x' } : { value: { agent: `cockpit:${e.name}` } }))
@@ -34,15 +34,24 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('session.cwd', async () => ({ value: '/repo' }))
   on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000, percent: 25, breakdown: { categories: [{ name: 'Messages', tokens: 30000 }, { name: 'System prompt', tokens: 20000 }], totalTokens: 50000 } }, rateLimits: [], cost: { usd: 1.5 } } }))
   on('model.complete', async (_: unknown, e: any) => {
+    if (String(e.system ?? '').includes('subagent definitions')) return { value: { isAnswered: true, text: 'Here: {"name": "API Guard", "description": "Checks API changes for breaking changes", "tools": ["Read", "Grep", "Nuke"], "prompt": "You check API changes. End with REPORT: and HANDOFF: lines."}', usage: { inputTokens: 1, outputTokens: 1 } } }
     const isScore = String(e.prompt).startsWith('Rate how complex')
     const text = isScore ? `{"score": ${st.score ?? 2}, "signals": ["small", "reversible"]}` : String(((st.votes ?? [1, 1, 1])[seat++ % (st.votes ?? [1]).length] ?? 0) + 1)
     return { value: { isAnswered: true, text, usage: { inputTokens: 1, outputTokens: 1 } } }
   })
   on('model.fork', async () => ({ value: { isAnswered: true, text: 'The task is small.', usage: { inputTokens: 1, outputTokens: 1 } } }))
   let spawns = 0
+  // The engine's own permission verdict for an Agent call; the spawn asks it as the Agent tool would
+  on('tool.check', async (_: unknown, e: any) => ({ decision: e.tool === 'Agent' ? st.core ?? 'ask' : 'allow' }))
+  // hold: the spawn waits, as the engine's does while it decides, until the test opens it
+  const gate = new Promise<void>(res => (log.open = res))
+  let flying = () => {}
+  log.inFlight = new Promise<void>(res => (flying = res))
   on('agent.spawn', async (_: unknown, e: any) => {
     log.spawned.push(String(e.description))
     log.prompts.push(String(e.prompt))
+    flying()
+    if (st.hold) await gate
     if (st.noId) return { model: 'haiku' } as never
     if (st.denyAfter !== undefined && spawns >= st.denyAfter) return { deny: 'nope' }
     return st.spawnFails ? { deny: 'no agents here' } : { model: 'haiku', agentId: `ag${++spawns}` }
@@ -62,6 +71,121 @@ function stand($: unknown, on: any, st: Stubs = {}) {
 
 const done = ($: any, id: string, answer: string, isAborted = false) => $.turn.complete({ agentId: id, answer, reason: 'answer', turnId: id, isAborted, durationMs: 1 } as never)
 const verify = ($: any) => $.command.run({ command: 'cockpit', args: 'test' } as never)
+const agentsPane = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 80 }, view: {} } }
+
+// The engine's permission check of the Agent call a pane start raised, made while that spawn is in flight
+async function checkDuringStart($: any, log: any) {
+  const run = verify($)
+  await log.inFlight
+  const own = await $.tool.check({ tool: 'Agent', input: { subagent_type: 'cockpit:prover', prompt: log.prompts[0], description: 'Prover' } } as never)
+  const other = await $.tool.check({ tool: 'Agent', input: { subagent_type: 'Explore', prompt: 'look around' } } as never)
+  log.open()
+  await run
+  const after = await $.tool.check({ tool: 'Agent', input: { subagent_type: 'cockpit:prover', prompt: log.prompts[0], description: 'Prover' } } as never)
+  return { own: own as any, other: other as any, after: after as any }
+}
+
+test('a start from the pane goes to the person where auto mode would judge it; the model\'s calls are untouched', async ($, on) => {
+  const log = stand($, on, { hold: true })
+  const c = await checkDuringStart($, log)
+  expect(c.own.decision).toBe('ask')
+  expect(c.own.reason).toContain('Cockpit pane')
+  expect(c.own.reason).toContain('Prover')
+  expect(c.other.reason).toBeUndefined()
+  // Once started, the same call is the engine's again
+  expect(c.after.reason).toBeUndefined()
+})
+
+test('a rule or mode that allows Agent calls lets a pane start run with no dialog', async ($, on) => {
+  const log = stand($, on, { hold: true, core: 'allow' })
+  expect((await checkDuringStart($, log)).own.decision).toBe('allow')
+})
+
+// An agent started as the model starts one (the kit hands a press-started spawn no id back, the engine does)
+const modelSpawn = ($: any, type: string, task: string) =>
+  $.agent.spawn({ tool_use_id: `m-${task}`, prompt: task, description: task, subagentType: type, provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: true, fork: false } as never)
+
+test('an agent that changes files gets a positive and a negative tester, and their results show on its row', async ($, on) => {
+  const log = stand($, on)
+  await modelSpawn($, 'cockpit:builder', 'add a rate limiter')
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b', agentId: 'ag1' } as never)
+  await done($, 'ag1', 'REPORT: added the limiter\nHANDOFF: try zero and negative limits')
+  // The positive tester first, briefed with what the agent was asked and reported
+  expect(log.spawned).toEqual(['add a rate limiter', 'Prover'])
+  expect(log.prompts[1]).toContain('Builder (the agent whose work you are testing)')
+  expect(log.prompts[1]).toContain('add a rate limiter')
+  expect(log.prompts[1]).toContain('added the limiter')
+  await done($, 'ag2', 'CASE PASS limits requests\nREPORT: works')
+  // Then the negative tester, with the positive one's report as well
+  expect(log.spawned).toEqual(['add a rate limiter', 'Prover', 'Breaker'])
+  expect(log.prompts[2]).toContain('Prover:\nREPORT: works')
+  await done($, 'ag3', 'CASE PASS zero limit\nCASE FAIL negative limit :: accepted\nREPORT: one hole')
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('+ positive 1/1')
+  expect(d).toContain('− negative 1/2')
+  expect(d).toContain("testing the Builder's work")
+  // The testers' own runs are not tested again
+  expect(log.spawned.length).toBe(3)
+  await ui.unmount()
+})
+
+test('a run that only read files is tested when you press Test; the setting turns automatic testing off', async ($, on) => {
+  const log = stand($, on)
+  await modelSpawn($, 'cockpit:reviewer', 'review the diff')
+  await $.tool.call({ tool: 'Read', file_path: '/repo/a.ts', agentId: 'ag1' } as never)
+  await done($, 'ag1', 'REPORT: fine')
+  expect(log.spawned).toEqual(['review the diff'])
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await ui.press({ key: 'test-ag1' })
+  expect(log.spawned).toEqual(['review the diff', 'Prover'])
+  expect(log.prompts[1]).toContain('Reviewer (the agent whose work you are testing)')
+  // Off: a run that changes files is left alone
+  await ui.press({ key: 'testagents' })
+  await ui.unmount()
+  await modelSpawn($, 'Explore', 'write b')
+  await $.tool.call({ tool: 'Write', file_path: '/repo/b.ts', content: 'x', agentId: 'ag3' } as never)
+  await done($, 'ag3', 'REPORT: wrote b')
+  expect(log.spawned).toEqual(['review the diff', 'Prover', 'write b'])
+})
+
+test('an agent whose run ends on an error shows as failed', async ($, on) => {
+  stand($, on)
+  await verify($)
+  await $.turn.complete({ agentId: 'ag1', answer: '', reason: 'error', turnId: 'ag1', isAborted: false, durationMs: 1 } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  expect(JSON.stringify(await ui.drawn())).toContain('"Failed"')
+  await ui.unmount()
+})
+
+test('an agent made from a description joins the team, runs from its card, and is kept for later sessions', async ($, on) => {
+  const log = stand($, on)
+  on('command.register', async () => ({ value: {} }) as never)
+  on('clock.every', async () => ({ value: {} }) as never)
+  on('session.start', async () => ({ cwd: '/repo' }))
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  // Typed and sent with Enter: the form makes the agent and closes
+  await (ui as any).input({ key: 'describe', text: 'check API changes for breaking changes' })
+  const spec = log.specs.find(x => x.name === 'api-guard')
+  expect(spec.tools).toEqual(['Read', 'Grep'])
+  expect(log.store.agents).toEqual([spec])
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('Api Guard')
+  expect(drawn).toContain('Checks API changes for breaking changes')
+  await ui.press({ key: 'run-cockpit:api-guard' })
+  expect(log.spawned).toContain('Api Guard')
+  await ui.unmount()
+  // A later session registers it again from the store
+  log.specs.length = 0
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never)
+  await new Promise(res => (globalThis as any).setTimeout(res, 400))
+  expect(log.specs.some(x => x.name === 'api-guard')).toBe(true)
+})
 
 test('aborted pipeline agent', async ($, on) => {
   const log = stand($, on)

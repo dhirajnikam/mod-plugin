@@ -1,10 +1,11 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Decision, GitForm, Ph, Tab, ThemeId } from '../types'
+import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../types'
 import {
   applyAccount,
   commit,
   confirmPending,
+  createAgent,
   discoverAgentTypes,
   loadProject,
   runExpert,
@@ -23,9 +24,12 @@ import {
   setTheme,
   spawnAgent,
   stopAgent,
+  testAgent,
+  TESTERS,
 } from './actions'
 import {
   AGENT_TYPES,
+  agentIconSvg,
   AUTO_WHENS,
   BRANCH_PRESETS,
   COMMIT_MODES,
@@ -50,6 +54,7 @@ import {
   thrOf,
   tree,
 } from './logic'
+import type { IconState } from './logic'
 import { pickFlow, setGit as setGitPref } from './actions'
 import { BAD, BUSY, OK, THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
@@ -601,98 +606,115 @@ export function Files($: $, v: V) {
   )
 }
 
+// Agents: the pipelines and + New agent in one row; a running pipeline as a strip of icons; the team as one row per
+// agent (icon, name, one line of what it is doing, ▶ or ■); and the runs, only once there are any
 export function Agents($: $, v: V) {
-  const { Box, Button, Input, Select, Text } = v.ui
-  const { s, t, w } = v
-  const run = s.agents.filter(a => a.status === 'running').length
-  const done = s.agents.filter(a => a.status === 'done').length
+  const { Box, Button, Input, Select, Svg, Text } = v.ui
+  const { s, t } = v
   const types = s.agentTypes.length ? s.agentTypes : AGENT_TYPES
   const latestOf = (type: string) => s.agents.filter(a => a.type === type).pop()
   const pipe = s.pipeline
-  const current = pipe ? expertName(pipe.steps[pipe.index] ?? '') : ''
-  const handoff = pipe?.reports[pipe.reports.length - 1]?.split('\n').find(l => l.startsWith('HANDOFF:'))?.slice(8).trim() ?? ''
-  const cardW = v.desk ? '48%' : w >= 64 ? Math.floor((w - 2) / 2) : w
+  const running = s.agents.filter(a => a.status === 'running').length
+  const finished = s.agents.filter(a => a.status === 'done').length
+  const team = [...EXPERTS.map(x => ({ type: x.type, name: x.name, what: x.what })), ...s.custom]
+  const stateOf = (a?: Agent): IconState => (!a ? 'idle' : a.status === 'running' ? 'running' : a.status === 'failed' || a.cases.some(c => c.st === 'fail') ? 'failed' : a.status === 'stopped' ? 'stopped' : 'done')
+  const colorOf = (st: IconState) => (st === 'running' ? BUSY : st === 'done' ? OK : st === 'failed' ? BAD : st === 'idle' ? t.accent : t.dim)
+  const spin = ['◐', '◓', '◑', '◒'][Math.floor(v.now / 200) % 4] ?? '◐'
+  // The icon: SVG where the surface draws it (animated while running), else a glyph that turns while running
+  const icon = (type: string, st: IconState, size: number) =>
+    Svg ? (
+      <Svg source={agentIconSvg(type, st)} alt={`${expertName(type)}: ${st}`} width={size} height={size} {...(st === 'running' ? { isInteractive: true } : {})} />
+    ) : (
+      <Text color={colorOf(st)} bold>{st === 'running' ? spin : expertGlyph(type)}</Text>
+    )
+  const word = (a: Agent) => ({ running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' })[a.status]
+  const took = (a: Agent) => fmt((a.endedAt ?? v.now) - a.startedAt)
+  const reportOf = (a?: Agent) => a?.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice(7).trim() ?? ''
+  // The two testers on a run: the positive (Prover) and the negative (Breaker), each its latest
+  const testsOf = (id: string) => {
+    const mine = s.agents.filter(x => x.for === id)
+    return { pos: mine.filter(x => x.type === TESTERS[0]).pop(), neg: mine.filter(x => x.type === TESTERS[1]).pop() }
+  }
+  const verdict = (x: Agent | undefined, label: string, sign: string, waiting: boolean) => {
+    if (!x) return waiting ? { t: `${sign} ${label} waiting`, c: t.faint } : undefined
+    if (x.status === 'running') return { t: `${spin} ${label} testing`, c: BUSY }
+    const fail = x.cases.filter(c => c.st === 'fail').length
+    if (x.status !== 'done') return { t: `${sign} ${label} ${word(x).toLowerCase()}`, c: BAD }
+    return { t: x.cases.length ? `${sign} ${label} ${x.cases.length - fail}/${x.cases.length}` : `${sign} ${label} done`, c: fail ? BAD : OK }
+  }
+  const testLine = (id: string, key: string) => {
+    const { pos, neg } = testsOf(id)
+    if (!pos && !neg) return null
+    const parts = [verdict(pos, 'positive', '+', false), verdict(neg, 'negative', '−', !!pos)].filter(p => p !== undefined)
+    return (
+      <Text key={key} size="footnote" wrap="truncate-end">
+        {parts.map((p, i) => (
+          <Text key={`${key}-${i}`} color={p.c}>{`${i ? '   ' : ''}${p.t}`}</Text>
+        ))}
+      </Text>
+    )
+  }
+  const section = (label: string, extra = '') => (
+    <Text size="footnote">
+      <Text color={t.dim} bold>{label.toUpperCase()}</Text>
+      {extra !== '' && <Text color={t.faint}>{`  ${extra}`}</Text>}
+    </Text>
+  )
   return (
-    <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box flexDirection="column" borderStyle="round" borderColor={pipe ? t.accent : t.lo} paddingX={1}>
-        <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-          <Text color={t.text} weight="semibold">Pipelines</Text>
-          <Text color={pipe ? BUSY : t.dim} size="footnote">{pipe ? `running · ${fmt(v.now - pipe.at)}` : 'experts in turn, each handed the reports before it'}</Text>
-        </Box>
+    <Box flexDirection="column" gap={sp(v, 2)}>
+      <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'sm' : 0}>
         <Box flexWrap="wrap" columnGap={sp(v, 1)}>
           {PIPELINES.map(p => (
             <Button key={`pipe-${p.name}`} label={`▶ ${p.label}`} variant={pipe?.name === p.name ? 'primary' : 'secondary'} onPress={() => startPipeline($, p.name)} />
           ))}
-          {pipe && pipe.agentId !== '' && <Button key="pipe-stop" label="■ Stop" plain onPress={() => stopAgent($, pipe.agentId)} />}
         </Box>
-        {pipe ? (
-          <Box flexDirection="column">
-            <Text wrap="wrap">
-              {pipe.steps.map((st, i) => (
-                <Text key={`ps-${i}`} color={i < pipe.index ? OK : i === pipe.index ? BUSY : t.dim} bold={i === pipe.index}>
-                  {`${i ? '  ›  ' : ''}${i < pipe.index ? '✓' : i === pipe.index ? '●' : '○'} ${expertName(st)}`}
-                </Text>
-              ))}
+        <Button key="spawn-toggle" label={s.ui.spawnOpen ? '✕ Close' : '+ New agent'} variant={s.ui.spawnOpen ? 'secondary' : 'primary'} onPress={() => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } }))} />
+      </Box>
+      {pipe && (
+        <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
+          <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+            <Text wrap="truncate-end">
+              <Text color={BUSY} bold>{`${PIPELINES.find(p => p.name === pipe.name)?.label ?? pipe.name} pipeline`}</Text>
+              <Text color={t.dim}>{` · ${expertName(pipe.steps[pipe.index] ?? '')} · ${fmt(v.now - pipe.at)}`}</Text>
             </Text>
-            {handoff !== '' && (
-              <Text wrap="wrap">
-                <Text color={t.accent}>{'↳ '}</Text>
-                <Text color={t.dim}>{`to the ${current.toLowerCase()}: `}</Text>
-                <Text color={t.text}>{handoff}</Text>
-              </Text>
-            )}
+            {pipe.agentId !== '' && <Button key="pipe-stop" label="■ Stop" plain onPress={() => stopAgent($, pipe.agentId)} />}
           </Box>
-        ) : (
-          <Text color={t.dim} size="footnote" wrap="wrap">{PIPELINES.map(p => `${p.label}: ${p.what}`).join('  ·  ')}</Text>
-        )}
-      </Box>
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        <Text color={t.text} weight="semibold">Team</Text>
-        <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />
-      </Box>
-      <Box flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'sm' : 0}>
-        {EXPERTS.map(x => {
-          const a = latestOf(x.type)
-          const live = a?.status === 'running'
-          const fails = a?.cases.filter(c => c.st === 'fail').length ?? 0
-          const col = live ? BUSY : a?.status === 'done' ? (fails ? BAD : OK) : a?.status === 'failed' ? BAD : a ? t.dim : t.faint
-          const last = a?.log[a.log.length - 1]?.t
-          const line = !a ? 'idle' : live ? `${last ?? 'starting'} · ${fmt(v.now - a.startedAt)}` : `${{ done: 'done', stopped: 'stopped', failed: 'failed', running: '' }[a.status]} ${fmt((a.endedAt ?? v.now) - a.startedAt)}${a.cases.length ? ` · ${a.cases.length - fails}/${a.cases.length} passed` : ''}`
-          const report = a?.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice(7).trim() ?? ''
-          return (
-            <Box key={`ex-${x.type}`} flexDirection="column" borderStyle="round" borderColor={live ? BUSY : a?.status === 'done' ? (fails ? BAD : OK) : t.divider} paddingX={1} width={cardW}>
-              <Box justifyContent="space-between" columnGap={sp(v, 1)}>
-                <Text>
-                  <Text color={col}>{`${x.glyph} `}</Text>
-                  <Text color={t.text} bold>{x.name}</Text>
-                </Text>
-                {live ? (
-                  <Button key={`halt-${x.type}`} label="■" plain onPress={() => stopAgent($, a.id)} />
-                ) : (
-                  <Button key={`run-${x.type}`} label="▶" plain onPress={() => runExpert($, x.type)} />
-                )}
-              </Box>
-              <Text color={t.dim} size="footnote" wrap="wrap">{x.what}</Text>
-              <Text color={col} size="footnote" wrap="truncate-end">{live ? `● ${line}` : line}</Text>
-              {report !== '' && <Text color={t.text} size="footnote" wrap="truncate-end">{report}</Text>}
-              {a && <Button key={`look-${x.type}`} label="View" plain dimColor onPress={() => $.ui.view({ agentId: a.id })} />}
-            </Box>
-          )
-        })}
-      </Box>
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        <Text weight="semibold">
-          <Text color={t.text}>Activity</Text>
-          <Text color={t.dim}>{'  '}</Text>
-          <Text color={run ? BUSY : t.dim}>{`${run} running`}</Text>
-          <Text color={t.dim}>{' · '}</Text>
-          <Text color={done ? OK : t.dim}>{`${done} done`}</Text>
-          <Text color={t.dim}>{` · ${s.agents.length} total`}</Text>
-        </Text>
-        <Button key="spawn-toggle" label="+ New agent" onPress={() => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } }))} />
-      </Box>
+          <Box alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            {pipe.steps.map((st, i) => {
+              const at: IconState = i < pipe.index ? 'done' : i === pipe.index ? 'running' : 'pending'
+              return (
+                <Box key={`ps-${i}`} alignItems="center" columnGap={sp(v, 1)}>
+                  {i > 0 && <Text color={i <= pipe.index ? OK : t.faint}>›</Text>}
+                  {icon(st, at, 24)}
+                  <Text color={at === 'pending' ? t.dim : colorOf(at)} bold={at === 'running'} size="footnote">{expertName(st)}</Text>
+                </Box>
+              )
+            })}
+          </Box>
+          {pipe.reports.length > 0 && (
+            <Text size="footnote" wrap="truncate-end">
+              <Text color={t.accent}>{'↳ '}</Text>
+              <Text color={t.dim}>{pipe.reports[pipe.reports.length - 1]?.split('\n').find(l => l.startsWith('HANDOFF:'))?.slice(8).trim() || 'report handed on'}</Text>
+            </Text>
+          )}
+        </Box>
+      )}
       {s.ui.spawnOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+          <Input
+            key="describe"
+            label="Describe the agent"
+            placeholder="Checks every API change for breaking changes and missing docs"
+            value={s.ui.describe}
+            onInput={val => set($, st => ({ ui: { ...st.ui, describe: val } }))}
+            onSubmit={val => val.trim() && createAgent($, val.trim())}
+          />
+          <Box columnGap={sp(v, 2)} flexWrap="wrap" alignItems="center">
+            <Button key="describe-go" label={s.creating ? 'Making the agent…' : 'Create agent'} variant="primary" onPress={() => (s.ui.describe.trim() && !s.creating ? createAgent($, s.ui.describe.trim()) : undefined)} />
+            <Text color={t.dim} size="footnote" wrap="wrap">{s.creating ? `${spin} writing its definition` : 'Joins the team, kept for later sessions'}</Text>
+          </Box>
+          <Rule v={v} />
+          <Text color={t.dim} size="footnote">Or run a task now with any agent type</Text>
           <Input
             key="spawn-task"
             label="Task"
@@ -704,71 +726,93 @@ export function Agents($: $, v: V) {
           <Box columnGap={sp(v, 2)} flexWrap="wrap">
             <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={[...types, ...(types.includes(s.ui.spawnType) ? [] : [s.ui.spawnType])].map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val } }))} />
             <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={types.includes(s.ui.spawnType) ? '' : s.ui.spawnType} onInput={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} onSubmit={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} />
-            <Button key="spawn-go" label="Start" variant="primary" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
+            <Button key="spawn-go" label="Start" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
           </Box>
-          <Text color={t.dim} size="footnote">{`${types.length} types: built-ins, the experts, agents/*.md in this project and ~/.claude, each plugin's as plugin:name`}</Text>
         </Box>
       )}
-      {s.agents.length === 0 && <Text color={t.dim}>No agents yet. Experts, pipelines and the agents Claude starts show here.</Text>}
-      {s.agents
-        .slice()
-        .reverse()
-        .map(a => {
-          const open = s.ui.openAgent === a.id
-          const live = a.status === 'running'
-          const fails = a.cases.filter(c => c.st === 'fail').length
-          const stc = live ? BUSY : a.status === 'done' ? (fails ? BAD : OK) : a.status === 'failed' ? BAD : t.faint
-          const took = (a.endedAt ?? v.now) - a.startedAt
-          const last = a.log[a.log.length - 1]?.t
+      <Box flexDirection="column" gap={sp(v, 1)}>
+        {section('Team', `${team.length} agents`)}
+        {team.map(x => {
+          const a = latestOf(x.type)
+          const st = stateOf(a)
+          const live = st === 'running'
+          const fails = a?.cases.filter(c => c.st === 'fail').length ?? 0
+          const sub = live ? `${a?.log[a.log.length - 1]?.t ?? 'starting'}` : reportOf(a) || x.what
+          const right = !a ? '' : live ? fmt(v.now - a.startedAt) : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
           return (
-            <Box key={`ag-${a.id}`} flexDirection="column" borderStyle="round" borderColor={live ? BUSY : t.divider} paddingX={1}>
-              <Box justifyContent="space-between" columnGap={sp(v, 1)}>
-                <Box flexShrink={1}>
-                  <Text color={stc}>{`${expertGlyph(a.type)} `}</Text>
-                  <Button key={`agb-${a.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openAgent: open ? '' : a.id } }))}>
-                    <Text color={t.text} bold>{a.name}</Text>
-                    <Text color={t.dim}>{a.type !== a.name ? `  ${a.type}  ` : '  '}</Text>
-                    <Text color={stc}>{`[${{ running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' }[a.status]}] ${open ? '⌄' : '›'}`}</Text>
-                  </Button>
-                </Box>
-                <Text color={t.dim} size="footnote">{`${a.tools} tool calls · ${fmt(took)}`}</Text>
+            <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
+              <Box flexShrink={0}>{icon(x.type, st, 30)}</Box>
+              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
+                <Text color={live ? BUSY : t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
+                {a && testLine(a.id, `tl-${x.type}`)}
               </Box>
-              <Text color={t.dim} wrap="truncate-end">{a.task}</Text>
-              {live && (
-                <Text color={BUSY} size="footnote" wrap="truncate-end">{`● ${last ?? 'starting'}`}</Text>
-              )}
-              {live ? <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={BUSY} track={t.track} /> : <Bar ui={v.ui} w={w - 4} frac={1} fill={stc} track={t.track} />}
-              {a.cases.length > 0 && (
-                <Box flexDirection="column">
-                  {a.cases.map((c, i) => (
-                    <Text key={`case-${a.id}-${i}`} wrap="truncate-end">
-                      <Text color={c.st === 'fail' ? BAD : c.st === 'fixed' ? BUSY : OK}>{c.st === 'fail' ? '✗ ' : c.st === 'fixed' ? '↻ ' : '✓ '}</Text>
+              {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
+              {live && a ? <Button key={`halt-${x.type}`} label="■" plain onPress={() => stopAgent($, a.id)} /> : <Button key={`run-${x.type}`} label="▶" plain onPress={() => runExpert($, x.type)} />}
+            </Box>
+          )
+        })}
+      </Box>
+      {s.agents.length > 0 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          {section('Runs', `${running} running · ${finished} done · ${s.agents.length} total`)}
+          {s.agents
+            .slice()
+            .reverse()
+            .map(a => {
+              const open = s.ui.openAgent === a.id
+              const st = stateOf(a)
+              const live = st === 'running'
+              const failing = a.cases.filter(c => c.st === 'fail')
+              return (
+                <Box key={`ag-${a.id}`} flexDirection="column">
+                  <Box alignItems="center" columnGap={sp(v, 1)}>
+                    <Box flexShrink={0}>{icon(a.type, st, 26)}</Box>
+                    <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                      <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
+                        <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
+                      </Button>
+                      <Text color={live ? BUSY : t.dim} size="footnote" wrap="truncate-end">
+                        {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${a.log[a.log.length - 1]?.t ?? 'starting'}` : ''}` : live ? a.log[a.log.length - 1]?.t ?? 'starting' : a.task}
+                      </Text>
+                      {testLine(a.id, `rl-${a.id}`)}
+                    </Box>
+                    <Text size="footnote" wrap="truncate-end">
+                      <Text color={colorOf(st)}>{word(a)}</Text>
+                      <Text color={t.dim}>{` · ${a.tools} tool calls · ${took(a)}`}</Text>
+                    </Text>
+                    {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}
+                    {live ? <Button key={`stop-${a.id}`} label="■" plain onPress={() => stopAgent($, a.id)} /> : <Button key={`restart-${a.id}`} label="↻" plain onPress={() => spawnAgent($, a.prompt, a.type)} />}
+                  </Box>
+                  {(open ? a.cases : failing).map((c, i) => (
+                    <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
+                      <Text color={c.st === 'fail' ? BAD : c.st === 'fixed' ? BUSY : OK}>{`   ${c.st === 'fail' ? '✗' : c.st === 'fixed' ? '↻' : '✓'} `}</Text>
                       <Text color={t.text}>{c.n}</Text>
                       {c.err && <Text color={t.dim}>{` · ${c.err}`}</Text>}
                     </Text>
                   ))}
+                  {open && (
+                    <Box flexDirection="column" paddingLeft={2}>
+                      <Text color={t.faint} size="footnote">{a.type}</Text>
+                      {a.report !== '' && <Text color={t.dim} size="footnote" wrap="wrap">{a.report}</Text>}
+                      {a.log.slice(-8).map((l, i) => (
+                        <Text key={`log-${a.id}-${i}`} size="footnote" wrap="truncate-end">
+                          <Text color={t.faint}>{`${fmt(l.at - a.startedAt)}  `}</Text>
+                          <Text color={t.text}>{l.t}</Text>
+                        </Text>
+                      ))}
+                      <Button key={`view-${a.id}`} label="Open transcript" plain onPress={() => $.ui.view({ agentId: a.id })} />
+                    </Box>
+                  )}
                 </Box>
-              )}
-              <Box gap={sp(v, 1)} flexWrap="wrap">
-                <Button key={`view-${a.id}`} label="View" plain onPress={() => $.ui.view({ agentId: a.id })} />
-                {live && <Button key={`stop-${a.id}`} label="Stop" plain onPress={() => stopAgent($, a.id)} />}
-                <Button key={`restart-${a.id}`} label="Restart" plain onPress={() => spawnAgent($, a.prompt, a.type)} />
-              </Box>
-              {open && a.report !== '' && <Text color={t.dim} wrap="wrap">{a.report}</Text>}
-              {open && (
-                <Box flexDirection="column">
-                  {a.log.length === 0 && <Text color={t.dim}>No output yet.</Text>}
-                  {a.log.slice(-12).map((l, i) => (
-                    <Text key={`log-${a.id}-${i}`}>
-                      <Text color={t.dim}>{`${fmt(l.at - a.startedAt)}  `}</Text>
-                      <Text color={t.text} wrap="truncate-end">{l.t}</Text>
-                    </Text>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          )
-        })}
+              )
+            })}
+        </Box>
+      )}
+      <Box flexDirection="column">
+        <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />
+        <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />
+      </Box>
     </Box>
   )
 }

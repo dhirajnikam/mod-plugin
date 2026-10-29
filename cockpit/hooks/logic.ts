@@ -79,13 +79,13 @@ export const EXPERTS: { type: string; name: string; glyph: string; what: string 
   { type: 'cockpit:breaker', name: 'Breaker', glyph: '✗', what: 'tries to break the change: abuse, edge cases, bad input' },
   { type: 'cockpit:scribe', name: 'Scribe', glyph: '✎', what: 'brings the README, docs and changelog up to date' },
 ]
-export const expertGlyph = (type: string) => EXPERTS.find(x => x.type === type)?.glyph ?? '⧉'
+export const expertGlyph = (type: string) => EXPERTS.find(x => x.type === type)?.glyph ?? (type.startsWith('cockpit:') ? '✦' : '⧉')
 export const PIPELINES: { name: string; label: string; steps: string[]; what: string }[] = [
   { name: 'build', label: 'Build', steps: ['cockpit:planner', 'cockpit:builder', 'cockpit:reviewer', 'cockpit:prover', 'cockpit:breaker', 'cockpit:scribe'], what: 'plan, build, review, prove, break, document' },
   { name: 'verify', label: 'Verify', steps: ['cockpit:prover', 'cockpit:breaker'], what: 'prove it works, then try to break it' },
   { name: 'review', label: 'Review', steps: ['cockpit:reviewer'], what: 'a second pair of eyes on the diff' },
 ]
-export const expertName = (type: string) => EXPERTS.find(x => x.type === type)?.name ?? type
+export const expertName = (type: string) => EXPERTS.find(x => x.type === type)?.name ?? (type.startsWith('cockpit:') ? type.slice(8).replace(/(^|-)(\w)/g, (_, d, c: string) => `${d ? ' ' : ''}${c.toUpperCase()}`) : type)
 export const AGENT_TYPES = ['general-purpose', 'Explore', 'Plan', ...EXPERTS.map(x => x.type)]
 
 // Judge seats by complexity, and the two-thirds bar
@@ -370,4 +370,33 @@ export function ringSvg(pct: number, step: string, c: { accent: string; track: s
     `<circle cx="60" cy="60" r="50" fill="none" stroke="${c.accent}" stroke-width="8" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="${off}" transform="rotate(-90 60 60)"/>` +
     `<text x="60" y="62" text-anchor="middle" font-family="Georgia, serif" font-size="30" fill="${c.text}">${pct}%</text>` +
     `<text x="60" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="${c.dim}">${esc(step)}</text></svg>`
+}
+
+// Agent icons for surfaces that draw SVG: line icons in a tinted tile, coloured by state. A running one turns an arc
+// around its tile and breathes (SMIL, drawn in an interactive frame); a finished one wears a badge
+export type IconState = 'idle' | 'running' | 'done' | 'failed' | 'stopped' | 'pending'
+const ICON_PATHS: Record<string, string> = {
+  'cockpit:planner': '<path d="M9.5 6h10M9.5 12h10M9.5 18h10"/><circle cx="5" cy="6" r="1.3" fill="currentColor"/><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="5" cy="18" r="1.3" fill="currentColor"/>',
+  'cockpit:builder': '<rect x="3.5" y="13" width="7.5" height="7.5" rx="1.8"/><rect x="13" y="13" width="7.5" height="7.5" rx="1.8"/><rect x="8.25" y="3.5" width="7.5" height="7.5" rx="1.8"/>',
+  'cockpit:reviewer': '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  'cockpit:prover': '<path d="M12 3l7.5 3v5.5c0 4.6-3.2 7.9-7.5 9.5-4.3-1.6-7.5-4.9-7.5-9.5V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  'cockpit:breaker': '<rect x="7.5" y="8" width="9" height="12" rx="4.5"/><path d="M12 11v9M9.5 5l1 2.5M14.5 5l-1 2.5M3.5 11.5h4M16.5 11.5h4M3.5 16.5h4M16.5 16.5h4"/>',
+  'cockpit:scribe': '<path d="M5 19l1-4.5L16.5 4a2.1 2.1 0 0 1 3 3L9 17.5z"/><path d="M14.5 6l3 3M4 21h16"/>',
+}
+const SPARK = '<path d="M11 3.5l1.9 5.4 5.4 1.9-5.4 1.9L11 18.1l-1.9-5.4-5.4-1.9 5.4-1.9z"/><path d="M18.5 15v5M16 17.5h5"/>'
+const BOT = '<rect x="4.5" y="8" width="15" height="11" rx="3.5"/><path d="M12 4.5V8"/><circle cx="9.5" cy="13.5" r="1.1" fill="currentColor"/><circle cx="14.5" cy="13.5" r="1.1" fill="currentColor"/>'
+export const ICON_COLORS: Record<IconState, string> = { idle: '#b4833a', running: '#d39b2a', done: '#3f9b5f', failed: '#d0574f', stopped: '#8b8b8b', pending: '#9b9b9b' }
+export function agentIconSvg(type: string, state: IconState) {
+  const c = ICON_COLORS[state]
+  const body = ICON_PATHS[type] ?? (type.startsWith('cockpit:') ? SPARK : BOT)
+  const live = state === 'running'
+  const breathe = live ? '<animate attributeName="opacity" values="1;0.45;1" dur="1.6s" repeatCount="indefinite"/>' : ''
+  const arc = live
+    ? `<circle cx="18" cy="18" r="16.5" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="24 80"><animateTransform attributeName="transform" type="rotate" from="0 18 18" to="360 18 18" dur="1.1s" repeatCount="indefinite"/></circle>`
+    : ''
+  const badge =
+    state === 'done' ? `<circle cx="29.5" cy="29.5" r="5.5" fill="${c}"/><path d="M27 29.6l1.7 1.7 3.2-3.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`
+    : state === 'failed' ? `<circle cx="29.5" cy="29.5" r="5.5" fill="${c}"/><path d="M27.6 27.6l3.8 3.8M31.4 27.6l-3.8 3.8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`
+    : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36"><rect x="3" y="3" width="30" height="30" rx="9" fill="${c}" fill-opacity="${state === 'pending' || state === 'stopped' ? 0.1 : 0.16}"/><g transform="translate(6 6)" fill="none" stroke="${c}" color="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${breathe}${body}</g>${arc}${badge}</svg>`
 }

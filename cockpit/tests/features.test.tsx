@@ -112,7 +112,9 @@ test('the Verify pipeline runs the Prover then the Breaker, handing the report a
   drawn = JSON.stringify(await ag.drawn())
   expect(drawn).toContain('empty password')
   expect(drawn).toContain('got 200')
-  expect(drawn).toContain('✓ ')
+  // Passing cases fold into the expert's row; failing ones stay in view under the run
+  expect(drawn).toContain('2/2 passed')
+  expect(drawn).toContain('   ✗ ')
   await ag.unmount()
   await $.command.run({ command: 'cockpit', args: 'focus on' } as never)
   const b = await $.ui.mount(band as never)
@@ -154,7 +156,7 @@ test('subagents show in the Agents tab with their tool calls, and Stop stops the
   await ui.press({ key: 'stop-ag1' })
   expect(log.stopped).toEqual(['ag1'])
   drawn = JSON.stringify(await ui.drawn())
-  expect(drawn).toContain('[Stopped]')
+  expect(drawn).toContain('"Stopped"')
   // The form starts a new one
   await ui.press({ key: 'spawn-toggle' })
   await ui.drawn()

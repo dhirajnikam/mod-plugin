@@ -9,6 +9,10 @@ import {
   decideCommit,
   discoverAgentTypes,
   finishAgent,
+  testAgent,
+  TESTERS,
+  changedFiles,
+  isOwnStart,
   judge,
   loadAccounts,
   loadGitPrefs,
@@ -31,7 +35,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-11' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-13' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -40,6 +44,11 @@ export const register: Register = on => {
   let root = ''
   // Whether the running turn wrote or edited a file (auto-test and auto-commit read it)
   let changedThisTurn = false
+  // The repository's changes when the prompt was sent: a turn changed files when they differ at its end, however it
+  // edited them (Edit and Write, a shell command, a script, a formatter)
+  // null until a prompt records it (a reload starts over), so a reload never commits what no turn of its changed
+  let changesAtStart: string | null = null
+  const changesOf = (c: { path: string; meta: string }[]) => c.map(x => `${x.path} ${x.meta}`).join('\n')
 
   on('session.start', async ($, e, next) => {
     const r = await next(e)
@@ -114,6 +123,8 @@ export const register: Register = on => {
     if (!e.command && !e.isMeta && e.text.trim()) {
       const now = await $.clock.now()
       changedThisTurn = false
+      await refreshRepo($)
+      changesAtStart = changesOf((await read($, S)).repo.changed)
       const task = e.text.trim().split('\n')[0] ?? ''
       await set($, s => ({
         task,
@@ -182,6 +193,16 @@ export const register: Register = on => {
     return { result: { questions: qs, answers } }
   }).catch(($, e, next) => next(e))
 
+  // A subagent started from the pane: where the engine would hand it to the mode's decider (auto mode's classifier,
+  // which judges a spawn by a model request and has none for a press), it is put to the person in the permission
+  // dialog instead. A rule or mode that allows it, or one that denies it, stands; every other Agent call is untouched
+  on('tool.check', { tool: 'Agent' }, async ($, e, next) => {
+    const v = await next(e)
+    if (v.decision !== 'ask' || !isOwnStart(e.input)) return v
+    const i = (e.input ?? {}) as Record<string, unknown>
+    return { decision: 'ask', reason: `Cockpit pane: you asked it to start the ${expertName(String(i.subagent_type ?? 'general-purpose'))} agent` }
+  })
+
   // Subagents the model or anyone else starts show in the Agents tab
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
@@ -204,8 +225,18 @@ export const register: Register = on => {
     const r = await next(e)
     const now = await $.clock.now()
     if (e.agentId) {
-      await finishAgent($, e.agentId, e.answer, e.isAborted)
+      // A pipeline's own step is tested by the pipeline (Build ends in both testers); any other run that changed files is tested here
+      const isStep = (await read($, S)).pipeline?.agentId === e.agentId
+      await finishAgent($, e.agentId, e.answer, e.isAborted, e.reason === 'error')
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
+      if (!isStep && !e.isAborted) await testAgent($, e.agentId, true)
+      // Its work is committed as a turn's is (after the testers instead, where commits wait for them)
+      const s = await read($, S)
+      const a = s.agents.find(x => x.id === e.agentId)
+      if (!isStep && !e.isAborted && a && changedFiles(a) && !TESTERS.includes(a.type) && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') {
+        await refreshRepo($)
+        await decideCommit($)
+      }
       return r
     }
     await set($, st => {
@@ -222,6 +253,8 @@ export const register: Register = on => {
     await refreshRepo($)
     await measure($)
     const s = await read($, S)
+    if (changesAtStart !== null && s.repo.changed.length && changesOf(s.repo.changed) !== changesAtStart) changedThisTurn = true
+    changesAtStart = null
     const commitAfterTests = s.git.commitMode !== 'manual' && s.git.autoWhen === 'tests'
     if (changedThisTurn && (s.autoVerify || commitAfterTests)) await startPipeline($, 'verify')
     if (changedThisTurn && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
