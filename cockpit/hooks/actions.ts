@@ -6,7 +6,7 @@ import { AGENT_TYPES, PIPELINES, base, branchName, commitMsg, expertName, inferT
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-7' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-8' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -44,7 +44,7 @@ export const subjectOf = (task: string) => {
 export async function refreshRepo($: $) {
   // -z: paths come unquoted whatever they hold; a rename is "R  new\0old\0"
   const st = await git($, ['status', '--porcelain=v1', '-z', '-b'])
-  if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [] } })
+  if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [], log: [] } })
   const [head = '', ...rest] = st.stdout.split('\0')
   const current = head.replace(/^## (No commits yet on )?/, '').split('...')[0]?.replace(/^HEAD \(no branch\)$/, '') ?? ''
   const ahead = Number(head.match(/ahead (\d+)/)?.[1] ?? 0)
@@ -71,7 +71,14 @@ export async function refreshRepo($: $) {
   const branches = (await git($, ['branch', '--format=%(refname:short)'])).stdout.split('\n').map(b => b.trim()).filter(Boolean)
   const origin = (await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).stdout.trim().replace(/^origin\//, '')
   const base = origin || ['main', 'master', 'develop'].find(b => branches.includes(b)) || current
-  await set($, s => ({ repo: { isRepo: true, current, ahead, changed, branches }, git: { ...s.git, base: s.git.base || base } }))
+  const log = (await git($, ['log', '-n', '12', '--format=%h%x09%s%x09%ar'])).stdout
+    .split('\n')
+    .filter(Boolean)
+    .map(l => {
+      const [sha = '', msg = '', when = ''] = l.split('\t')
+      return { sha, msg, when }
+    })
+  await set($, s => ({ repo: { isRepo: true, current, ahead, changed, branches, log }, git: { ...s.git, base: s.git.base || base } }))
 }
 
 export async function gitInit($: $) {
@@ -275,7 +282,9 @@ export async function registerExperts($: $) {
     const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
     if (!m) continue
     const head: Record<string, string> = Object.fromEntries((m[1] ?? '').split('\n').map(l => [l.slice(0, l.indexOf(':')).trim(), l.slice(l.indexOf(':') + 1).trim()]).filter(([k]) => k))
-    const spec = { name: head.name ?? f.name.slice(0, -3), description: head.description ?? '', prompt: (m[2] ?? '').trim(), ...(head.model ? { model: head.model } : {}), ...(head.tools ? { tools: String(head.tools).split(',').map((t: string) => t.trim()) } : {}) }
+    const name = head.name || f.name.slice(0, -3)
+    const tools = String(head.tools ?? '').split(',').map((t: string) => t.trim()).filter(Boolean)
+    const spec = { name, description: head.description || `Cockpit's ${name}`, prompt: (m[2] ?? '').trim(), ...(head.model ? { model: head.model } : {}), ...(tools.length ? { tools } : {}) }
     await $.agent.register(spec).catch(e => $.ui.log(`cockpit: could not register the ${spec.name}: ${String(e)}`))
   }
 }
@@ -302,15 +311,24 @@ export async function runExpert($: $, type: string, prior: string[] = []) {
   return r.agentId
 }
 
+// A start in flight: a second press while the first expert is still being spawned is refused, not doubled
+let startingPipeline = false
+
 // A pipeline: the experts in turn, each handed the reports so far
 export async function startPipeline($: $, name: string) {
   const def = PIPELINES.find(p => p.name === name)
   if (!def) return
   const s = await read($, S)
-  if (s.pipeline) return toast($, `${PIPELINES.find(p => p.name === s.pipeline?.name)?.label ?? 'A pipeline'} is still running`)
-  const at = await $.clock.now()
-  await set($, { pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: [], at }, reached: s.reached.includes('Verify') ? s.reached : [...s.reached, 'Verify'] })
-  await bindExpert($, await runExpert($, def.steps[0] ?? '', []))
+  // A pipeline whose expert never got an id (nothing can ever finish it) is stale and gives way
+  if (startingPipeline || s.pipeline?.agentId) return toast($, `${PIPELINES.find(p => p.name === s.pipeline?.name)?.label ?? 'A pipeline'} is still running`)
+  startingPipeline = true
+  try {
+    const at = await $.clock.now()
+    await set($, { pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: [], at }, reached: s.reached.includes('Verify') ? s.reached : [...s.reached, 'Verify'] })
+    await bindExpert($, await runExpert($, def.steps[0] ?? '', []))
+  } finally {
+    startingPipeline = false
+  }
 }
 
 // The started expert's id on the pipeline: the call's, else the one the agent.spawn hook recorded; a refusal ends the pipeline
@@ -320,10 +338,14 @@ async function bindExpert($: $, id: string | null) {
 }
 
 // The agent that just finished was the pipeline's: keep its report and start the next expert, or finish
-export async function advancePipeline($: $, agentId: string, answer: string) {
+export async function advancePipeline($: $, agentId: string, answer: string, aborted = false) {
   const s = await read($, S)
   const p = s.pipeline
   if (!p || p.agentId !== agentId) return
+  if (aborted) {
+    await set($, { pipeline: null })
+    return toast($, `${PIPELINES.find(x => x.name === p.name)?.label ?? p.name} pipeline stopped: the ${expertName(p.steps[p.index] ?? '').toLowerCase()} was stopped`)
+  }
   const reports = [...p.reports, `${expertName(p.steps[p.index] ?? '')}:\n${parseReport(answer)}`]
   const index = p.index + 1
   const next = p.steps[index]

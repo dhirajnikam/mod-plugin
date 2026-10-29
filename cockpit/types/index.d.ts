@@ -111,7 +111,8 @@ export type Ph = {
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   git: GitForm
-  repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[] }
+  // log: the repository's recent commits, newest first
+  repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[]; log: { sha: string; msg: string; when: string }[] }
   staged: Record<string, boolean>
   pending: Pending | null
   commits: Commit[]

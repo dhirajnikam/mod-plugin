@@ -29,7 +29,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-7' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-8' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -185,7 +185,7 @@ export const register: Register = on => {
     const now = await $.clock.now()
     if (e.agentId) {
       await finishAgent($, e.agentId, e.answer, e.isAborted)
-      await advancePipeline($, e.agentId, e.answer)
+      await advancePipeline($, e.agentId, e.answer, e.isAborted)
       return r
     }
     await set($, st => ({ isWorking: false, activity: 'Done', lastTurnMs: now - st.turnStart }))

@@ -42,7 +42,7 @@ export const INITIAL: Ph = {
     gpg: false,
     preTest: false,
   },
-  repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [] },
+  repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [], log: [] },
   staged: {},
   pending: null,
   commits: [],
@@ -71,5 +71,5 @@ export const INITIAL: Ph = {
 }
 
 // The state atom is declared in each file that reads it (the engine scans for it there).
-// Bump its 'ph-7' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
+// Bump its 'ph-8' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
 export const PANE = 'cockpit'

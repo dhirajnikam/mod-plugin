@@ -180,7 +180,7 @@ export function Tabs($: $, v: V) {
   })
   return (
     <Box flexDirection="column">
-      <Box flexWrap="wrap">
+      <Box flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'xs' : 0}>
         {tabs.map(([id, label, badge]) => {
           const open = () => Promise.all([set($, { tab: id }), id === 'git' ? refreshRepo($) : id === 'agents' ? discoverAgentTypes($) : null])
           return v.desk ? (
@@ -666,18 +666,28 @@ export function Git($: $, v: V) {
         <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
       </Box>
       {s.ui.more && Options($, v)}
-      {s.commits.length > 0 && (
+      {s.repo.log.length > 0 && (
         <Box flexDirection="column">
           <Rule v={v} />
-          {s.commits.map(c => (
-            <Box key={`cm-${c.sha}`} flexDirection="column">
-              <Text>
-                <Text color={t.accent} mono>{c.sha}</Text>
-                <Text color={t.text}>{` ${c.msg}`}</Text>
-              </Text>
-              <Text color={t.dim}>{c.meta}</Text>
-            </Box>
-          ))}
+          <Box justifyContent="space-between" flexWrap="wrap">
+            <Text color={t.text} weight="semibold">Commits</Text>
+            <Text color={t.dim} size="footnote">{`${s.repo.current} · newest first${s.repo.ahead ? ` · ${s.repo.ahead} not pushed` : ''}`}</Text>
+          </Box>
+          {s.repo.log.map((c, i) => {
+            const own = s.commits.find(x => x.sha === c.sha)
+            return (
+              <Box key={`lg-${c.sha}`} flexDirection="column">
+                <Box columnGap={sp(v, 1)}>
+                  <Text color={i < s.repo.ahead ? BUSY : t.accent} mono>{c.sha}</Text>
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Text color={t.text} wrap="truncate-end">{c.msg}</Text>
+                  </Box>
+                  <Text color={t.dim}>{c.when}</Text>
+                </Box>
+                {own && <Text color={t.dim} size="footnote">{`  ${own.auto ? 'auto-committed' : 'committed'} by Cockpit · ${own.meta}`}</Text>}
+              </Box>
+            )
+          })}
         </Box>
       )}
     </Box>

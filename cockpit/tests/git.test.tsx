@@ -28,6 +28,7 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
     if (cmd.startsWith('git branch')) return out('master\nfeature/x\n')
     if (cmd.startsWith('git symbolic-ref')) return out('', 1)
     if (cmd.startsWith('git rev-parse')) return out('abc1234\n')
+    if (cmd.startsWith('git log')) return out('9e39bea\tfix(cockpit): make the mod load\t2 days ago\n2f5802f\tfeat(cockpit): add cockpit mod\t3 days ago\n')
     return out('')
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
@@ -42,6 +43,9 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   expect(drawn).toContain('⎇ master')
   expect(drawn).toContain('↑2')
   expect(drawn).toContain('renamed')
+  // The repository's own history, newest first
+  expect(drawn).toContain('fix(cockpit): make the mod load')
+  expect(drawn).toContain('2 days ago')
   expect(drawn).toContain('with space.txt')
   expect(drawn).not.toContain('"release"')
 
