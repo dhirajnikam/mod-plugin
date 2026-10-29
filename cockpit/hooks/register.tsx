@@ -13,6 +13,9 @@ import {
   TESTERS,
   changedFiles,
   isOwnStart,
+  judgeNext,
+  personSpoke,
+  RISKY,
   loadPrefs,
   loadHistory,
   writeSteps,
@@ -43,7 +46,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-16' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-17' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -70,8 +73,8 @@ export const register: Register = on => {
     if (bad.length) $.ui.log(`cockpit self-check failed: ${JSON.stringify(bad)}`)
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask>, tab <name>, flow <build|docs|check|answer>, test',
-      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask> | tab <name> | flow <name> | test]',
+      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <name>, flow <plan|task|build|docs|check|answer>, test',
+      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | test]',
     })
     await refreshRepo($)
     await loadGitPrefs($)
@@ -104,9 +107,9 @@ export const register: Register = on => {
       return { text: `Cockpit theme: ${arg}` }
     }
     if (verb === 'mode') {
-      if (arg !== 'auto' && arg !== 'ask') return { text: 'Modes: auto (judges decide), ask (you decide)' }
+      if (arg !== 'auto' && arg !== 'ask' && arg !== 'off') return { text: 'Modes: auto (the judges decide, and only advise on what is hard to undo), ask (they advise, you decide), off (no judges)' }
       await set($, { mode: arg })
-      return { text: `Decisions: ${arg === 'auto' ? 'Auto · judge' : 'Ask me'}` }
+      return { text: `Decisions: ${arg === 'auto' ? 'Auto · judge' : arg === 'ask' ? 'Ask me · the judges advise' : 'Judges off'}` }
     }
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'tab' && arg === 'git') await refreshRepo($)
@@ -145,6 +148,7 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (!e.command && !e.isMeta && e.text.trim()) {
       const now = await $.clock.now()
+      if (e.origin?.kind === 'composer') personSpoke(now)
       changedThisTurn = false
       await refreshRepo($)
       changesAtStart = changesOf((await read($, S)).repo.changed)
@@ -223,6 +227,8 @@ export const register: Register = on => {
   on('tool.call', { tool: 'mcp__ccd_turn__wrap_up' }, async ($, e, next) => {
     const r = await next(e)
     if (!e.agentId) await trackPlan($, e.tool, e, r)
+    // Its question goes to the judges, in the background: the turn ends as it would
+    if (!e.agentId) void judgeNext($, e as unknown as Record<string, unknown>).catch(() => null)
     return r
   }).catch(($, e, next) => next(e))
 
@@ -248,7 +254,13 @@ export const register: Register = on => {
     }
 
     const judgeable = qs.every(q => !q.multiSelect && q.options.length >= 2)
-    if (s.mode === 'ask' || !judgeable) return askPerson()
+    if (s.mode === 'off' || !judgeable) return askPerson()
+    // Ask me, or a decision that is hard to undo: the judges advise while the question waits for you
+    const risky = qs.some(q => RISKY.test(`${q.question} ${q.options.map(o => `${o.label} ${o.description ?? ''}`).join(' ')}`))
+    if (s.mode === 'ask' || risky) {
+      for (const [i, q] of qs.entries()) void judge($, ids[i] ?? String(i), q.question, q.options, false).catch(() => null)
+      return askPerson()
+    }
     const answers: Record<string, string> = {}
     for (const [i, q] of qs.entries()) {
       const win = await judge($, ids[i] ?? String(i), q.question, q.options)
@@ -384,6 +396,17 @@ export const register: Register = on => {
         <Text color={t.dim}>{` · ${s.pipeline.index + 1}/${s.pipeline.steps.length} · ${expertName(s.pipeline.steps[s.pipeline.index] ?? '')}…`}</Text>
       </Text>
     )
+    // What the judges recommend, while the question waits for you: Claude's question, or this turn's next step
+    const adv = s.decisions
+      .slice()
+      .reverse()
+      .find(d => !!d.advice && d.status !== 'you' && (d.id === s.waiting || (d.kind === 'next' && d.at >= s.turnStart)))
+    const advice = adv && (
+      <Text wrap="truncate-end">
+        <Text color={t.accent}>{'⚖ '}</Text>
+        <Text color={t.text}>{adv.advice}</Text>
+      </Text>
+    )
     // A proposed commit waits for Commit or Skip right above the prompt
     const ask = s.pending && (
       <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between" flexWrap="wrap" columnGap={2}>
@@ -402,6 +425,7 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column" marginTop={1}>
         {ask}
+        {advice}
         <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
             <Text color={t.accent}>{`${p.pct}%`}</Text>
@@ -443,6 +467,7 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" marginTop={1}>
         {ask}
+        {advice}
         {pipe}
         <Box flexDirection="column" borderStyle="round" borderColor={t.dim} paddingX={1}>
           <Box justifyContent="space-between">
@@ -631,7 +656,7 @@ export const register: Register = on => {
         )}
         <Text color={fail ? BAD : all.length ? OK : t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
         <Text color={t.accent}>{`$${s.cost.toFixed(2)}`}</Text>
-        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}</Text>
+        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
         {e.props.isWorking && <Text color={t.faint}>esc to interrupt</Text>}
       </Box>
     )

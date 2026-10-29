@@ -16,7 +16,7 @@ Answer `y` to add this repository as a marketplace, then pick a scope: for you e
 
 - Cockpit writes a `.cockpit/` folder at the top of each repository you use it in: its codebase memory and history. The folder carries its own `.gitignore`, so nothing in it is ever committed.
 - Testing each agent's work is on: every agent run that edits files starts two more subagents (a positive and a negative tester). Switch it off in the Agents tab.
-- Each prompt makes one small model call to write its own flow steps, and the judges make a few when Claude asks a question in Auto mode (switch to Ask me in the Overview to stop them).
+- Each prompt makes one small model call to write its own flow steps, and the judges make a few for each question Claude asks you (turn them off with `/cockpit mode off`).
 - Push, pull requests and Verify after each turn are off until you turn them on.
 - Plugins your organization manages may run before Cockpit and skip some of its hooks; Cockpit's other parts keep working.
 
@@ -95,7 +95,13 @@ Where the surface draws SVG (the desktop app, the editor extension, mobile), the
 
 ## Decisions by judges
 
-In **Auto · judge** mode, a quick model rates each question Claude asks from 0 to 10 for complexity. Questions rated 0–3 get 3 judges, 4–6 get 6, and 7–10 get 9. If one option gets two thirds of the votes, it is answered for you. Otherwise the question comes to you as usual. In **Ask me** mode every question comes to you.
+Claude asks you things two ways: its question box in the middle of a turn, and the **next-step box** with reply buttons at the end of one. The judges take both. A quick model rates each decision from 0 to 10 for complexity: 0–3 gets 3 judges, 4–6 gets 6, 7–10 gets 9, each with its own point of view, and one option needs two thirds of the votes.
+
+- **Auto · judge** (the default): a clear winner answers for you. A question gets that answer; a next step gets its winning reply sent as your next prompt, marked as the judges' choice in the chat. A decision that publishes, pushes, deletes, merges, sends or is otherwise hard to undo, a split, a button only you can press (an app action), and a fourth answer in a row with no prompt of yours in between all come to you, with what the judges recommend.
+- **Ask me**: every decision is yours. The judges still vote and say what they recommend: above the prompt (⚖), in the chat for a next step, and in the Overview beside what you chose.
+- **Off**: no judges and no model calls for them.
+
+Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; the choice is kept across sessions.
 
 ## Commands
 
@@ -104,7 +110,7 @@ In **Auto · judge** mode, a quick model rates each question Claude asks from 0 
 | `/cockpit` | open the pane |
 | `/cockpit focus [on\|off]` | hide or show Claude's tool activity |
 | `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch theme (or click the dots in the pane header) |
-| `/cockpit mode <auto\|ask>` | who answers Claude's questions |
+| `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
 | `/cockpit tab <overview\|files\|tests\|agents\|git>` | open a tab (`git` reads the repo again) |
 | `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current prompt on that flow (or pick it under the step chips) |
 | `/cockpit test` | run the Verify pipeline now |

@@ -8,7 +8,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), { value: { agent: `cockpit:${e.name}` } }))
@@ -37,6 +37,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     if (String(e.prompt).startsWith('Break this task') && st.noSteps) return { value: { isAnswered: false, reason: 'empty-reply' } } as never
     if (String(e.prompt).startsWith('Break this task')) return { value: { isAnswered: true, text: '[{"step": "Read the limiter code", "kind": "Explore"}, {"step": "Add the rate limit", "kind": "Implement"}, {"step": "Run the tests", "kind": "Verify"}]', usage: { inputTokens: 1, outputTokens: 1 } } }
     const isScore = String(e.prompt).startsWith('Rate how complex')
+    if (isScore) log.scored++
     const text = isScore ? `{"score": ${st.score ?? 2}, "signals": ["small", "reversible"]}` : String(((st.votes ?? [1, 1, 1])[seat++ % (st.votes ?? [1]).length] ?? 0) + 1)
     return { value: { isAnswered: true, text, usage: { inputTokens: 1, outputTokens: 1 } } }
   })
@@ -55,7 +56,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   })
   on('turn.complete', async () => ({ text: '' }))
   on('command.run', async () => ({ text: '' }))
-  on('prompt.submit', async (_: unknown, e: any) => ({ text: e.text }))
+  on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push(String(e.text)), { text: e.text }))
+  on('session.append', async (_: unknown, e: any, next: any) => (log.notes.push(JSON.stringify(e.message?.content ?? '')), next(e)))
   return log
 }
 
@@ -83,12 +85,61 @@ test('a split vote asks you instead', async ($, on) => {
   await ui.unmount()
 })
 
-test('ask mode sends every question to you, judges never run', async ($, on) => {
-  const log = stand($, on)
+const settle = () => new Promise(res => (globalThis as any).setTimeout(res, 150))
+const nextStep = ($: any, ask: string, actions: object[]) => $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', tool_use_id: `w-${ask}`, recap: 'Done.', ask, actions } as never)
+const replies = [{ label: 'Keep going', message: 'Yes, keep going with the next step.' }, { label: 'Stop here', message: 'Stop here.' }]
+
+test('Ask me sends every question to you with the judges\' advice; Off runs no judges at all', async ($, on) => {
+  const log = stand($, on, { votes: [0, 0, 0] })
   await $.command.run({ command: 'cockpit', args: 'mode ask' } as never)
   await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 't3', questions: [{ question: 'Q?', options: [{ label: 'a' }, { label: 'b' }], multiSelect: false, header: 'q' }] } as never)
+  await settle()
+  // You answered (the stand picks b); the judges' pick is kept beside it as advice
   expect(log.asked).toBe(1)
-  expect(log.toasts.some(t => t.includes('Judge'))).toBe(false)
+  expect(log.toasts).toContain('◆ Judges recommend "a" · 3/3')
+  const ui = await $.ui.mount(pane('overview') as never)
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('You chose · b · Judges recommend')
+  await ui.unmount()
+  await $.command.run({ command: 'cockpit', args: 'mode off' } as never)
+  const scored = log.scored
+  await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 't4', questions: [{ question: 'R?', options: [{ label: 'a' }, { label: 'b' }], multiSelect: false, header: 'r' }] } as never)
+  await nextStep($, 'Keep going?', replies)
+  await settle()
+  expect(log.asked).toBe(2)
+  expect(log.scored).toBe(scored)
+  expect(log.submitted).toEqual([])
+})
+
+test('in Auto the judges answer a next-step question by sending the winning reply; a risky one only gets advice', async ($, on) => {
+  const log = stand($, on, { votes: [0, 0, 0] })
+  await nextStep($, 'Keep going?', replies)
+  await settle()
+  expect(log.submitted).toEqual(['Yes, keep going with the next step.'])
+  expect(log.notes.join()).toContain('Judges chose')
+  // Hard to undo: advice in the chat and above the prompt, nothing sent
+  await nextStep($, 'Make the repo public now?', [{ label: 'Make it public', message: 'Make it public.' }, { label: 'Keep it private' }])
+  await settle()
+  expect(log.submitted.length).toBe(1)
+  expect(log.notes.join()).toContain('it is hard to undo, so it is yours to decide')
+  await $.command.run({ command: 'cockpit', args: 'focus off' } as never)
+  const b = await $.ui.mount(band as never)
+  expect(JSON.stringify(await b.drawn())).toContain('Judges recommend \\"Make it public\\"')
+  await b.unmount()
+})
+
+test('the judges answer at most three next steps in a row; your own prompt starts the count again', async ($, on) => {
+  const log = stand($, on, { votes: [0, 0, 0] })
+  for (const n of [1, 2, 3, 4]) {
+    await nextStep($, `Step ${n}?`, replies)
+    await settle()
+  }
+  expect(log.submitted.length).toBe(3)
+  expect(log.notes.join()).toContain('three were answered in a row')
+  await $.prompt.submit({ text: 'carry on', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await nextStep($, 'Step 5?', replies)
+  await settle()
+  expect(log.submitted.length).toBe(4)
 })
 
 test('the Verify pipeline runs the Prover then the Breaker, handing the report along; cases fill the Agents tab and the band', async ($, on) => {

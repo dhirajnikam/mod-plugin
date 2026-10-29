@@ -16,7 +16,7 @@ Answer `y` to add this repository as a marketplace, then pick a scope: for you e
 
 - Cockpit writes a `.cockpit/` folder at the top of each repository you use it in: its codebase memory and history. The folder carries its own `.gitignore`, so nothing in it is ever committed.
 - Testing each agent's work is on: every agent run that edits files starts two more subagents (a positive and a negative tester). Switch it off in the Agents tab.
-- Each prompt makes one small model call to write its own flow steps, and the judges make a few when Claude asks a question in Auto mode (switch to Ask me in the Overview to stop them).
+- Each prompt makes one small model call to write its own flow steps, and the judges make a few for each question Claude asks you (turn them off with `/cockpit mode off`).
 - Push, pull requests and Verify after each turn are off until you turn them on.
 - Plugins your organization manages may run before Cockpit and skip some of its hooks; Cockpit's other parts keep working.
 

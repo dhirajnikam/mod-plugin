@@ -26,8 +26,12 @@ export type Decision = {
   signals: string[]
   // -1 while a seat has not voted; else the option index it chose
   votes: number[]
-  status: 'scoring' | 'voting' | 'decided' | 'split' | 'you'
+  status: 'scoring' | 'voting' | 'decided' | 'split' | 'you' | 'advised'
   result: string
+  // What the judges recommend where they only advise (Ask me mode, or a decision that is hard to undo)
+  advice?: string
+  // question: Claude's question tool; next: the app's next-step box at the end of a turn
+  kind?: 'question' | 'next'
 }
 
 export type TestCase = { n: string; st: 'pass' | 'fail' | 'fixed' | 'run'; err?: string }
@@ -121,7 +125,8 @@ export type Ph = {
   // Focus: hide tool cards and turn lines, shrink the band to one line
   focus?: boolean
   tab: Tab
-  mode: 'auto' | 'ask'
+  // auto: the judges decide (risky decisions they only advise on); ask: they advise, you decide; off: no judges
+  mode: 'auto' | 'ask' | 'off'
   task: string
   turnStart: number
   isWorking: boolean

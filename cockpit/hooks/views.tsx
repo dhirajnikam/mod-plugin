@@ -171,7 +171,7 @@ export function Header($: $, v: V) {
         <Text color={t.dim} wrap="truncate-start">{v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/')}</Text>
         <Text>
           <Text color={t.accent}>{s.repo.isRepo ? `⎇ ${s.repo.current}  ` : ''}</Text>
-          <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}</Text>
+          <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
         </Text>
       </Box>
     </Box>
@@ -420,9 +420,9 @@ export function Overview($: $, v: V) {
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
           <Text color={t.text} bold weight="semibold">Decisions</Text>
-          <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me']]} onPick={k => set($, { mode: k })} />
+          <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me'], ['off', 'Off']]} onPick={k => set($, { mode: k })} />
         </Box>
-        <Text color={t.dim} size="footnote">Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass</Text>
+        <Text color={t.dim} size="footnote" wrap="wrap">{s.mode === 'off' ? 'Judges off: every question and next step is yours, with no advice.' : `${s.mode === 'auto' ? 'The judges answer questions and next steps; anything hard to undo, a split, or a fourth in a row comes to you with their advice.' : 'Every question and next step is yours; the judges say what they recommend.'} Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass.`}</Text>
         {decs.length === 0 && <Text color={t.dim}>None yet.</Text>}
         <Rule v={v} />
         {decs.map(d => {
@@ -436,10 +436,10 @@ export function Overview($: $, v: V) {
                     <Text color={t.text} wrap="truncate-end">{d.q}</Text>
                   </Button>
                 </Box>
-                <Text color={d.status === 'you' ? t.dim : t.deep}>{d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}</Text>
+                <Text color={d.status === 'you' ? t.dim : t.deep}>{`${d.kind === 'next' ? 'next step · ' : ''}${d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}`}</Text>
               </Box>
               <Box justifyContent="space-between">
-                <Text color={d.status === 'decided' ? OK : d.status === 'split' ? BUSY : d.status === 'you' ? t.text : t.deep}>{d.result || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
+                <Text color={d.status === 'decided' ? OK : d.status === 'split' ? BUSY : d.status === 'you' ? t.text : d.status === 'advised' ? t.accent : t.deep} wrap="truncate-end">{[d.result, d.advice && d.status !== 'advised' ? `· ${d.advice}` : d.advice].filter(Boolean).join(' ') || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
                 <Text color={t.dim}>{fmt(d.at - (s.decisions[0]?.at ?? d.at))}</Text>
               </Box>
               {open && (
