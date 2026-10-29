@@ -1,12 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Changed, Decision, GitForm, Ph, Tester, ThemeId } from '../types'
-import { AGENT_TYPES, base, branchName, commitMsg, nJ, parseCases, tally } from './logic'
+import type { Account, Agent, Changed, Decision, GitForm, Pending, Ph, Tester, ThemeId } from '../types'
+import { AGENT_TYPES, base, branchName, commitMsg, inferType, nJ, parseCases, tally } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-4' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-5' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -80,18 +80,29 @@ export async function gitInit($: $) {
   await refreshRepo($)
 }
 
-// Commit the staged files; push and open a PR when the form says so
-export async function commit($: $, auto: boolean) {
+// What the next commit would be: its type (inferred unless you chose Manual), branch, message and files
+export function planCommit(s: Ph): Pending {
+  const files = s.repo.changed.filter(f => s.staged[f.path] !== false).map(f => f.path)
+  const type = s.git.commitMode === 'manual' ? s.git.type : inferType(s.task, files)
+  const subject = subjectFor(s, files)
+  const g = { ...s.git, type, subject }
+  const branch = branchName(g, s.repo.current)
+  return { type, branch, msg: subject ? commitMsg(g, branch) : '', files, at: 0 }
+}
+
+// Commit the staged files; push and open a PR when the form says so. `plan` commits as proposed (ask mode)
+export async function commit($: $, auto: boolean, plan?: Pending) {
   const s = await read($, S)
-  const g = s.git
-  const picked = s.repo.changed.filter(f => s.staged[f.path] !== false)
+  const p = plan ?? planCommit(s)
+  const g = { ...s.git, type: p.type }
+  const picked = s.repo.changed.filter(f => p.files.includes(f.path))
   const files = picked.map(f => f.path)
   if (!files.length) return toast($, 'Nothing staged to commit')
   const subject = subjectFor(s, files)
   if (g.preTest && !(s.testers.pos.status === 'done' && s.testers.neg.status === 'done' && ![...s.testers.pos.cases, ...s.testers.neg.cases].some(c => c.st === 'fail'))) {
     return toast($, 'Run tests first is on: the testers have not passed yet')
   }
-  const br = branchName({ ...g, subject }, s.repo.current)
+  const br = p.branch || s.repo.current
   if (br && br !== s.repo.current) {
     const sw = await git($, ['switch', br])
     if (sw.exitCode !== 0) {
@@ -103,7 +114,7 @@ export async function commit($: $, auto: boolean) {
   if (add.exitCode !== 0) return toast($, `git add failed: ${firstLine(add)}`)
   const acct = s.accounts.find(a => a.id === s.accountId)
   const who = acct ? ['-c', `user.name=${acct.name}`, '-c', `user.email=${acct.email}`] : []
-  const msg = commitMsg({ ...g, subject }, br)
+  const msg = p.msg || commitMsg({ ...g, subject }, br)
   // The pathspec commits the ticked files alone, not whatever else sits in the index; a rename needs its old path too
   const paths = [...files, ...picked.flatMap(f => (f.from ? [f.from] : []))]
   const args = [...who, 'commit', '-m', msg, ...(g.body ? ['-m', g.body] : []), ...(g.signoff ? ['-s'] : []), ...(g.gpg ? ['-S'] : []), '--', ...paths]
@@ -131,6 +142,7 @@ export async function commit($: $, auto: boolean) {
   await set($, st => ({
     commits: [{ sha, auto, msg, meta: [br, `${files.length} files`, ...extra].join(' · ') }, ...st.commits].slice(0, 30),
     staged: {},
+    pending: null,
     // The next commit starts from a fresh subject; the branch now is the checkout's
     git: { ...st.git, subject: '', body: '', branch: '' },
     reached: st.reached.includes('Commit') ? st.reached : [...st.reached, 'Commit'],
@@ -138,6 +150,54 @@ export async function commit($: $, auto: boolean) {
   await toast($, `${auto ? 'Auto-committed' : 'Committed'} ${sha}${extra.length ? ` · ${extra.join(' · ')}` : ''}`)
   await note($, `⎇ ${auto ? 'Auto-committed' : 'Committed'} ${sha} · ${msg}`)
   await refreshRepo($)
+}
+
+// Ask mode: propose the commit and wait for Commit or Skip in the band or the pane
+export async function proposeCommit($: $) {
+  const s = await read($, S)
+  const p = { ...planCommit(s), at: await $.clock.now() }
+  if (!p.files.length || !p.msg) return
+  await set($, { pending: p, waiting: s.waiting })
+  await toast($, `Commit proposed: ${p.msg}`)
+}
+
+export async function confirmPending($: $) {
+  const p = (await read($, S)).pending
+  if (p) await commit($, true, p)
+}
+
+export async function skipPending($: $) {
+  await set($, { pending: null })
+}
+
+// What happens to this turn's changes, by the chosen commit mode
+export async function decideCommit($: $) {
+  const s = await read($, S)
+  if (s.git.commitMode === 'auto') await commit($, true)
+  else if (s.git.commitMode === 'ask') await proposeCommit($)
+}
+
+// gh login with a personal access token on stdin; gh keeps the token, Cockpit never does
+export async function ghLoginToken($: $, token: string) {
+  const tk = token.trim()
+  if (!tk) return toast($, 'Paste a GitHub token first')
+  const r = await $.process.run(['gh', 'auth', 'login', '--with-token', '-h', 'github.com'], { stdin: `${tk}\n` }).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+  await set($, st => ({ ui: { ...st.ui, ghToken: '' } }))
+  if (r.exitCode !== 0) return toast($, `gh login failed: ${firstLine(r)}`)
+  await loadAccounts($)
+  await toast($, 'Logged in to GitHub with the token')
+}
+
+// gh login in the browser: gh copies a one-time code to the clipboard and waits on github.com/login/device
+export async function ghLoginWeb($: $) {
+  await set($, st => ({ ui: { ...st.ui, ghNote: 'gh has put a one-time code on your clipboard: open github.com/login/device, paste it and approve. Then press Detect.' } }))
+  void $.process
+    .run(['gh', 'auth', 'login', '--web', '-h', 'github.com', '-p', 'https', '--skip-ssh-key'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10 * 60 * 1000 })
+    .then(async r => {
+      await set($, st => ({ ui: { ...st.ui, ghNote: r.exitCode === 0 ? 'Logged in.' : `gh login ended: ${firstLine(r)}` } }))
+      if (r.exitCode === 0) await loadAccounts($)
+    })
+    .catch(() => null)
 }
 
 const PERSONAS = ['a pragmatic senior engineer', 'a security reviewer', 'a long-term maintainer', 'the end user', 'a sceptic who prefers the safest option', 'a performance engineer', 'a test engineer', 'a software architect', 'a minimalist who prefers less code']
@@ -307,7 +367,7 @@ export async function openPane($: $) {
 }
 
 // The Git tab's settings, kept per repository across sessions: what you chose stays until you change it
-const GIT_PREFS: (keyof GitForm)[] = ['branchAuto', 'branchPattern', 'ticket', 'user', 'base', 'type', 'msgPattern', 'autoCommit', 'autoWhen', 'breaking', 'push', 'pr', 'draft', 'signoff', 'gpg', 'preTest']
+const GIT_PREFS: (keyof GitForm)[] = ['branchAuto', 'branchPattern', 'ticket', 'user', 'base', 'type', 'msgPattern', 'commitMode', 'autoWhen', 'setupDone', 'breaking', 'push', 'pr', 'draft', 'signoff', 'gpg', 'preTest']
 async function prefsKey($: $) {
   return `git:${await $.session.cwd()}`
 }

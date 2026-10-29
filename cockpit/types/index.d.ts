@@ -64,8 +64,11 @@ export type GitForm = {
   subject: string
   body: string
   msgPattern: string
-  autoCommit: boolean
+  // auto: commit by itself; ask: propose each commit for your Commit/Skip; manual: only the button
+  commitMode: 'auto' | 'ask' | 'manual'
   autoWhen: 'tests' | 'step' | 'done'
+  // The per-repository setup wizard has run
+  setupDone: boolean
   breaking: boolean
   push: boolean
   pr: boolean
@@ -79,6 +82,9 @@ export type GitForm = {
 export type Account = { id: string; label: string; name: string; email: string; gh: string }
 
 // `from` is a rename's old path: it is committed with the new one
+// A commit Cockpit proposes in ask mode, waiting for your Commit or Skip
+export type Pending = { type: string; branch: string; msg: string; files: string[]; at: number }
+
 export type Changed = { path: string; meta: string; add: number; del: number; from?: string }
 export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 
@@ -106,6 +112,7 @@ export type Ph = {
   git: GitForm
   repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[] }
   staged: Record<string, boolean>
+  pending: Pending | null
   commits: Commit[]
   accounts: Account[]
   accountId: string
@@ -127,6 +134,10 @@ export type Ph = {
     testsHidden: boolean
     acctOpen: boolean
     acct: Account
+    // The setup wizard's step, the token being typed, and the gh web login's note
+    gitStep: number
+    ghToken: string
+    ghNote: string
   }
 }
 

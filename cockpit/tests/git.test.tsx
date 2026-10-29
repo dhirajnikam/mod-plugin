@@ -32,6 +32,11 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  // The setup runs once per repository: account, branch pattern, message pattern, commit mode, when
+  for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) {
+    expect(JSON.stringify(await ui.drawn())).toContain(step)
+    await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
+  }
   const drawn = JSON.stringify(await ui.drawn())
   // Branch, ahead, the rename and the default base are read from the repo
   expect(drawn).toContain('⎇ master')
@@ -50,11 +55,11 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   expect(commit).toBeDefined()
   const paths = commit!.slice(commit!.indexOf('--') + 1)
   expect(paths.sort()).toEqual(['a.txt', 'gone.txt', 'new.txt', 'newdir/', 'old.txt', 'with space.txt'])
-  expect(commit).toContain('feat: tidy files')
+  // The type is read from the task ("tidy" → refactor), the branch cut off master by the pattern
+  expect(commit).toContain('refactor: tidy files')
   // A rename's old path is committed but never given to git add, which would refuse it
   expect(ran.find(a => a.includes('add'))).not.toContain('old.txt')
-  // No branch switch: the branch is the checkout's
-  expect(ran.some(a => a.includes('switch'))).toBe(false)
+  expect(ran.some(a => a.join(' ').startsWith('git switch') && a.includes('refactor/tidy-files'))).toBe(true)
   expect(toasts.join(' ')).toContain('Committed abc1234')
   await ui.unmount()
 })
@@ -80,8 +85,9 @@ test('a failed push says why', async ($, on) => {
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
   await $.prompt.submit({ text: 'x', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
-  await ui.press({ key: 'git-more' })
+  for (let i = 0; i < 4; i++) await ui.press({ key: 'setup-next' })
   await ui.press({ key: 'opt-push' })
+  await ui.press({ key: 'setup-done' })
   await ui.press({ key: 'git-commit' })
   expect(toasts.join(' ')).toContain("push failed: fatal: 'origin' does not appear to be a git repository")
   await ui.unmount()

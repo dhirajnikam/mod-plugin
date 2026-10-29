@@ -4,6 +4,8 @@ import type { Register } from 'claude-code'
 import type { Decision, Tab, ThemeId } from '../types'
 import {
   commit,
+  confirmPending,
+  decideCommit,
   discoverAgentTypes,
   finishTester,
   judge,
@@ -12,6 +14,7 @@ import {
   loadGitPrefs,
   measure,
   openPane,
+  skipPending,
   refreshRepo,
   runTester,
   set,
@@ -25,7 +28,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, TesterCard, Tests, se
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-4' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-5' })
 
 const TABS: Tab[] = ['overview', 'files', 'tests', 'agents', 'git']
 
@@ -186,21 +189,20 @@ export const register: Register = on => {
       }
       const after = await read($, S)
       const passed = after.testers.pos.status === 'done' && after.testers.neg.status === 'done' && ![...after.testers.pos.cases, ...after.testers.neg.cases].some(c => c.st === 'fail')
-      if (passed && after.git.autoCommit && after.git.autoWhen === 'tests' && (s.testers.pos.status === 'running' || s.testers.neg.status === 'running')) await commit($, true)
+      if (passed && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && (s.testers.pos.status === 'running' || s.testers.neg.status === 'running')) await decideCommit($)
       return r
     }
     await set($, st => ({ isWorking: false, activity: 'Done', lastTurnMs: now - st.turnStart }))
     await refreshRepo($)
     await measure($)
     const s = await read($, S)
-    const commitAfterTests = s.git.autoCommit && s.git.autoWhen === 'tests'
+    const commitAfterTests = s.git.commitMode !== 'manual' && s.git.autoWhen === 'tests'
     if (changedThisTurn && (s.autoTest || commitAfterTests)) {
       await set($, st => ({ ui: { ...st.ui, testsHidden: false } }))
       await runTester($, 'pos')
       await runTester($, 'neg')
     }
-    // 'done' is a stored value from before; it commits as 'step' does
-    if (changedThisTurn && s.git.autoCommit && s.git.autoWhen !== 'tests') await commit($, true)
+    if (changedThisTurn && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
     changedThisTurn = false
     return r
   })
@@ -258,9 +260,25 @@ export const register: Register = on => {
     const testsFail = tz.some(x => x.cases.some(c => c.st === 'fail'))
     const testsAll = tz.flatMap(x => x.cases)
     const testsLine = tz.some(x => x.status === 'running') ? 'testing…' : testsAll.length ? `tests ${testsAll.length - testsAll.filter(c => c.st === 'fail').length}/${testsAll.length}` : ''
+    // A proposed commit waits for Commit or Skip right above the prompt
+    const ask = s.pending && (
+      <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between" flexWrap="wrap" columnGap={2}>
+        <Text>
+          <Text color={BUSY}>{'⎇ Commit? '}</Text>
+          <Text color={t.text} wrap="truncate-end">{s.pending.msg}</Text>
+          <Text color={t.dim}>{` → ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
+        </Text>
+        <Box gap={1}>
+          <Button key="ph-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
+          <Button key="ph-skip" label="Skip" onPress={() => skipPending($)} />
+        </Box>
+      </Box>
+    )
     if (s.focus !== false) {
       return (
-        <Box marginTop={1} borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
+        <Box flexDirection="column" marginTop={1}>
+        {ask}
+        <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
             <Text color={t.accent}>{`${p.pct}%`}</Text>
             <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
@@ -268,6 +286,7 @@ export const register: Register = on => {
             {testsLine && <Text color={testsFail ? 'error' : testsLine === 'testing…' ? BUSY : 'success'}>{`  ·  ${testsLine}`}</Text>}
           </Text>
           {toggle}
+        </Box>
         </Box>
       )
     }
@@ -301,6 +320,7 @@ export const register: Register = on => {
     )
     return (
       <Box flexDirection="column" marginTop={1}>
+        {ask}
         {showTests && TesterCard($, ui, t, s, await $.clock.now())}
         <Box flexDirection="column" borderStyle="round" borderColor={t.dim} paddingX={1}>
           <Box justifyContent="space-between">

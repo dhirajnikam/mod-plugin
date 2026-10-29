@@ -3,10 +3,10 @@ import type { Decision, FileOp, GitForm, Line, Ph, TestCase } from '../types'
 export const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit']
 export const TYPES = ['feat', 'fix', 'refactor', 'perf', 'test', 'docs', 'chore']
 export const BRANCH_PRESETS = [
-  { v: '{type}/{slug}', label: 'type/slug' },
-  { v: '{type}/{ticket}-{slug}', label: 'type/ticket-slug' },
-  { v: '{user}/{slug}', label: 'user/slug' },
-  { v: '{ticket}/{slug}', label: 'ticket/slug' },
+  { v: '{kind}/{slug}', label: 'feature/add-login' },
+  { v: '{kind}/{ticket}-{slug}', label: 'feature/API-12-add-login' },
+  { v: '{user}/{kind}-{slug}', label: 'dev/feature-add-login' },
+  { v: '{slug}', label: 'add-login' },
 ]
 export const MSG_PRESETS = [
   { v: '{type}: {subject}', label: 'Conventional' },
@@ -14,10 +14,35 @@ export const MSG_PRESETS = [
   { v: '{Subject}', label: 'Plain sentence' },
 ]
 export const AUTO_WHENS = [
-  { v: 'tests', label: 'after tests pass' },
   { v: 'step', label: 'after each turn that changes files' },
+  { v: 'tests', label: 'after the testers pass' },
 ]
+export const COMMIT_MODES: [GitForm['commitMode'], string, string][] = [
+  ['auto', 'Auto-commit', 'Cockpit commits by itself, type and branch chosen for you'],
+  ['ask', 'Ask me', 'Cockpit proposes each commit; you press Commit or Skip'],
+  ['manual', 'Manual', 'Only when you press Commit'],
+]
+// Branches that work is cut from, never committed to directly when a branch pattern is set
+export const BASE_BRANCHES = ['main', 'master', 'develop', 'trunk']
+
+// The commit type a change calls for, from the words of the task and the files it touched
+export function inferType(task: string, paths: string[]) {
+  const t = task.toLowerCase()
+  if (/\b(fix|bug|broken|crash|error|issue|wrong|fail)/.test(t)) return 'fix'
+  if (/\b(test|spec|coverage)/.test(t)) return 'test'
+  if (/\b(doc|readme|comment|changelog)/.test(t)) return 'docs'
+  if (/\b(refactor|clean|simplif|rename|reorgani|tidy)/.test(t)) return 'refactor'
+  if (/\b(perf|faster|speed|optimi|cache)/.test(t)) return 'perf'
+  if (/\b(chore|bump|upgrade|depend|config|ci\b|lint|format)/.test(t)) return 'chore'
+  if (t) return 'feat'
+  if (paths.length && paths.every(p => /\.(md|txt|rst)$/i.test(p))) return 'docs'
+  if (paths.length && paths.every(p => /(test|spec)/i.test(p))) return 'test'
+  return paths.length ? 'feat' : 'chore'
+}
+// The branch kind a commit type gets: feature, fix, docs, ...
+export const kindOf = (type: string) => (type === 'feat' ? 'feature' : type)
 export const GIT_OPTS: [keyof GitForm, string][] = [
+  ['branchAuto', 'New branch off the base, by the pattern'],
   ['breaking', 'Breaking change'],
   ['preTest', 'Run tests first'],
   ['push', 'Push after commit'],
@@ -42,8 +67,11 @@ export const slug = (t: string) =>
 export const base = (p: string) => p.split(/[\\/]/).pop() ?? p
 
 export const branchName = (g: GitForm, current: string) => {
-  if (!g.branchAuto) return g.branch || current
+  if (g.branch) return g.branch
+  // A pattern applies when the work sits on a base branch; a branch already cut keeps its name
+  if (!g.branchAuto || !BASE_BRANCHES.includes(current) && current !== g.base) return current
   return g.branchPattern
+    .replace(/\{kind\}/g, kindOf(g.type))
     .replace(/\{type\}/g, g.type)
     .replace(/\{ticket\}/g, g.ticket.toLowerCase())
     .replace(/\{slug\}/g, slug(g.subject))
@@ -239,11 +267,18 @@ export function ringRuns(pct: number, fill: string, track: string, ink: string, 
 
 // Self-check: the parts a broken edit would quietly corrupt
 export function selfCheck() {
-  const g = { branch: '', branchAuto: true, branchPattern: '{type}/{ticket}-{slug}', ticket: 'API-142', user: 'dev', base: 'main', type: 'feat', scope: 'auth', subject: 'add rate limiting to login', body: '', msgPattern: '{type}({scope}): {subject}', autoCommit: false, autoWhen: 'tests', breaking: false, push: false, pr: false, draft: false, signoff: false, gpg: false, preTest: false } as GitForm
+  const g = { branch: '', branchAuto: true, branchPattern: '{type}/{ticket}-{slug}', ticket: 'API-142', user: 'dev', base: 'main', type: 'feat', scope: 'auth', subject: 'add rate limiting to login', body: '', msgPattern: '{type}({scope}): {subject}', commitMode: 'ask', autoWhen: 'step', setupDone: true, breaking: false, push: false, pr: false, draft: false, signoff: false, gpg: false, preTest: false } as GitForm
   const checks: [unknown, unknown][] = [
     [branchName(g, 'main'), 'feat/api-142-add-rate-limiting-to-login'],
+    [branchName({ ...g, branchPattern: '{kind}/{slug}' }, 'main'), 'feature/add-rate-limiting-to-login'],
+    [branchName({ ...g, type: 'fix', branchPattern: '{kind}/{slug}' }, 'master'), 'fix/add-rate-limiting-to-login'],
+    [branchName(g, 'feature/old'), 'feature/old'],
     [branchName({ ...g, ticket: '' }, 'main'), 'feat/add-rate-limiting-to-login'],
     [branchName({ ...g, ticket: '', subject: '' }, 'main'), 'feat'],
+    [inferType('fix the login bug', []), 'fix'],
+    [inferType('add a settings page', []), 'feat'],
+    [inferType('', ['README.md']), 'docs'],
+    [inferType('', []), 'chore'],
     [commitMsg(g, 'x'), 'feat(auth): add rate limiting to login'],
     [commitMsg({ ...g, breaking: true }, 'x'), 'feat(auth)!: add rate limiting to login'],
     [nJ(2), 3], [nJ(5), 6], [nJ(8), 9], [thrOf(6), 4],

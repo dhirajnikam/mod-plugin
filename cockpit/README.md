@@ -29,18 +29,19 @@ The **Auto** theme (the default) follows Claude Code's own theme: White under a 
 
 ## Git
 
-- The tab reads the repository each time you open it (and after every turn); **↻ Refresh** reads it again.
+The first time you open the Git tab in a repository it asks five things, once: the **account** that commits, the **branch pattern**, the **message pattern**, the **commit mode**, and **when**. **⚙ Setup** asks again; **Patterns & options** edits any of it. Everything is remembered per repository.
+
+- **Commit mode**: *Auto-commit* commits by itself; *Ask me* proposes each commit above the prompt and in the pane, with Commit and Skip; *Manual* commits only when you press the button.
+- **Type and branch are chosen for you.** The commit type (feat, fix, docs, refactor, perf, test, chore) comes from the words of your prompt, or the files changed; the branch kind (feature, fix, docs, …) follows it. When the work sits on a base branch (main, master, develop, trunk) a branch is cut by the pattern, e.g. `feature/add-login`; on any other branch the commit stays there. In Manual mode you pick the type.
+- The message comes from the first line of your last prompt, or from the files changed; the Next commit card shows it before anything happens.
 - **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
-- There is no subject to type: the message comes from the first line of your last prompt, or from the files changed; the preview shows it before you commit.
-- The account, commit type, branch pattern, auto-commit and every option are remembered per repository across sessions, until you change them.
-- The branch is the one checked out unless you type another (Cockpit creates it) or pick a branch pattern. **Into** lists your local branches and starts on the repository's default.
-- **Open pull request** needs a branch other than **Into**: type one or pick a branch pattern. Committing on the default branch itself pushes but opens no PR.
+- The tab reads the repository each time you open it (and after every turn); **↻ Refresh** reads it again.
+- **Open pull request** needs a branch other than the base, which the pattern gives you.
 - Failed pushes, PRs and commits say why in the toast.
-- Auto-commit runs **after tests pass** (it starts the testers itself) or **after each turn that changes files**.
 
 ## Git accounts
 
-The Git tab's **Account** box lists your global git identity, each GitHub login `gh auth status` reports, and any account you add (label, name, email, GitHub login). Accounts you add are kept across sessions. Commits use the chosen account's name and email. With push on, Cockpit runs `gh auth switch` to that account's login first, which changes the active GitHub account for the whole machine. **Use for this repo** writes the identity into the repository's own git config.
+The **Account** box lists your global git identity and each GitHub login `gh auth status` reports. To add one, paste a personal access token (**Add token** runs `gh auth login --with-token`; gh keeps the token, Cockpit does not), or press **Log in with gh**: gh puts a one-time code on your clipboard and waits for you at github.com/login/device; press **↻ Detect** afterwards. Commits use the chosen account's name and email. With push on, Cockpit runs `gh auth switch` to that account's login first, which changes the active GitHub account for the whole machine. **Use for this repo** writes the identity into the repository's own git config.
 
 ## Web rendering
 

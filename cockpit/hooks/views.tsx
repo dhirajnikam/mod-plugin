@@ -4,11 +4,15 @@ import type { Account, Decision, GitForm, Ph, Tab, ThemeId } from '../types'
 import {
   applyAccount,
   commit,
+  confirmPending,
   discoverAgentTypes,
+  ghLoginToken,
+  ghLoginWeb,
+  planCommit,
+  skipPending,
   gitInit,
   loadAccounts,
   removeAccount,
-  saveAccount,
   useAccount,
   refreshRepo,
   runTester,
@@ -16,12 +20,12 @@ import {
   setTheme,
   spawnAgent,
   stopAgent,
-  subjectFor,
 } from './actions'
 import {
   AGENT_TYPES,
   AUTO_WHENS,
   BRANCH_PRESETS,
+  COMMIT_MODES,
   GIT_OPTS,
   MSG_PRESETS,
   TYPES,
@@ -204,7 +208,7 @@ export function Overview($: $, v: V) {
   const { s, t, w } = v
   const p = progress(s)
   const changed = s.repo.changed.length
-  const needs = s.waiting ? 'Claude is waiting for your answer in the chat.' : !s.isWorking && changed ? `${changed} files ready to commit.` : ''
+  const needs = s.waiting ? 'Claude is waiting for your answer in the chat.' : s.pending ? `Commit "${s.pending.msg}" → ${s.pending.branch}?` : !s.isWorking && changed ? `${changed} files ready to commit.` : ''
   const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
   const dels = s.repo.changed.reduce((a, c) => a + c.del, 0)
   const diff = adds || dels ? `+${adds} −${dels}` : '—'
@@ -220,7 +224,14 @@ export function Overview($: $, v: V) {
             <Text color={BUSY} bold>NEEDS YOU</Text>
             <Text color={t.text}>{needs}</Text>
           </Box>
-          {!s.waiting && <Button key="needs" label="Open Git" variant="primary" onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />}
+          {s.pending ? (
+            <Box gap={sp(v, 1)}>
+              <Button key="needs-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
+              <Button key="needs-skip" label="Skip" onPress={() => skipPending($)} />
+            </Box>
+          ) : (
+            !s.waiting && <Button key="needs" label="Open Git" variant="primary" onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />
+          )}
         </Box>
       )}
       <Box columnGap={sp(v, 2)} flexWrap="wrap">
@@ -583,87 +594,66 @@ export function Agents($: $, v: V) {
 
 export function Git($: $, v: V) {
   const { Box, Button, Input, Select, Text } = v.ui
-  const { s, t, w } = v
+  const { s, t } = v
   const g = s.git
   const setGit = (patch: Partial<GitForm>) => setGitPref($, patch)
   if (!s.repo.isRepo) {
     return (
       <Box flexDirection="column" gap={sp(v, 1)}>
         <Text color={t.dim}>This folder is not a git repository.</Text>
-        <Box>
+        <Box gap={sp(v, 1)}>
           <Button key="git-init" label="git init" variant="primary" onPress={() => gitInit($)} />
           <Button key="git-refresh" label="Refresh" onPress={() => refreshRepo($)} />
         </Box>
       </Box>
     )
   }
-  // What a commit now would use: the typed subject, else the task's first line
-  const subject = subjectFor(s, s.repo.changed.filter(c => s.staged[c.path] !== false).map(c => c.path))
-  const br = branchName({ ...g, subject }, s.repo.current)
-  const msg = subject ? commitMsg({ ...g, subject }, br) : 'Send a prompt, or change a file'
-  const base = g.base || s.repo.current
-  const bases = [...new Set([base, ...s.repo.branches])].filter(Boolean)
-  const staged = s.repo.changed.filter(c => s.staged[c.path] !== false).length
+  if (!g.setupDone) return Setup($, v)
+  const plan = planCommit(s)
+  const staged = plan.files.length
   const allOn = staged === s.repo.changed.length
-  const summary = [s.accounts.find(a => a.id === s.accountId)?.label ?? '', `${staged} of ${s.repo.changed.length} files`, g.preTest && 'tests first', g.push && 'push', g.pr && `${g.draft ? 'draft PR' : 'PR'} → ${base}`, g.autoCommit && `auto ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[1]?.label}`].filter(Boolean).join(' · ')
   const acct = s.accounts.find(a => a.id === s.accountId)
-  const f = s.ui.acct
-  const setForm = (patch: Partial<Account>) => set($, st => ({ ui: { ...st.ui, acct: { ...st.ui.acct, ...patch } } }))
+  const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
+  const when = g.commitMode === 'manual' ? '' : ` · ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
+  const newBranch = plan.branch !== s.repo.current
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box justifyContent="space-between" flexWrap="wrap">
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
         <Text>
           <Text color={t.accent}>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
           <Text color={t.dim}>{s.repo.ahead ? `  ↑${s.repo.ahead}` : ''}</Text>
         </Text>
-        <Button key="git-refresh" label="↻ Refresh" plain onPress={() => refreshRepo($)} />
+        <Box gap={sp(v, 1)}>
+          <Button key="git-refresh" label="↻ Refresh" plain onPress={() => refreshRepo($)} />
+          <Button key="git-setup" label="⚙ Setup" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
+        </Box>
       </Box>
-      <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
-        <Box justifyContent="space-between" flexWrap="wrap">
-          <Text color={t.text} weight="semibold">Account</Text>
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+        <Text color={t.dim} wrap="truncate-end">{acct ? `${acct.label} · ${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}` : 'No account: run Setup'}</Text>
+        <Text color={t.dim}>{`${mode}${when}`}</Text>
+      </Box>
+      {s.pending && (
+        <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
+          <Text color={BUSY} bold>Commit this?</Text>
+          <Text color={t.hi} mono wrap="truncate-end">{s.pending.msg}</Text>
+          <Text color={t.dim}>{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
           <Box gap={sp(v, 1)}>
-            <Button key="acct-detect" label="Detect" plain onPress={() => loadAccounts($)} />
-            <Button key="acct-add" label="+ Add" plain onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: !st.ui.acctOpen } }))} />
+            <Button key="pend-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
+            <Button key="pend-skip" label="Skip" onPress={() => skipPending($)} />
           </Box>
         </Box>
-        {s.accounts.length === 0 && <Text color={t.dim}>No git identity found. Add one, or press Detect.</Text>}
-        {s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
-        {acct && (
-          <Box justifyContent="space-between" flexWrap="wrap">
-            <Text color={t.dim} wrap="truncate-end">{`${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
-            <Box gap={sp(v, 1)} flexWrap="wrap">
-              <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
-              <Button key="acct-edit" label="Edit" plain onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: true, acct } }))} />
-              <Button key="acct-remove" label="Remove" plain onPress={() => removeAccount($, acct.id)} />
-            </Box>
-          </Box>
-        )}
-        {s.ui.acctOpen && (
-          <Box flexDirection="column">
-            <Box columnGap={sp(v, 2)} flexWrap="wrap">
-              <Input key="acct-label" label="Label" placeholder="Work" value={f.label} onInput={val => setForm({ label: val })} onSubmit={val => setForm({ label: val })} />
-              <Input key="acct-gh" label="GitHub login" placeholder="octocat" value={f.gh} onInput={val => setForm({ gh: val })} onSubmit={val => setForm({ gh: val })} />
-            </Box>
-            <Box columnGap={sp(v, 2)} flexWrap="wrap">
-              <Input key="acct-name" label="Name" value={f.name} onInput={val => setForm({ name: val })} onSubmit={val => setForm({ name: val })} />
-              <Input key="acct-email" label="Email" value={f.email} onInput={val => setForm({ email: val })} onSubmit={val => setForm({ email: val })} />
-            </Box>
-            <Box gap={sp(v, 1)}>
-              <Button key="acct-save" label="Save account" variant="primary" onPress={() => saveAccount($, s.ui.acct)} />
-              <Button key="acct-cancel" label="Cancel" onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: false } }))} />
-            </Box>
-          </Box>
-        )}
-      </Box>
-      <Box columnGap={sp(v, 2)} flexWrap="wrap">
-        <Input key="git-branch" label="Branch" placeholder={s.repo.current} value={g.branchAuto ? br : g.branch || s.repo.current} onInput={val => setGit({ branch: val === s.repo.current ? '' : val, branchAuto: false })} onSubmit={val => setGit({ branch: val === s.repo.current ? '' : val, branchAuto: false })} />
-        {bases.length > 0 && <Select key="git-base" label="Into" value={base} options={bases.map(b => ({ value: b }))} onSelect={val => setGit({ base: val })} />}
-      </Box>
-      <Seg v={v} id="ctype" value={g.type} items={TYPES.map(x => [x, x] as [string, string])} onPick={k => setGit({ type: k })} />
-      <Box borderStyle="round" borderColor={t.lo} paddingX={1} flexDirection="column">
-        <Text color={subject ? t.hi : t.dim} mono>{msg}</Text>
-        <Text color={t.dim} size="footnote">{s.task ? 'from your last prompt' : subject ? 'from the files changed, until you send a prompt' : 'from your last prompt, or the files changed'}</Text>
-        {g.body !== '' && <Text color={t.dim}>{g.body}</Text>}
+      )}
+      <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+        <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+          <Text color={t.text} weight="semibold">Next commit</Text>
+          <Text>
+            <Text color={OK} bold>{plan.type}</Text>
+            <Text color={t.dim}>{g.commitMode === 'manual' ? ' · your pick' : ' · chosen from the task'}</Text>
+          </Text>
+        </Box>
+        {g.commitMode === 'manual' && <Seg v={v} id="ctype" value={g.type} items={TYPES.map(x => [x, x] as [string, string])} onPick={k => setGit({ type: k })} />}
+        <Text color={plan.msg ? t.hi : t.dim} mono wrap="truncate-end">{plan.msg || 'Send a prompt, or change a file'}</Text>
+        <Text color={t.dim} size="footnote">{`${newBranch ? `new branch ${plan.branch}` : `on ${plan.branch}`} · ${staged} of ${s.repo.changed.length} files${g.push ? ' · push' : ''}${g.pr ? ` · ${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : ''}`}</Text>
       </Box>
       <Box flexDirection="column">
         {s.repo.changed.length === 0 && <Text color={t.dim}>Nothing uncommitted.</Text>}
@@ -684,13 +674,8 @@ export function Git($: $, v: V) {
           </Box>
         ))}
       </Box>
-      <Box borderStyle="round" borderColor={t.divider} paddingX={1} columnGap={sp(v, 2)} flexWrap="wrap">
-        <Check v={v} id="git-auto" on={g.autoCommit} label="Auto-commit" onPress={() => setGit({ autoCommit: !g.autoCommit })} />
-        {g.autoCommit && <Select key="git-when" value={g.autoWhen} options={AUTO_WHENS.map(a => ({ value: a.v, label: a.label }))} onSelect={val => setGit({ autoWhen: val as GitForm['autoWhen'] })} />}
-      </Box>
-      <Box flexDirection="column" alignItems="center">
+      <Box alignItems="center" flexDirection="column">
         <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => commit($, false)} />
-        <Text color={t.dim}>{summary}</Text>
       </Box>
       <Box justifyContent="space-between">
         <Button key="git-more" plain onPress={() => set($, st => ({ ui: { ...st.ui, more: !st.ui.more } }))}>
@@ -698,26 +683,7 @@ export function Git($: $, v: V) {
         </Button>
         <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
       </Box>
-      {s.ui.more && (
-        <Box flexDirection="column" gap={sp(v, 1)}>
-          <Box columnGap={sp(v, 2)} flexWrap="wrap">
-            <Select key="git-bp" label="Branch pattern" value={BRANCH_PRESETS.some(p => p.v === g.branchPattern) ? g.branchPattern : g.branchPattern} options={[...BRANCH_PRESETS, ...(BRANCH_PRESETS.some(p => p.v === g.branchPattern) ? [] : [{ v: g.branchPattern, label: 'Custom' }])].map(p => ({ value: p.v, label: p.label }))} onSelect={val => setGit({ branchPattern: val, branchAuto: true })} />
-            <Select key="git-mp" label="Message pattern" value={g.msgPattern} options={[...MSG_PRESETS, ...(MSG_PRESETS.some(p => p.v === g.msgPattern) ? [] : [{ v: g.msgPattern, label: 'Custom' }])].map(p => ({ value: p.v, label: p.label }))} onSelect={val => setGit({ msgPattern: val })} />
-          </Box>
-          <Input key="git-bpat" label="{type} {ticket} {slug} {user} {scope}" value={g.branchPattern} onInput={val => setGit({ branchPattern: val, branchAuto: true })} onSubmit={val => setGit({ branchPattern: val, branchAuto: true })} />
-          <Input key="git-mpat" label="{type} {subject} {Subject} {ticket} {branch}" value={g.msgPattern} onInput={val => setGit({ msgPattern: val })} onSubmit={val => setGit({ msgPattern: val })} />
-          <Box columnGap={sp(v, 2)} flexWrap="wrap">
-            <Input key="git-ticket" label="Ticket" value={g.ticket} onInput={val => setGit({ ticket: val })} onSubmit={val => setGit({ ticket: val })} />
-            <Input key="git-user" label="User" value={g.user} onInput={val => setGit({ user: val })} onSubmit={val => setGit({ user: val })} />
-          </Box>
-          <Input key="git-body" label="Body" rows={2} value={g.body} onInput={val => setGit({ body: val })} onSubmit={val => setGit({ body: val })} />
-          <Box flexWrap="wrap" columnGap={sp(v, 3)}>
-            {GIT_OPTS.map(([key, label]) => (
-              <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit({ [key]: !g[key] } as Partial<GitForm>)} />
-            ))}
-          </Box>
-        </Box>
-      )}
+      {s.ui.more && Options($, v)}
       {s.commits.length > 0 && (
         <Box flexDirection="column">
           <Rule v={v} />
@@ -732,6 +698,154 @@ export function Git($: $, v: V) {
           ))}
         </Box>
       )}
+    </Box>
+  )
+}
+
+// The account box: the accounts found, a token, or a login in the browser
+function AccountBox($: $, v: V) {
+  const { Box, Button, Input, Text } = v.ui
+  const { s, t } = v
+  const acct = s.accounts.find(a => a.id === s.accountId)
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
+      <Box justifyContent="space-between" flexWrap="wrap">
+        <Text color={t.text} weight="semibold">Account</Text>
+        <Button key="acct-detect" label="↻ Detect" plain onPress={() => loadAccounts($)} />
+      </Box>
+      {s.accounts.length === 0 && <Text color={t.dim}>No git identity or gh login found yet.</Text>}
+      {s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
+      {acct && (
+        <Box justifyContent="space-between" flexWrap="wrap">
+          <Text color={t.dim} wrap="truncate-end">{`${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
+          <Box gap={sp(v, 1)} flexWrap="wrap">
+            <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
+            <Button key="acct-remove" label="Remove" plain onPress={() => removeAccount($, acct.id)} />
+          </Box>
+        </Box>
+      )}
+      <Rule v={{ ...v, w: v.w - 4 }} />
+      <Text color={t.dim} size="footnote">Add a GitHub login: paste a token, or log in with gh in your browser.</Text>
+      <Box columnGap={sp(v, 1)} flexWrap="wrap">
+        <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => ghLoginToken($, val)} />
+        <Button key="gh-token-go" label="Add token" onPress={() => ghLoginToken($, s.ui.ghToken)} />
+        <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
+      </Box>
+      {s.ui.ghNote !== '' && <Text color={BUSY} wrap="wrap">{s.ui.ghNote}</Text>}
+    </Box>
+  )
+}
+
+// Setup for this repository, once: account, branch pattern, message pattern, commit mode, when
+function Setup($: $, v: V) {
+  const { Box, Button, Input, Text } = v.ui
+  const { s, t } = v
+  const g = s.git
+  const setGit = (patch: Partial<GitForm>) => setGitPref($, patch)
+  const step = s.ui.gitStep
+  const go = (n: number) => set($, st => ({ ui: { ...st.ui, gitStep: n } }))
+  const titles = ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']
+  const last = g.commitMode === 'manual' ? 3 : 4
+  const nav = (
+    <Box justifyContent="space-between" flexWrap="wrap">
+      {step > 0 ? <Button key="setup-back" label="‹ Back" onPress={() => go(step - 1)} /> : <Text />}
+      {step < last ? (
+        <Button key="setup-next" label="Next ›" variant="primary" onPress={() => go(step + 1)} />
+      ) : (
+        <Button key="setup-done" label="Done" variant="primary" onPress={() => Promise.all([setGit({ setupDone: true }), go(0)])} />
+      )}
+    </Box>
+  )
+  const sample = { ...g, subject: 'add login page', type: 'feat', ticket: g.ticket || 'API-12' }
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+        {titles.slice(0, last + 1).map((name, i) => (
+          <Text key={`st-${i}`} color={i === step ? t.accent : i < step ? OK : t.dim} bold={i === step}>{`${i < step ? '✓' : '○'} ${name}`}</Text>
+        ))}
+      </Box>
+      {step === 0 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">Which identity commits in this repository?</Text>
+          {AccountBox($, v)}
+        </Box>
+      )}
+      {step === 1 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">How are branches named? Cockpit cuts one off the base branch for each piece of work, kind chosen from the task (feature, fix, docs, …).</Text>
+          <Seg v={v} id="bp" value={g.branchPattern} items={BRANCH_PRESETS.map(p => [p.v, p.label] as [string, string])} onPick={k => setGit({ branchPattern: k, branchAuto: true })} />
+          <Input key="git-bpat" label="Pattern" value={g.branchPattern} onInput={val => setGit({ branchPattern: val, branchAuto: true })} onSubmit={val => setGit({ branchPattern: val, branchAuto: true })} />
+          <Text color={t.dim} size="footnote">{`{kind} {type} {ticket} {slug} {user} · e.g. ${branchName({ ...sample, branchAuto: true }, g.base || 'main')}`}</Text>
+          <Box columnGap={sp(v, 2)} flexWrap="wrap">
+            <Input key="git-ticket" label="Ticket" placeholder="API-12" value={g.ticket} onInput={val => setGit({ ticket: val })} onSubmit={val => setGit({ ticket: val })} />
+            <Input key="git-user" label="User" value={g.user} onInput={val => setGit({ user: val })} onSubmit={val => setGit({ user: val })} />
+          </Box>
+          <Check v={v} id="opt-branchAuto" on={g.branchAuto} label="Cut a new branch when on the base branch" onPress={() => setGit({ branchAuto: !g.branchAuto })} />
+        </Box>
+      )}
+      {step === 2 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">How are commit messages written? The type comes from the task; the subject from your prompt.</Text>
+          <Seg v={v} id="mp" value={g.msgPattern} items={MSG_PRESETS.map(p => [p.v, p.label] as [string, string])} onPick={k => setGit({ msgPattern: k })} />
+          <Input key="git-mpat" label="Pattern" value={g.msgPattern} onInput={val => setGit({ msgPattern: val })} onSubmit={val => setGit({ msgPattern: val })} />
+          <Text color={t.dim} size="footnote">{`{type} {subject} {Subject} {ticket} {branch} · e.g. ${commitMsg(sample, 'x')}`}</Text>
+        </Box>
+      )}
+      {step === 3 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">What happens to changes Claude makes?</Text>
+          {COMMIT_MODES.map(([id, label, desc]) => (
+            <Box key={`cm-${id}`} columnGap={sp(v, 1)}>
+              <Button key={`mode-${id}`} label={label} variant={g.commitMode === id ? 'primary' : 'secondary'} onPress={() => setGit({ commitMode: id })} />
+              <Text color={t.dim} wrap="wrap">{desc}</Text>
+            </Box>
+          ))}
+        </Box>
+      )}
+      {step === 4 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">{g.commitMode === 'auto' ? 'When does Cockpit commit?' : 'When does Cockpit propose a commit?'}</Text>
+          <Seg v={v} id="when" value={g.autoWhen} items={AUTO_WHENS.map(a => [a.v, a.label] as [string, string])} onPick={k => setGit({ autoWhen: k as GitForm['autoWhen'] })} />
+          <Box flexWrap="wrap" columnGap={sp(v, 3)}>
+            <Check v={v} id="opt-push" on={g.push} label="Push after commit" onPress={() => setGit({ push: !g.push })} />
+            <Check v={v} id="opt-pr" on={g.pr} label="Open pull request" onPress={() => setGit({ pr: !g.pr })} />
+            <Check v={v} id="opt-preTest" on={g.preTest} label="Only after the testers pass" onPress={() => setGit({ preTest: !g.preTest })} />
+          </Box>
+        </Box>
+      )}
+      {nav}
+    </Box>
+  )
+}
+
+// Everything the setup asked, editable later
+function Options($: $, v: V) {
+  const { Box, Input, Select } = v.ui
+  const { s } = v
+  const g = s.git
+  const setGit = (patch: Partial<GitForm>) => setGitPref($, patch)
+  const bases = [...new Set([g.base || s.repo.current, ...s.repo.branches])].filter(Boolean)
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      {AccountBox($, v)}
+      <Box columnGap={sp(v, 2)} flexWrap="wrap">
+        <Select key="git-mode" label="Mode" value={g.commitMode} options={COMMIT_MODES.map(([id, label]) => ({ value: id, label }))} onSelect={val => setGit({ commitMode: val as GitForm['commitMode'] })} />
+        {g.commitMode !== 'manual' && <Select key="git-when" label="When" value={g.autoWhen} options={AUTO_WHENS.map(a => ({ value: a.v, label: a.label }))} onSelect={val => setGit({ autoWhen: val as GitForm['autoWhen'] })} />}
+        {bases.length > 0 && <Select key="git-base" label="Base" value={g.base || s.repo.current} options={bases.map(b => ({ value: b }))} onSelect={val => setGit({ base: val })} />}
+      </Box>
+      <Input key="git-branch" label="Branch (blank: by the pattern)" placeholder={s.repo.current} value={g.branch} onInput={val => setGit({ branch: val })} onSubmit={val => setGit({ branch: val })} />
+      <Input key="git-bpat" label="Branch pattern" value={g.branchPattern} onInput={val => setGit({ branchPattern: val, branchAuto: true })} onSubmit={val => setGit({ branchPattern: val, branchAuto: true })} />
+      <Input key="git-mpat" label="Message pattern" value={g.msgPattern} onInput={val => setGit({ msgPattern: val })} onSubmit={val => setGit({ msgPattern: val })} />
+      <Box columnGap={sp(v, 2)} flexWrap="wrap">
+        <Input key="git-ticket" label="Ticket" value={g.ticket} onInput={val => setGit({ ticket: val })} onSubmit={val => setGit({ ticket: val })} />
+        <Input key="git-user" label="User" value={g.user} onInput={val => setGit({ user: val })} onSubmit={val => setGit({ user: val })} />
+      </Box>
+      <Input key="git-body" label="Body" rows={2} value={g.body} onInput={val => setGit({ body: val })} onSubmit={val => setGit({ body: val })} />
+      <Box flexWrap="wrap" columnGap={sp(v, 3)}>
+        {GIT_OPTS.map(([key, label]) => (
+          <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit({ [key]: !g[key] } as Partial<GitForm>)} />
+        ))}
+      </Box>
     </Box>
   )
 }
