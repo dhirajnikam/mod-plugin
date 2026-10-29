@@ -16,6 +16,7 @@ import {
   openPane,
   skipPending,
   refreshRepo,
+  registerExperts,
   set,
   startPipeline,
   setTheme,
@@ -52,6 +53,7 @@ export const register: Register = on => {
     await loadGitPrefs($)
     await loadAccounts($)
     await measure($)
+    void registerExperts($)
     void discoverAgentTypes($)
     // Live figures: a redraw each second while anything runs; the repo and usage read again every 15 s while the pane is shown
     $.clock.every(1000, async () => {

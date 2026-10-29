@@ -265,6 +265,21 @@ export async function startAgent($: $, a: { prompt: string; description: string;
   return { agentId: 'agentId' in r && r.agentId ? r.agentId : '' }
 }
 
+// The experts from the mod's own agents/*.md, registered as cockpit:<name> so they dispatch however the mod was loaded
+// (a plugin's agent files are read only at startup; a mod that loads later, or reloads, registers its own)
+export async function registerExperts($: $) {
+  const dir = `${$.plugin.root}/agents`
+  for (const f of await $.fs.list(dir).catch(() => [])) {
+    if (!f.name.endsWith('.md')) continue
+    const text = await $.fs.read(`${dir}/${f.name}`).catch(() => '')
+    const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+    if (!m) continue
+    const head: Record<string, string> = Object.fromEntries((m[1] ?? '').split('\n').map(l => [l.slice(0, l.indexOf(':')).trim(), l.slice(l.indexOf(':') + 1).trim()]).filter(([k]) => k))
+    const spec = { name: head.name ?? f.name.slice(0, -3), description: head.description ?? '', prompt: (m[2] ?? '').trim(), ...(head.model ? { model: head.model } : {}), ...(head.tools ? { tools: String(head.tools).split(',').map((t: string) => t.trim()) } : {}) }
+    await $.agent.register(spec).catch(e => $.ui.log(`cockpit: could not register the ${spec.name}: ${String(e)}`))
+  }
+}
+
 // An expert's brief: the task, the files touched, and the reports of the experts before it
 function expertPrompt(s: Ph, prior: string[]) {
   const touched = [...new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path))].slice(-12)

@@ -8,9 +8,10 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
+  on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), { value: { agent: `cockpit:${e.name}` } }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('process.run', async (_: unknown, e: any) => {
@@ -116,6 +117,20 @@ test('the Verify pipeline runs the Prover then the Breaker, handing the report a
   const b = await $.ui.mount(band as never)
   expect(JSON.stringify(await b.drawn())).toContain('tests 2/3')
   await b.unmount()
+})
+
+test('the six experts register from the agents folder at session start', async ($, on) => {
+  const log = stand($, on)
+  const names = ['planner', 'builder', 'reviewer', 'prover', 'breaker', 'scribe']
+  on('fs.list', async (_: unknown, e: any) => ({ value: String(e.path).endsWith('/agents') ? names.map(n => ({ name: `${n}.md`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) : [] }))
+  on('fs.read', async (_: unknown, e: any) => ({ value: `---\nname: ${String(e.path).split('/').pop()?.slice(0, -3)}\ndescription: an expert\nmodel: sonnet\ntools: Read, Bash\n---\nYou are an expert.` }))
+  on('command.register', async () => ({ value: {} }) as never)
+  on('clock.every', async () => ({ value: {} }) as never)
+  on('session.start', async () => ({ cwd: '/repo' }))
+  const r = await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(e => ({ err: String(e) }))
+  expect(JSON.stringify(r)).not.toContain('err')
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  expect(log.registered.sort()).toEqual(['breaker', 'builder', 'planner', 'prover', 'reviewer', 'scribe'])
 })
 
 test('a tester that cannot start says so', async ($, on) => {
