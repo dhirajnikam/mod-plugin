@@ -28,7 +28,10 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
     if (cmd.startsWith('git branch')) return out('master\nfeature/x\n')
     if (cmd.startsWith('git symbolic-ref')) return out('', 1)
     if (cmd.startsWith('git rev-parse')) return out('abc1234\n')
-    if (cmd.startsWith('git log')) return out('9e39bea\tfix(cockpit): make the mod load\t2 days ago\n2f5802f\tfeat(cockpit): add cockpit mod\t3 days ago\n')
+    // The graph: a merge of feature/x into master, the branch's commit, and their shared root
+    if (cmd.startsWith('git log --format=%h @{u}..HEAD')) return out('9e39bea\n')
+    if (cmd.startsWith('git log')) return out(['9e39bea\x1f5c1d2e0 7a7a7a7\x1fHEAD -> master, tag: v1.0\x1ffix(cockpit): make the mod load\x1f2 days ago\x1fDev', '7a7a7a7\x1f2f5802f\x1forigin/feature/x, feature/x\x1fadd the x\x1f3 days ago\x1fDev', '5c1d2e0\x1f2f5802f\x1forigin/master\x1fpolish\x1f3 days ago\x1fDev', '2f5802f\x1f\x1f\x1ffeat(cockpit): add cockpit mod\x1f4 days ago\x1fDev'].join('\n') + '\n')
+    if (cmd.startsWith('git show')) return out('Dev <dev@x.io>\n29 Oct 2026 10:00\n\nfix(cockpit): make the mod load\n\n a.ts | 3 ++-\n 1 file changed, 2 insertions(+), 1 deletion(-)')
     return out('')
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
@@ -43,9 +46,21 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   expect(drawn).toContain('⎇ master')
   expect(drawn).toContain('↑2')
   expect(drawn).toContain('renamed')
-  // The repository's own history, newest first
+  // The repository's own history as a graph: refs as chips, the merge's branch on a lane of its own
   expect(drawn).toContain('fix(cockpit): make the mod load')
   expect(drawn).toContain('2 days ago')
+  expect(drawn).toContain(' ⎇ master ')
+  expect(drawn).toContain(' ⌑ v1.0 ')
+  expect(drawn).toContain(' ☁ origin/master ')
+  expect(drawn).toContain(' ⎇ feature/x ')
+  // Desktop draws each row as SVG: the merge's curve out to the branch's lane, and HEAD's ringed dot
+  expect(drawn).toContain('<path d=')
+  expect(drawn).toContain('r=\\"7\\"')
+  expect(drawn).toContain('1 not pushed')
+  // A press opens the commit: author, message, files
+  await ui.press({ key: 'cm-9e39bea' })
+  expect(JSON.stringify(await ui.drawn())).toContain('1 file changed')
+  await ui.press({ key: 'cm-9e39bea' })
   expect(drawn).toContain('with space.txt')
   expect(drawn).not.toContain('"release"')
 

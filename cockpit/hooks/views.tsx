@@ -13,6 +13,8 @@ import {
   ghLoginWeb,
   planCommit,
   pushNow,
+  pullNow,
+  showCommit,
   skipPending,
   gitInit,
   loadAccounts,
@@ -29,6 +31,9 @@ import {
 } from './actions'
 import {
   AGENT_TYPES,
+  graphRows,
+  graphSvg,
+  graphText,
   agentIconSvg,
   AUTO_WHENS,
   BRANCH_PRESETS,
@@ -848,9 +853,11 @@ export function Git($: $, v: V) {
         <Text>
           <Text color={t.accent} bold>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
           {s.repo.ahead > 0 && <Text color={BUSY}>{`  ↑${s.repo.ahead} to push`}</Text>}
+          {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
           {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
         </Text>
         <Box gap={sp(v, 1)} flexWrap="wrap">
+          {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => pullNow($)} />}
           {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => pushNow($)} />}
           <Button key="git-refresh" label="↻" plain onPress={() => refreshRepo($)} />
           <Button key="git-setup" label="⚙" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
@@ -868,6 +875,14 @@ export function Git($: $, v: V) {
           </Box>
         </Box>
       )}
+      {s.repo.changed.length === 0 && (
+        <Text>
+          <Text color={OK}>{'✓ '}</Text>
+          <Text color={t.text}>Working tree clean</Text>
+          <Text color={t.dim}>{s.repo.ahead ? `  ·  ${s.repo.ahead} to push` : s.repo.unpushed.length || s.repo.log.length ? '  ·  nothing to commit or push' : '  ·  nothing to commit'}</Text>
+        </Text>
+      )}
+      {s.repo.changed.length > 0 && (
       <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
         <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
           <Text color={t.text} weight="semibold">Next commit</Text>
@@ -883,9 +898,11 @@ export function Git($: $, v: V) {
           <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : ''}`}</Text>
         </Text>
         <Box justifyContent="flex-end">
-          <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => commit($, false)} />
+          {staged > 0 ? <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => commit($, false)} /> : <Text color={t.dim} size="footnote">Tick a file to commit it</Text>}
         </Box>
       </Box>
+      )}
+      {s.repo.changed.length > 0 && (
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
           <Text color={t.text} weight="semibold">{`Changes${s.repo.changed.length ? ` (${s.repo.changed.length})` : ''}`}</Text>
@@ -895,7 +912,6 @@ export function Git($: $, v: V) {
             </Button>
           )}
         </Box>
-        {s.repo.changed.length === 0 && <Text color={t.dim}>Nothing uncommitted.</Text>}
         {s.repo.changed.map(c => (
           <Box key={`ch-${c.path}`} columnGap={sp(v, 1)}>
             <Text color={s.staged[c.path] !== false ? t.accent : t.faint}>{s.staged[c.path] !== false ? '▣' : '□'}</Text>
@@ -908,37 +924,8 @@ export function Git($: $, v: V) {
           </Box>
         ))}
       </Box>
-      {s.repo.log.length > 0 && (
-        <Box flexDirection="column">
-          <Box justifyContent="space-between" flexWrap="wrap">
-            <Text color={t.text} weight="semibold">Commits</Text>
-            <Text color={t.dim} size="footnote">{s.repo.ahead ? `${s.repo.ahead} not pushed · then origin` : 'all pushed'}</Text>
-          </Box>
-          {s.repo.log.map((c, i) => {
-            const own = s.commits.find(x => x.sha === c.sha)
-            const unpushed = i < s.repo.ahead
-            return (
-              <Box key={`lg-${c.sha}`} flexDirection="column">
-                <Box columnGap={sp(v, 1)}>
-                  <Text color={unpushed ? BUSY : t.accent}>{unpushed ? '◉' : '●'}</Text>
-                  <Text color={t.dim} mono>{c.sha}</Text>
-                  <Box flexGrow={1} flexShrink={1}>
-                    <Text color={t.text} wrap="truncate-end">{c.msg}</Text>
-                  </Box>
-                  <Text color={t.dim} size="footnote">{c.when}</Text>
-                </Box>
-                {own && (
-                  <Text size="footnote" wrap="truncate-end">
-                    <Text color={t.dim}>{'│   '}</Text>
-                    <Text color={t.accent}>{own.auto ? 'auto-committed by Cockpit' : 'committed by Cockpit'}</Text>
-                    <Text color={t.dim}>{` · ${own.meta}`}</Text>
-                  </Text>
-                )}
-              </Box>
-            )
-          })}
-        </Box>
       )}
+      {s.repo.log.length > 0 && History($, v)}
       <Box justifyContent="space-between">
         <Button key="git-more" plain onPress={() => set($, st => ({ ui: { ...st.ui, more: !st.ui.more } }))}>
           <Text color={t.dim}>Account, patterns & options</Text>
@@ -946,6 +933,86 @@ export function Git($: $, v: V) {
         <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
       </Box>
       {s.ui.more && Options($, v)}
+    </Box>
+  )
+}
+
+// History: every branch, remote and tag as a graph, newest first. Each commit is a dot on its lane, lines carry the
+// lanes down, a merge opens a lane and a branch joins one; refs ride on the commit as chips (HEAD's branch filled,
+// local branches tinted, remotes and tags plain), unpushed commits are hollow, and a press opens the commit
+function History($: $, v: V) {
+  const { Box, Button, Svg, Text } = v.ui
+  const { s, t } = v
+  const log = s.repo.log
+  const rows = graphRows(log)
+  const width = Math.min(8, Math.max(1, ...rows.map(r => r.width)))
+  const wide = v.w >= 60
+  const pushed = s.repo.unpushed.length ? `${s.repo.unpushed.length} not pushed` : s.repo.ahead ? `${s.repo.ahead} not pushed` : 'all pushed'
+  const chip = (ref: string, key: string) => {
+    const head = ref.startsWith('HEAD')
+    const name = ref.replace(/^HEAD -> /, '').replace(/^tag: /, '')
+    const kind = head ? 'head' : ref.startsWith('tag: ') ? 'tag' : s.repo.branches.includes(name) ? 'branch' : 'remote'
+    const [fg, bg, mark] =
+      kind === 'head' ? [t.bg || 'inverseText', t.accent, '⎇ '] : kind === 'branch' ? [t.hi, t.wash, '⎇ '] : kind === 'tag' ? [OK, t.surface || undefined, '⌑ '] : [t.dim, t.surface || undefined, '☁ ']
+    return (
+      <Text key={key} color={fg} backgroundColor={bg} bold={kind === 'head'}>{` ${mark}${name} `}</Text>
+    )
+  }
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+        <Text color={t.text} weight="semibold">History</Text>
+        <Text color={t.dim} size="footnote">{`${log.length} commits · ${s.repo.branches.length} branches · ${pushed}`}</Text>
+      </Box>
+      {log.map((c, i) => {
+        const r = rows[i]
+        if (!r) return null
+        const isHead = c.refs.some(x => x.startsWith('HEAD'))
+        const unpushed = s.repo.unpushed.includes(c.sha)
+        const node = isHead ? 'head' : unpushed ? 'unpushed' : c.parents.length > 1 ? 'merge' : 'plain'
+        const own = s.commits.find(x => x.sha === c.sha)
+        const open = s.ui.openCommit === c.sha
+        const lane = (
+          <Box flexShrink={0}>
+            {Svg ? (
+              <Svg source={graphSvg(r, width, node)} alt={`${c.sha} ${c.msg}`} width={9 + (width - 1) * 14 + 9} height={30} />
+            ) : (
+              <Text mono>
+                {graphText(r, width, isHead ? '◉' : unpushed ? '○' : c.parents.length > 1 ? '◆' : '●').map((run, k) => (
+                  <Text key={`gr-${c.sha}-${k}`} color={run.fg}>{run.t}</Text>
+                ))}
+              </Text>
+            )}
+          </Box>
+        )
+        return (
+          <Box key={`lg-${c.sha}`} flexDirection="column">
+            <Box alignItems="center" columnGap={sp(v, 1)}>
+              {lane}
+              <Box flexGrow={1} flexShrink={1}>
+                <Button key={`cm-${c.sha}`} plain onPress={() => showCommit($, c.sha)}>
+                  <Text wrap="truncate-end">
+                    {c.refs.map((ref, k) => chip(ref, `ref-${c.sha}-${k}`))}
+                    {c.refs.length > 0 && <Text> </Text>}
+                    <Text color={unpushed ? BUSY : t.text} bold={isHead}>{c.msg}</Text>
+                    {own && <Text color={t.accent}>{own.auto ? '  ✦ auto' : '  ✦'}</Text>}
+                  </Text>
+                </Button>
+              </Box>
+              <Text color={t.faint} size="footnote" mono>{c.sha}</Text>
+              {wide && <Text color={t.faint} size="footnote">{c.when}</Text>}
+            </Box>
+            {open && (
+              <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1} marginLeft={2}>
+                <Text color={t.dim} size="footnote">{`${c.author} · ${c.when}${unpushed ? ' · not pushed' : ''}${own ? ` · ${own.auto ? 'auto-committed' : 'committed'} by Cockpit` : ''}`}</Text>
+                {(s.ui.commitInfo || 'Reading the commit…').split('\n').slice(0, 40).map((l, k) => (
+                  <Text key={`ci-${c.sha}-${k}`} color={/\|\s+\d+\s*[+-]*$/.test(l) || / changed, /.test(l) ? t.dim : t.text} size="footnote" mono={/\|/.test(l) || / changed, /.test(l)} wrap="truncate-end">{l || ' '}</Text>
+                ))}
+              </Box>
+            )}
+          </Box>
+        )
+      })}
     </Box>
   )
 }

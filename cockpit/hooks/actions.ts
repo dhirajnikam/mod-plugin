@@ -6,7 +6,7 @@ import { AGENT_TYPES, EXPERTS, PIPELINES, base, branchName, commitMsg, expertNam
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-13' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-14' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -83,10 +83,11 @@ export async function refreshRepo($: $) {
   await loadProject($)
   // -z: paths come unquoted whatever they hold; a rename is "R  new\0old\0"
   const st = await git($, ['status', '--porcelain=v1', '-z', '-b'])
-  if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, changed: [], branches: [], log: [] } })
+  if (st.exitCode !== 0) return set($, { repo: { isRepo: false, current: '', ahead: 0, behind: 0, changed: [], branches: [], log: [], unpushed: [] } })
   const [head = '', ...rest] = st.stdout.split('\0')
   const current = head.replace(/^## (No commits yet on )?/, '').split('...')[0]?.replace(/^HEAD \(no branch\)$/, '') ?? ''
   const ahead = Number(head.match(/ahead (\d+)/)?.[1] ?? 0)
+  const behind = Number(head.match(/behind (\d+)/)?.[1] ?? 0)
   // numstat -z: "a\td\tpath\0", a rename "a\td\t\0old\0new\0"
   const counts = new Map<string, [number, number]>()
   const num = (await git($, ['diff', '--numstat', '-z', 'HEAD'])).stdout.split('\0')
@@ -110,14 +111,34 @@ export async function refreshRepo($: $) {
   const branches = (await git($, ['branch', '--format=%(refname:short)'])).stdout.split('\n').map(b => b.trim()).filter(Boolean)
   const origin = (await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).stdout.trim().replace(/^origin\//, '')
   const base = origin || ['main', 'master', 'develop'].find(b => branches.includes(b)) || current
-  const log = (await git($, ['log', '-n', '12', '--format=%h%x09%s%x09%ar'])).stdout
+  // Every branch, remote and tag in graph order: hash, parents, refs, subject, age, author, one field each
+  const log = (await git($, ['log', '--branches', '--remotes', '--tags', '--topo-order', '-n', '40', '--format=%h%x1f%p%x1f%D%x1f%s%x1f%ar%x1f%an'])).stdout
     .split('\n')
     .filter(Boolean)
     .map(l => {
-      const [sha = '', msg = '', when = ''] = l.split('\t')
-      return { sha, msg, when }
+      const [sha = '', parents = '', refs = '', msg = '', when = '', author = ''] = l.split('\x1f')
+      return { sha, parents: parents.split(' ').filter(Boolean), refs: refs.split(', ').filter(r => r && !/\/HEAD$/.test(r)), msg, when, author }
     })
-  await set($, s => ({ repo: { isRepo: true, current, ahead, changed, branches, log }, git: { ...s.git, base: s.git.base || base } }))
+  // What the upstream lacks; no upstream, nothing is marked
+  const up = await git($, ['log', '--format=%h', '@{u}..HEAD'])
+  const unpushed = up.exitCode === 0 ? up.stdout.split('\n').filter(Boolean) : []
+  await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed }, git: { ...s.git, base: s.git.base || base } }))
+}
+
+// A commit opened in the graph: its author, date, whole message and the files it changed
+export async function showCommit($: $, sha: string) {
+  const open = (await read($, S)).ui.openCommit === sha
+  await set($, s => ({ ui: { ...s.ui, openCommit: open ? '' : sha, commitInfo: '' } }))
+  if (open) return
+  const r = await git($, ['show', '--stat=72', '--format=%an <%ae>%n%ad%n%n%B', '--date=format:%d %b %Y %H:%M', sha])
+  await set($, s => (s.ui.openCommit === sha ? { ui: { ...s.ui, commitInfo: r.exitCode === 0 ? r.stdout.trim() : `git show failed: ${firstLine(r)}` } } : {}))
+}
+
+// Brings the current branch up to its upstream, fast-forward only: a pull that would merge says so and changes nothing
+export async function pullNow($: $) {
+  const r = await git($, ['pull', '--ff-only'])
+  await toast($, r.exitCode === 0 ? `Pulled ${(await read($, S)).repo.current}` : `Pull failed: ${firstLine(r)}`)
+  await refreshRepo($)
 }
 
 export async function gitInit($: $) {

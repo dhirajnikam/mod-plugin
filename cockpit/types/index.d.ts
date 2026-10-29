@@ -103,6 +103,9 @@ export type Flow = {
   kind?: string
 }
 
+// One commit of the graph: refs as `git log %D` names them (HEAD -> main, origin/main, tag: v1)
+export type LogCommit = { sha: string; parents: string[]; refs: string[]; msg: string; when: string; author: string }
+
 export type Changed = { path: string; meta: string; add: number; del: number; from?: string }
 export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 
@@ -141,8 +144,8 @@ export type Ph = {
   // A description being turned into an agent right now
   creating: string
   git: GitForm
-  // log: the repository's recent commits, newest first
-  repo: { isRepo: boolean; current: string; ahead: number; changed: Changed[]; branches: string[]; log: { sha: string; msg: string; when: string }[] }
+  // log: the recent commits of every branch, remote and tag, in graph order; unpushed: the current branch's commits its upstream lacks
+  repo: { isRepo: boolean; current: string; ahead: number; behind: number; changed: Changed[]; branches: string[]; log: LogCommit[]; unpushed: string[] }
   staged: Record<string, boolean>
   pending: Pending | null
   commits: Commit[]
@@ -157,6 +160,9 @@ export type Ph = {
     openDec: string
     openAgent: string
     openFlow: string
+    // The commit opened in the graph, and what git show said of it
+    openCommit: string
+    commitInfo: string
     fileView: 'tree' | 'list'
     collapsed: Record<string, boolean>
     treeSel: string
