@@ -11,6 +11,10 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   const ran: string[][] = []
   const toasts: string[] = []
   on('clock.now', async () => ({ value: 1_000_000 }))
+  on('prompt.submit', async (_, e) => ({ text: e.text }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
   on('ui.toast', async (_, e) => (toasts.push(String((e as { text?: unknown }).text ?? JSON.stringify(e))), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('process.run', async (_, e) => {
@@ -38,7 +42,8 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
 
   // Untick keep.txt (staged earlier), give a subject, commit
   await ui.press({ key: 'stage-keep.txt' })
-  await (ui as never as { input: (t: object) => Promise<unknown> }).input({ key: 'git-subject', text: 'tidy files' } as never)
+  // The subject comes from the last prompt
+  await $.prompt.submit({ text: 'Tidy files', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   ran.length = 0
   await ui.press({ key: 'git-commit' })
   const commit = ran.find(a => a.includes('commit'))
@@ -57,6 +62,10 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
 test('a failed push says why', async ($, on) => {
   const toasts: string[] = []
   on('clock.now', async () => ({ value: 1_000_000 }))
+  on('prompt.submit', async (_, e) => ({ text: e.text }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
   on('ui.toast', async (_, e) => (toasts.push(JSON.stringify(e)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('process.run', async (_, e) => {
@@ -70,7 +79,7 @@ test('a failed push says why', async ($, on) => {
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
-  await (ui as never as { input: (t: object) => Promise<unknown> }).input({ key: 'git-subject', text: 'x' } as never)
+  await $.prompt.submit({ text: 'x', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   await ui.press({ key: 'git-more' })
   await ui.press({ key: 'opt-push' })
   await ui.press({ key: 'git-commit' })

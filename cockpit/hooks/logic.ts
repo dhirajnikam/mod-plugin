@@ -9,9 +9,8 @@ export const BRANCH_PRESETS = [
   { v: '{ticket}/{slug}', label: 'ticket/slug' },
 ]
 export const MSG_PRESETS = [
-  { v: '{type}({scope}): {subject}', label: 'Conventional' },
+  { v: '{type}: {subject}', label: 'Conventional' },
   { v: '{ticket} {type}: {subject}', label: 'Ticket first' },
-  { v: '[{scope}] {Subject}', label: 'Scoped' },
   { v: '{Subject}', label: 'Plain sentence' },
 ]
 export const AUTO_WHENS = [

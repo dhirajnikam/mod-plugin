@@ -9,6 +9,7 @@ import {
   judge,
   detectTheme,
   loadAccounts,
+  loadGitPrefs,
   measure,
   openPane,
   refreshRepo,
@@ -45,6 +46,7 @@ export const register: Register = on => {
       argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask> | tab <name> | test]',
     })
     await refreshRepo($)
+    await loadGitPrefs($)
     await loadAccounts($)
     await detectTheme($)
     await measure($)
@@ -164,9 +166,9 @@ export const register: Register = on => {
     const r = await next(e)
     if ('agentId' in r && r.agentId) {
       const id = r.agentId
-      await trackAgent($, { id, name: e.subagentType, type: e.subagentType, task: e.description, prompt: e.prompt })
       // A tester Cockpit started itself: its id is known here, whether or not the spawn call hands it back
       const key = e.description === 'Positive tester' ? 'pos' : e.description === 'Negative tester' ? 'neg' : null
+      await trackAgent($, { id, name: key ? e.description : e.subagentType, type: key ? (key === 'pos' ? 'Tester +' : 'Tester −') : e.subagentType, task: key ? e.description : e.description, prompt: e.prompt })
       if (key) await set($, s => (s.testers[key].status === 'running' && !s.testers[key].agentId ? { testers: { ...s.testers, [key]: { ...s.testers[key], agentId: id } } } : {}))
       else await set($, s => (s.agentTypes.includes(e.subagentType) ? {} : { agentTypes: [...s.agentTypes, e.subagentType] }))
     }

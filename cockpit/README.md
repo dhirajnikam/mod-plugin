@@ -9,7 +9,7 @@ A Claude Code mod that shows what a session is doing and gives you its controls,
   - **Files**: every file read, written, edited or deleted, as a folder tree or a timeline, with the changed lines.
   - **Tests**: a positive tester and a negative tester, run as two subagents.
   - **Agents**: every subagent, with View, Stop and Restart buttons and a form to start a new one. The form lists every agent type it finds: the built-ins, `.claude/agents/*.md` in the project and in `~/.claude`, each installed plugin's agents as `plugin:name`, and any type that has started this session; any other name can be typed in.
-  - **Git**: branch, commit type, scope and subject, a message preview, files to stage, auto-commit, and branch and message patterns.
+  - **Git**: branch, commit type, a message preview, files to stage, auto-commit, and branch and message patterns.
 - **Above the prompt**: Progress and Context bars. Click either one to open Overview.
 - **Spinner**: `✻ Editing login.ts … 1:23`. The desktop app keeps its own row and shows Cockpit's words in it.
 - **Under the prompt** (terminal only): `[cockpit] ⎇ branch ↑ahead @account +add −del tests $cost mode`.
@@ -31,7 +31,8 @@ The **Auto** theme (the default) follows Claude Code's own theme: White under a 
 
 - The tab reads the repository each time you open it (and after every turn); **↻ Refresh** reads it again.
 - **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
-- With no subject typed, the first line of your last prompt is used; the preview shows the message before you commit.
+- There is no subject to type: the message comes from the first line of your last prompt, or from the files changed; the preview shows it before you commit.
+- The account, commit type, branch pattern, auto-commit and every option are remembered per repository across sessions, until you change them.
 - The branch is the one checked out unless you type another (Cockpit creates it) or pick a branch pattern. **Into** lists your local branches and starts on the repository's default.
 - **Open pull request** needs a branch other than **Into**: type one or pick a branch pattern. Committing on the default branch itself pushes but opens no PR.
 - Failed pushes, PRs and commits say why in the toast.

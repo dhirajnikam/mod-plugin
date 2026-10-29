@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Changed, Decision, Ph, Tester, ThemeId } from '../types'
-import { AGENT_TYPES, branchName, commitMsg, nJ, parseCases, tally } from './logic'
+import type { Account, Agent, Changed, Decision, GitForm, Ph, Tester, ThemeId } from '../types'
+import { AGENT_TYPES, base, branchName, commitMsg, nJ, parseCases, tally } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
@@ -29,6 +29,9 @@ async function git($: $, args: string[]) {
 }
 
 const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
+
+// The subject a commit gets: the typed one, else the task's first line, else the files it touches
+export const subjectFor = (s: Ph, files: string[]) => s.git.subject.trim() || subjectOf(s.task) || (files.length ? `update ${[...new Set(files.map(base))].slice(0, 3).join(', ')}` : '')
 
 // A commit subject from the task's first line, when the form has none
 export const subjectOf = (task: string) => {
@@ -84,8 +87,7 @@ export async function commit($: $, auto: boolean) {
   const picked = s.repo.changed.filter(f => s.staged[f.path] !== false)
   const files = picked.map(f => f.path)
   if (!files.length) return toast($, 'Nothing staged to commit')
-  const subject = g.subject.trim() || subjectOf(s.task)
-  if (!subject) return toast($, 'Write a commit subject first')
+  const subject = subjectFor(s, files)
   if (g.preTest && !(s.testers.pos.status === 'done' && s.testers.neg.status === 'done' && ![...s.testers.pos.cases, ...s.testers.neg.cases].some(c => c.st === 'fail'))) {
     return toast($, 'Run tests first is on: the testers have not passed yet')
   }
@@ -199,6 +201,16 @@ const TESTER_PROMPTS = {
   neg: 'You are the NEGATIVE tester. Try to break the recent change: abuse, edge cases, bad input, races, spoofed or missing data. Write and run focused tests that attack it. Do not fix the code.',
 }
 
+// Starts a subagent in the background and settles once it has started, with its id. A start the auto-mode classifier
+// gave no verdict for (it is asked only for a model's request) is, as its message says, made once more.
+export async function startAgent($: $, a: { prompt: string; description: string; type: string }) {
+  const call = () => $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type }).catch(e => ({ deny: String(e) }))
+  let r = await call()
+  if ('deny' in r && r.deny && /no verdict/i.test(r.deny)) r = await call()
+  if ('deny' in r && r.deny) return { deny: /no verdict/i.test(r.deny) ? 'auto mode gave no verdict twice; ask Claude to start it from the chat' : r.deny }
+  return { agentId: 'agentId' in r && r.agentId ? r.agentId : '' }
+}
+
 export async function runTester($: $, key: 'pos' | 'neg') {
   const s = await read($, S)
   const touched = [...new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path))].slice(-12)
@@ -206,14 +218,13 @@ export async function runTester($: $, key: 'pos' | 'neg') {
   const name = key === 'pos' ? 'Positive tester' : 'Negative tester'
   // Running before the spawn: the agent.spawn hook may record the agent's id on it while the spawn settles
   await setTester($, key, { status: 'running', cases: [], startedAt: await $.clock.now() })
-  const r = await $.agent.spawn({ prompt, description: name, subagentType: 'general-purpose' }).catch(e => ({ deny: String(e) }))
-  if ('deny' in r && r.deny) {
+  const r = await startAgent($, { prompt, description: name, type: 'general-purpose' })
+  if ('deny' in r) {
     await setTester($, key, { status: 'error', cases: [], note: r.deny })
     return toast($, `${name} could not start: ${r.deny}`)
   }
-  const agentId = 'agentId' in r ? r.agentId : undefined
-  if (agentId) await set($, s => ({ testers: { ...s.testers, [key]: { ...s.testers[key], agentId } } }))
-  if (agentId) await trackAgent($, { id: agentId, name, type: key === 'pos' ? 'Tester +' : 'Tester −', task: TESTER_PROMPTS[key].split('.')[0] ?? name, prompt })
+  if (r.agentId) await set($, s => ({ testers: { ...s.testers, [key]: { ...s.testers[key], agentId: r.agentId } } }))
+  if (r.agentId) await trackAgent($, { id: r.agentId, name, type: key === 'pos' ? 'Tester +' : 'Tester −', task: name, prompt })
   await set($, st => ({ reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'] }))
   await toast($, `Started the ${name.toLowerCase()}`)
 }
@@ -258,16 +269,15 @@ export async function discoverAgentTypes($: $) {
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
-  const r = await $.agent.spawn({ prompt: task, description: task.slice(0, 60), subagentType: type }).catch(e => ({ deny: String(e) }))
-  if ('deny' in r && r.deny) return toast($, `Could not start the agent: ${r.deny}`)
-  const id = 'agentId' in r ? r.agentId : undefined
-  if (id) await trackAgent($, { id, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task })
-  await set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '', openAgent: id ?? '' } }))
+  const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
+  if ('deny' in r) return toast($, `Could not start the agent: ${r.deny}`)
+  if (r.agentId) await trackAgent($, { id: r.agentId, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task })
+  await set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '', openAgent: r.agentId } }))
   await toast($, `Started ${type}`)
 }
 
 export async function stopAgent($: $, id: string) {
-  const r = await $.tool.call({ tool: 'TaskStop', task_id: id }).catch(e => ({ deny: String(e) }))
+  const r = await $.tool.call({ tool: 'TaskStop', task_id: id, consent: 'The user pressed "Stop" on an agent in the Cockpit pane' }).catch(e => ({ deny: String(e) }))
   const ok = !('deny' in r && r.deny)
   const at = await $.clock.now()
   if (ok) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, status: 'stopped', endedAt: at, log: [...a.log, { at, t: 'Stopped by you' }] } : a)) }))
@@ -296,6 +306,23 @@ export async function openPane($: $) {
   return $.ui.open({ id: PANE, title: 'Cockpit' })
 }
 
+// The Git tab's settings, kept per repository across sessions: what you chose stays until you change it
+const GIT_PREFS: (keyof GitForm)[] = ['branchAuto', 'branchPattern', 'ticket', 'user', 'base', 'type', 'msgPattern', 'autoCommit', 'autoWhen', 'breaking', 'push', 'pr', 'draft', 'signoff', 'gpg', 'preTest']
+async function prefsKey($: $) {
+  return `git:${await $.session.cwd()}`
+}
+
+export async function setGit($: $, patch: Partial<GitForm>) {
+  await set($, s => ({ git: { ...s.git, ...patch } }))
+  const g = (await read($, S)).git
+  await $.store.set(await prefsKey($), Object.fromEntries(GIT_PREFS.map(k => [k, g[k]])))
+}
+
+export async function loadGitPrefs($: $) {
+  const saved = (await $.store.get(await prefsKey($))) as Partial<GitForm> | undefined
+  if (saved) await set($, s => ({ git: { ...s.git, ...saved } }))
+}
+
 // Switch theme; the pane repaints its backdrop from state
 export async function setTheme($: $, theme: ThemeId) {
   await set($, { theme })
@@ -306,7 +333,7 @@ export async function setTheme($: $, theme: ThemeId) {
 // Accounts: the ones saved across sessions, plus the global git identity and each gh login found on this machine
 export async function loadAccounts($: $) {
   const saved = ((await $.store.get('accounts')) as Account[] | undefined) ?? []
-  const chosen = ((await $.store.get('accountId')) as string | undefined) ?? ''
+  const chosen = ((await $.store.get(`account:${await $.session.cwd()}`)) as string | undefined) ?? ((await $.store.get('accountId')) as string | undefined) ?? ''
   const name = (await git($, ['config', '--global', 'user.name'])).stdout.trim()
   const email = (await git($, ['config', '--global', 'user.email'])).stdout.trim()
   const st = await $.process.run(['gh', 'auth', 'status']).catch(() => null)
@@ -330,6 +357,7 @@ export async function saveAccount($: $, a: Account) {
   await $.store.set('accounts', accounts.filter(x => x.id !== 'global' && !x.id.startsWith('gh-') || x.id === acct.id))
   await set($, st => ({ accounts, accountId: acct.id, ui: { ...st.ui, acctOpen: false, acct: { id: '', label: '', name: '', email: '', gh: '' } } }))
   await $.store.set('accountId', acct.id)
+  await $.store.set(`account:${await $.session.cwd()}`, acct.id)
   await toast($, `Saved account ${acct.label}`)
 }
 
@@ -343,6 +371,7 @@ export async function removeAccount($: $, id: string) {
 export async function useAccount($: $, id: string) {
   await set($, { accountId: id })
   await $.store.set('accountId', id)
+  await $.store.set(`account:${await $.session.cwd()}`, id)
 }
 
 // Write the chosen identity into this repository's own git config

@@ -16,7 +16,7 @@ import {
   setTheme,
   spawnAgent,
   stopAgent,
-  subjectOf,
+  subjectFor,
 } from './actions'
 import {
   AGENT_TYPES,
@@ -36,12 +36,16 @@ import {
   thrOf,
   tree,
 } from './logic'
+import { setGit as setGitPref } from './actions'
 import { BAD, BUSY, OK, THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
 
 type $ = EngineInterface
 type T = ElementTable<'terminal'>
 export type UI = Pick<T, 'Box' | 'Text' | 'Button' | 'Input' | 'Select'> & { Svg?: ElementTable<'desktop'>['Svg'] }
+// Spacing: cells on the terminal, the surface's own steps on a graphical one
+const sp = (v: V, n: number) => (v.desk ? (n >= 3 ? 'lg' : n === 2 ? 'md' : 'sm') : n)
+
 // desk: a graphical surface, whose native buttons draw their label in their own colour, so coloured marks sit beside them
 type V = { ui: UI; s: Ph; t: Theme; w: number; now: number; root: string; desk: boolean }
 
@@ -115,12 +119,12 @@ export function Header($: $, v: V) {
   const run = s.waiting ? 'Paused · needs you' : s.isWorking ? `Running · ${fmt(v.now - s.turnStart)}` : s.turnStart ? 'Finished' : 'Idle'
   return (
     <Box flexDirection="column">
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={1}>
-        <Box gap={1}>
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+        <Box gap={sp(v, 1)}>
           <Text color={t.accent} bold size="heading">Cockpit</Text>
           {w >= 60 && <Text color={t.dim} size="footnote">a Claude Code mod</Text>}
         </Box>
-        <Box gap={1} flexWrap="wrap">
+        <Box gap={sp(v, 1)} flexWrap="wrap">
           {v.desk ? (
             <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
           ) : (
@@ -137,8 +141,8 @@ export function Header($: $, v: V) {
           <Text backgroundColor={t.track} color={s.waiting ? BUSY : s.isWorking ? t.accent : t.dim}>{` ${run} `}</Text>
         </Box>
       </Box>
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={2}>
-        <Text color={t.dim}>{cut(v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/'), w)}</Text>
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 2)}>
+        <Text color={t.dim} wrap="truncate-start">{v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/')}</Text>
         <Text>
           <Text color={t.accent}>{s.repo.isRepo ? `⎇ ${s.repo.current}  ` : ''}</Text>
           <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : 'Ask mode'}</Text>
@@ -209,7 +213,7 @@ export function Overview($: $, v: V) {
   const win = s.ctx.window || 200000
   const decs = s.decisions.slice().reverse()
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={sp(v, 1)}>
       {needs !== '' && (
         <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between">
           <Box flexDirection="column">
@@ -219,7 +223,7 @@ export function Overview($: $, v: V) {
           {!s.waiting && <Button key="needs" label="Open Git" variant="primary" onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />}
         </Box>
       )}
-      <Box columnGap={2} flexWrap="wrap">
+      <Box columnGap={sp(v, 2)} flexWrap="wrap">
         {Svg ? (
           <Svg source={ringSvg(p.pct, p.stepName, { accent: t.accent, track: t.track, text: t.text, dim: t.dim })} alt={`${p.pct}% · ${p.stepName}`} width={120} height={120} />
         ) : (
@@ -233,10 +237,10 @@ export function Overview($: $, v: V) {
             ))}
           </Box>
         )}
-        <Box flexDirection="column" gap={1}>
-          <Text color={t.text} bold size="heading">{cut(s.task || 'No task yet: send a prompt.', w >= 48 ? w - 18 : w)}</Text>
+        <Box flexDirection="column" gap={sp(v, 1)} flexGrow={1} flexShrink={1}>
+          <Text color={t.text} bold size="heading" wrap="wrap">{s.task || 'No task yet: send a prompt.'}</Text>
           <Text color={s.isWorking ? t.accent : t.dim}>{p.stepName}</Text>
-          <Box columnGap={3} flexWrap="wrap">
+          <Box columnGap={sp(v, 3)} flexWrap="wrap">
             {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? BUSY : t.text], ['Changes', diff, adds || dels ? OK : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
                 <Text color={t.dim} size="footnote">{label}</Text>
@@ -246,7 +250,7 @@ export function Overview($: $, v: V) {
           </Box>
         </Box>
       </Box>
-      <Box flexWrap="wrap" columnGap={1}>
+      <Box flexWrap="wrap" columnGap={sp(v, 1)}>
         {p.steps.map(x => (
           <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : x.st === 'done' ? t.surface : undefined} color={x.st === 'pending' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'}>
             <Text color={x.st === 'done' ? OK : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : '○'}`}</Text>
@@ -263,7 +267,7 @@ export function Overview($: $, v: V) {
           </Text>
         </Box>
         <Segs ui={v.ui} w={Math.max(10, w - 4)} track={t.track} parts={s.ctx.segs.map(([, n], i) => [n / win, shades[i] ?? t.faint])} />
-        <Box flexWrap="wrap" columnGap={3}>
+        <Box flexWrap="wrap" columnGap={sp(v, 3)}>
           {s.ctx.segs.map(([name, n], i) => (
             <Text key={`lg-${name}`}>
               <Text color={shades[i] ?? t.faint}>■ </Text>
@@ -287,10 +291,12 @@ export function Overview($: $, v: V) {
           const open = s.ui.openDec === d.id
           return (
             <Box key={`dec-${d.id}`} flexDirection="column">
-              <Box justifyContent="space-between" columnGap={2}>
-                <Button key={`decb-${d.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openDec: open ? '' : d.id } }))}>
-                  <Text color={t.text}>{cut(d.q, Math.max(10, w - 14))}</Text>
-                </Button>
+              <Box justifyContent="space-between" columnGap={sp(v, 2)}>
+                <Box flexGrow={1} flexShrink={1}>
+                  <Button key={`decb-${d.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openDec: open ? '' : d.id } }))}>
+                    <Text color={t.text} wrap="truncate-end">{d.q}</Text>
+                  </Button>
+                </Box>
                 <Text color={d.status === 'you' ? t.dim : t.deep}>{d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}</Text>
               </Box>
               <Box justifyContent="space-between">
@@ -299,18 +305,18 @@ export function Overview($: $, v: V) {
               </Box>
               {open && (
                 <Box flexDirection="column" paddingLeft={2}>
-                  <Box gap={1}>
+                  <Box gap={sp(v, 1)}>
                     <Text color={t.dim}>Complexity</Text>
                     <Bar ui={v.ui} w={Math.max(4, w - 2 - 18)} frac={d.score / 10} fill={t.accent} track={t.track} />
                     <Text color={t.text}>{`${d.score}/10`}</Text>
                   </Box>
-                  <Box flexWrap="wrap" gap={1}>
+                  <Box flexWrap="wrap" gap={sp(v, 1)}>
                     {d.signals.map(sg => (
                       <Text key={`sig-${d.id}-${sg}`} backgroundColor={t.track} color={t.dim}>{` ${sg} `}</Text>
                     ))}
                   </Box>
                   {d.votes.length > 0 && (
-                    <Box gap={1}>
+                    <Box gap={sp(v, 1)}>
                       {d.votes.map((vote, i) => (
                         <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? OK : BAD}>
                           {vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
@@ -341,12 +347,16 @@ export function Files($: $, v: V) {
   const diffLines = (id: string, ls: { t: string; k: string }[]) =>
     ls.map((l, i) => {
       const [bg, c] = lineColor(l.k)
-      return <Text key={`${id}-l${i}`} backgroundColor={bg} color={c} mono>{pad(cut(l.t, w - 2), w - 2)}</Text>
+      return (
+        <Box key={`${id}-l${i}`} backgroundColor={bg} paddingX={1}>
+          <Text color={c} mono wrap="truncate-end">{l.t}</Text>
+        </Box>
+      )
     })
   const rows = tree(s.ops, s.ui.collapsed, v.root)
   const sel = s.ops.filter(o => o.path.replace(/\\/g, '/').endsWith(s.ui.treeSel) && s.ui.treeSel)
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between">
         <Seg v={v} id="fview" value={s.ui.fileView} items={[['tree', 'Folders'], ['list', 'Activity']]} onPick={k => set($, st => ({ ui: { ...st.ui, fileView: k } }))} />
         {adds || dels ? (
@@ -362,7 +372,8 @@ export function Files($: $, v: V) {
       {s.ui.fileView === 'tree' && rows.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.divider}>
           {rows.map(n => (
-            <Box key={`tree-${n.path}`} justifyContent="space-between" columnGap={1}>
+            <Box key={`tree-${n.path}`} justifyContent="space-between" columnGap={sp(v, 1)}>
+              <Box flexGrow={1} flexShrink={1}>
               <Button
                 key={`treeb-${n.path}`}
                 plain
@@ -370,12 +381,13 @@ export function Files($: $, v: V) {
               >
                 <Text backgroundColor={s.ui.treeSel === n.path ? t.wash : undefined} mono>
                   <Text color={t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (s.ui.collapsed[n.path] ? '▸ ' : '▾ ') : '  '}`}</Text>
-                  <Text color={n.isDir ? (n.touched ? t.hi : t.text) : n.op === 'Delete' ? t.faint : n.op ? t.text : t.dim} strikethrough={n.op === 'Delete'}>
-                    {pad(n.name, Math.max(4, w - 6 - n.depth * 2 - n.tag.length - 3))}
+                  <Text color={n.isDir ? (n.touched ? t.hi : t.text) : n.op === 'Delete' ? t.faint : n.op ? t.text : t.dim} strikethrough={n.op === 'Delete'} wrap="truncate-end">
+                    {n.name}
                   </Text>
                 </Text>
               </Button>
-              <Text color={opColor(n.op)}>{n.tag}</Text>
+              </Box>
+              <Text color={opColor(n.op)} wrap="truncate-end">{n.tag}</Text>
             </Box>
           ))}
         </Box>
@@ -405,12 +417,14 @@ export function Files($: $, v: V) {
             const open = s.ui.openFile === o.id
             return (
               <Box key={`op-${o.id}`} flexDirection="column">
-                <Box>
+                <Box columnGap={sp(v, 1)}>
                   <Text color={opColor(o.op)} mono>{pad(o.op, 7)}</Text>
-                  <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
-                    <Text color={t.text}>{pad(cut(o.path.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', ''), w - 22), w - 22)}</Text>
-                    <Text color={t.dim}>{` ${pad(o.meta, Math.min(10, w - 12))} ${open ? '⌄' : '›'}`}</Text>
-                  </Button>
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
+                      <Text color={t.text} wrap="truncate-end">{o.path.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', '')}</Text>
+                    </Button>
+                  </Box>
+                  <Text color={t.dim}>{`${o.meta} ${open ? '⌄' : '›'}`}</Text>
                 </Box>
                 {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={1}>{diffLines(o.id, o.lines)}</Box>}
                 <Rule v={v} />
@@ -433,7 +447,7 @@ export function Tests($: $, v: V) {
     ['neg', '✗', 'Negative tester', 'Tries to break it: abuse, edge cases, bad input'],
   ]
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={sp(v, 1)}>
       <Box flexDirection="column">
         <Text color={fail ? BAD : started ? OK : t.text} weight="semibold">{started ? `${pass} of ${all.length} cases passing${fail ? ` · ${fail} failing` : ''}` : 'Testers start after a change is written'}</Text>
         <Text color={t.dim} size="footnote">Two subagents: one proves it works, one tries to break it.</Text>
@@ -492,7 +506,7 @@ export function Agents($: $, v: V) {
   const done = s.agents.filter(a => a.status === 'done').length
   const types = s.agentTypes.length ? s.agentTypes : AGENT_TYPES
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between" flexWrap="wrap">
         <Text weight="semibold">
           <Text color={run ? t.accent : t.dim}>{`${run} running`}</Text>
@@ -512,7 +526,7 @@ export function Agents($: $, v: V) {
             onInput={val => set($, st => ({ ui: { ...st.ui, spawnTask: val } }))}
             onSubmit={val => val.trim() && spawnAgent($, val.trim(), s.ui.spawnType)}
           />
-          <Box columnGap={2} flexWrap="wrap">
+          <Box columnGap={sp(v, 2)} flexWrap="wrap">
             <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={[...types, ...(types.includes(s.ui.spawnType) ? [] : [s.ui.spawnType])].map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val } }))} />
             <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={types.includes(s.ui.spawnType) ? '' : s.ui.spawnType} onInput={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} onSubmit={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} />
             <Button key="spawn-go" label="Start" variant="primary" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
@@ -539,11 +553,11 @@ export function Agents($: $, v: V) {
                   <Text color={live ? t.deep : t.dim}>{`[${{ running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' }[a.status]}] ${open ? '⌄' : '›'}`}</Text>
                 </Button>
               </Box>
-              <Text color={t.dim}>{cut(a.task, w * 2)}</Text>
+              <Text color={t.dim} wrap="wrap">{a.task}</Text>
               {live ? <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={t.accent} track={t.track} /> : <Bar ui={v.ui} w={w - 4} frac={1} fill={stc} track={t.track} />}
               <Box justifyContent="space-between">
                 <Text color={t.dim}>{`${a.tools} tool calls · ${fmt(took)}`}</Text>
-                <Box gap={1}>
+                <Box gap={sp(v, 1)}>
                   <Button key={`view-${a.id}`} label="View" plain onPress={() => $.ui.view({ agentId: a.id })} />
                   {live && <Button key={`stop-${a.id}`} label="Stop" plain onPress={() => stopAgent($, a.id)} />}
                   <Button key={`restart-${a.id}`} label="Restart" plain onPress={() => spawnAgent($, a.prompt, a.type.startsWith('Tester') ? 'general-purpose' : a.type)} />
@@ -555,7 +569,7 @@ export function Agents($: $, v: V) {
                   {a.log.slice(-12).map((l, i) => (
                     <Text key={`log-${a.id}-${i}`}>
                       <Text color={t.dim}>{`${fmt(l.at - a.startedAt)}  `}</Text>
-                      <Text color={t.text}>{cut(l.t, w - 12)}</Text>
+                      <Text color={t.text} wrap="truncate-end">{l.t}</Text>
                     </Text>
                   ))}
                 </Box>
@@ -571,10 +585,10 @@ export function Git($: $, v: V) {
   const { Box, Button, Input, Select, Text } = v.ui
   const { s, t, w } = v
   const g = s.git
-  const setGit = (patch: Partial<GitForm>) => set($, st => ({ git: { ...st.git, ...patch } }))
+  const setGit = (patch: Partial<GitForm>) => setGitPref($, patch)
   if (!s.repo.isRepo) {
     return (
-      <Box flexDirection="column" gap={1}>
+      <Box flexDirection="column" gap={sp(v, 1)}>
         <Text color={t.dim}>This folder is not a git repository.</Text>
         <Box>
           <Button key="git-init" label="git init" variant="primary" onPress={() => gitInit($)} />
@@ -584,9 +598,9 @@ export function Git($: $, v: V) {
     )
   }
   // What a commit now would use: the typed subject, else the task's first line
-  const subject = g.subject.trim() || subjectOf(s.task)
+  const subject = subjectFor(s, s.repo.changed.filter(c => s.staged[c.path] !== false).map(c => c.path))
   const br = branchName({ ...g, subject }, s.repo.current)
-  const msg = subject ? commitMsg({ ...g, subject }, br) : 'Write a subject, or send a prompt first'
+  const msg = subject ? commitMsg({ ...g, subject }, br) : 'Send a prompt, or change a file'
   const base = g.base || s.repo.current
   const bases = [...new Set([base, ...s.repo.branches])].filter(Boolean)
   const staged = s.repo.changed.filter(c => s.staged[c.path] !== false).length
@@ -596,7 +610,7 @@ export function Git($: $, v: V) {
   const f = s.ui.acct
   const setForm = (patch: Partial<Account>) => set($, st => ({ ui: { ...st.ui, acct: { ...st.ui.acct, ...patch } } }))
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between" flexWrap="wrap">
         <Text>
           <Text color={t.accent}>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
@@ -607,7 +621,7 @@ export function Git($: $, v: V) {
       <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
         <Box justifyContent="space-between" flexWrap="wrap">
           <Text color={t.text} weight="semibold">Account</Text>
-          <Box gap={1}>
+          <Box gap={sp(v, 1)}>
             <Button key="acct-detect" label="Detect" plain onPress={() => loadAccounts($)} />
             <Button key="acct-add" label="+ Add" plain onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: !st.ui.acctOpen } }))} />
           </Box>
@@ -616,8 +630,8 @@ export function Git($: $, v: V) {
         {s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
         {acct && (
           <Box justifyContent="space-between" flexWrap="wrap">
-            <Text color={t.dim}>{cut(`${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`, w - 4)}</Text>
-            <Box gap={1} flexWrap="wrap">
+            <Text color={t.dim} wrap="truncate-end">{`${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
+            <Box gap={sp(v, 1)} flexWrap="wrap">
               <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
               <Button key="acct-edit" label="Edit" plain onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: true, acct } }))} />
               <Button key="acct-remove" label="Remove" plain onPress={() => removeAccount($, acct.id)} />
@@ -626,30 +640,29 @@ export function Git($: $, v: V) {
         )}
         {s.ui.acctOpen && (
           <Box flexDirection="column">
-            <Box columnGap={2} flexWrap="wrap">
+            <Box columnGap={sp(v, 2)} flexWrap="wrap">
               <Input key="acct-label" label="Label" placeholder="Work" value={f.label} onInput={val => setForm({ label: val })} onSubmit={val => setForm({ label: val })} />
               <Input key="acct-gh" label="GitHub login" placeholder="octocat" value={f.gh} onInput={val => setForm({ gh: val })} onSubmit={val => setForm({ gh: val })} />
             </Box>
-            <Box columnGap={2} flexWrap="wrap">
+            <Box columnGap={sp(v, 2)} flexWrap="wrap">
               <Input key="acct-name" label="Name" value={f.name} onInput={val => setForm({ name: val })} onSubmit={val => setForm({ name: val })} />
               <Input key="acct-email" label="Email" value={f.email} onInput={val => setForm({ email: val })} onSubmit={val => setForm({ email: val })} />
             </Box>
-            <Box gap={1}>
+            <Box gap={sp(v, 1)}>
               <Button key="acct-save" label="Save account" variant="primary" onPress={() => saveAccount($, s.ui.acct)} />
               <Button key="acct-cancel" label="Cancel" onPress={() => set($, st => ({ ui: { ...st.ui, acctOpen: false } }))} />
             </Box>
           </Box>
         )}
       </Box>
-      <Box columnGap={2} flexWrap="wrap">
+      <Box columnGap={sp(v, 2)} flexWrap="wrap">
         <Input key="git-branch" label="Branch" placeholder={s.repo.current} value={g.branchAuto ? br : g.branch || s.repo.current} onInput={val => setGit({ branch: val === s.repo.current ? '' : val, branchAuto: false })} onSubmit={val => setGit({ branch: val === s.repo.current ? '' : val, branchAuto: false })} />
         {bases.length > 0 && <Select key="git-base" label="Into" value={base} options={bases.map(b => ({ value: b }))} onSelect={val => setGit({ base: val })} />}
       </Box>
       <Seg v={v} id="ctype" value={g.type} items={TYPES.map(x => [x, x] as [string, string])} onPick={k => setGit({ type: k })} />
-      <Input key="git-scope" label="Scope" value={g.scope} onInput={val => setGit({ scope: val })} onSubmit={val => setGit({ scope: val })} />
-      <Input key="git-subject" label="Subject" placeholder={subjectOf(s.task) || 'what this commit does'} value={g.subject} onInput={val => setGit({ subject: val })} onSubmit={val => setGit({ subject: val })} />
       <Box borderStyle="round" borderColor={t.lo} paddingX={1} flexDirection="column">
         <Text color={subject ? t.hi : t.dim} mono>{msg}</Text>
+        <Text color={t.dim} size="footnote">{s.task ? 'from your last prompt' : subject ? 'from the files changed, until you send a prompt' : 'from your last prompt, or the files changed'}</Text>
         {g.body !== '' && <Text color={t.dim}>{g.body}</Text>}
       </Box>
       <Box flexDirection="column">
@@ -662,14 +675,16 @@ export function Git($: $, v: V) {
         {s.repo.changed.map(c => (
           <Box key={`ch-${c.path}`}>
             <Text color={s.staged[c.path] !== false ? t.accent : t.faint}>{s.staged[c.path] !== false ? '▣ ' : '□ '}</Text>
-            <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } }))}>
-              <Text color={t.text}>{pad(cut(c.path, w - 16), w - 16)}</Text>
-            </Button>
+            <Box flexGrow={1} flexShrink={1}>
+              <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } }))}>
+                <Text color={t.text} wrap="truncate-end">{c.path}</Text>
+              </Button>
+            </Box>
             <Text color={c.meta === 'new' ? OK : c.meta === 'deleted' ? BAD : c.meta.startsWith('renamed') ? BUSY : t.dim}>{` ${c.meta}`}</Text>
           </Box>
         ))}
       </Box>
-      <Box borderStyle="round" borderColor={t.divider} paddingX={1} columnGap={2} flexWrap="wrap">
+      <Box borderStyle="round" borderColor={t.divider} paddingX={1} columnGap={sp(v, 2)} flexWrap="wrap">
         <Check v={v} id="git-auto" on={g.autoCommit} label="Auto-commit" onPress={() => setGit({ autoCommit: !g.autoCommit })} />
         {g.autoCommit && <Select key="git-when" value={g.autoWhen} options={AUTO_WHENS.map(a => ({ value: a.v, label: a.label }))} onSelect={val => setGit({ autoWhen: val as GitForm['autoWhen'] })} />}
       </Box>
@@ -677,24 +692,26 @@ export function Git($: $, v: V) {
         <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => commit($, false)} />
         <Text color={t.dim}>{summary}</Text>
       </Box>
-      <Button key="git-more" plain onPress={() => set($, st => ({ ui: { ...st.ui, more: !st.ui.more } }))}>
-        <Text color={t.dim}>{pad('Patterns & options', w - 2)}</Text>
+      <Box justifyContent="space-between">
+        <Button key="git-more" plain onPress={() => set($, st => ({ ui: { ...st.ui, more: !st.ui.more } }))}>
+          <Text color={t.dim}>Patterns & options</Text>
+        </Button>
         <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
-      </Button>
+      </Box>
       {s.ui.more && (
-        <Box flexDirection="column" gap={1}>
-          <Box columnGap={2} flexWrap="wrap">
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box columnGap={sp(v, 2)} flexWrap="wrap">
             <Select key="git-bp" label="Branch pattern" value={BRANCH_PRESETS.some(p => p.v === g.branchPattern) ? g.branchPattern : g.branchPattern} options={[...BRANCH_PRESETS, ...(BRANCH_PRESETS.some(p => p.v === g.branchPattern) ? [] : [{ v: g.branchPattern, label: 'Custom' }])].map(p => ({ value: p.v, label: p.label }))} onSelect={val => setGit({ branchPattern: val, branchAuto: true })} />
             <Select key="git-mp" label="Message pattern" value={g.msgPattern} options={[...MSG_PRESETS, ...(MSG_PRESETS.some(p => p.v === g.msgPattern) ? [] : [{ v: g.msgPattern, label: 'Custom' }])].map(p => ({ value: p.v, label: p.label }))} onSelect={val => setGit({ msgPattern: val })} />
           </Box>
           <Input key="git-bpat" label="{type} {ticket} {slug} {user} {scope}" value={g.branchPattern} onInput={val => setGit({ branchPattern: val, branchAuto: true })} onSubmit={val => setGit({ branchPattern: val, branchAuto: true })} />
-          <Input key="git-mpat" label="{type} {scope} {subject} {Subject} {ticket} {branch}" value={g.msgPattern} onInput={val => setGit({ msgPattern: val })} onSubmit={val => setGit({ msgPattern: val })} />
-          <Box columnGap={2} flexWrap="wrap">
+          <Input key="git-mpat" label="{type} {subject} {Subject} {ticket} {branch}" value={g.msgPattern} onInput={val => setGit({ msgPattern: val })} onSubmit={val => setGit({ msgPattern: val })} />
+          <Box columnGap={sp(v, 2)} flexWrap="wrap">
             <Input key="git-ticket" label="Ticket" value={g.ticket} onInput={val => setGit({ ticket: val })} onSubmit={val => setGit({ ticket: val })} />
             <Input key="git-user" label="User" value={g.user} onInput={val => setGit({ user: val })} onSubmit={val => setGit({ user: val })} />
           </Box>
           <Input key="git-body" label="Body" rows={2} value={g.body} onInput={val => setGit({ body: val })} onSubmit={val => setGit({ body: val })} />
-          <Box flexWrap="wrap" columnGap={3}>
+          <Box flexWrap="wrap" columnGap={sp(v, 3)}>
             {GIT_OPTS.map(([key, label]) => (
               <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit({ [key]: !g[key] } as Partial<GitForm>)} />
             ))}

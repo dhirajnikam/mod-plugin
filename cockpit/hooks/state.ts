@@ -29,7 +29,7 @@ export const INITIAL: Ph = {
     scope: '',
     subject: '',
     body: '',
-    msgPattern: '{type}({scope}): {subject}',
+    msgPattern: '{type}: {subject}',
     autoCommit: false,
     autoWhen: 'tests',
     breaking: false,

@@ -37,9 +37,10 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     return { value: { isAnswered: true, text, usage: { inputTokens: 1, outputTokens: 1 } } }
   })
   on('model.fork', async () => ({ value: { isAnswered: true, text: 'The task is small.', usage: { inputTokens: 1, outputTokens: 1 } } }))
+  let spawns = 0
   on('agent.spawn', async (_: unknown, e: any) => {
     log.spawned.push(String(e.description))
-    return st.spawnFails ? { deny: 'no agents here' } : { model: 'haiku', agentId: `ag${log.spawned.length}` }
+    return st.spawnFails ? { deny: 'no agents here' } : { model: 'haiku', agentId: `ag${++spawns}` }
   })
   // The person answering a question: the second option
   on('tool.call', async (_: unknown, e: any) => {
