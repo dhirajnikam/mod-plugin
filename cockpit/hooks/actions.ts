@@ -6,7 +6,7 @@ import { AGENT_TYPES, PIPELINES, base, branchName, commitMsg, expertName, inferT
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-8' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-9' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -146,6 +146,7 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
   }
   await set($, st => ({
     commits: [{ sha, auto, msg, meta: [br, `${files.length} files`, ...extra].join(' · ') }, ...st.commits].slice(0, 30),
+    flows: st.flows.map((f, i) => (i === st.flows.length - 1 ? { ...f, commit: sha, reached: f.reached.includes('Commit') ? f.reached : [...f.reached, 'Commit'] } : f)),
     staged: {},
     pending: null,
     // The next commit starts from a fresh subject; the branch now is the checkout's

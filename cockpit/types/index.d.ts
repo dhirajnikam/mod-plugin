@@ -83,6 +83,21 @@ export type Account = { id: string; label: string; name: string; email: string; 
 // A commit Cockpit proposes in ask mode, waiting for your Commit or Skip
 export type Pending = { type: string; branch: string; msg: string; files: string[]; at: number }
 
+// One prompt's work: its steps, time, changes, decisions and commit
+export type Flow = {
+  id: string
+  task: string
+  startedAt: number
+  endedAt?: number
+  status: 'running' | 'done' | 'aborted'
+  reached: string[]
+  ops: number
+  add: number
+  del: number
+  decisions: number
+  commit: string
+}
+
 export type Changed = { path: string; meta: string; add: number; del: number; from?: string }
 export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 
@@ -99,6 +114,8 @@ export type Ph = {
   activity: string
   // Step index reached per step name; drives Progress
   reached: string[]
+  // Every prompt's work, oldest first; the last one is the current flow
+  flows: Flow[]
   ops: FileOp[]
   decisions: Decision[]
   waiting: string
@@ -126,6 +143,7 @@ export type Ph = {
     openFile: string
     openDec: string
     openAgent: string
+    openFlow: string
     fileView: 'tree' | 'list'
     collapsed: Record<string, boolean>
     treeSel: string

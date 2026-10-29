@@ -30,6 +30,7 @@ import {
   COMMIT_MODES,
   EXPERTS,
   PIPELINES,
+  STEPS,
   expertGlyph,
   expertName,
   verifyState,
@@ -227,6 +228,8 @@ export function Overview($: $, v: V) {
   const used = s.ctx.used
   const win = s.ctx.window || 200000
   const decs = s.decisions.slice().reverse()
+  const flows = s.flows.slice().reverse()
+  const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
       {needs !== '' && (
@@ -280,6 +283,56 @@ export function Overview($: $, v: V) {
           </Text>
         ))}
       </Box>
+      {flows.length > 0 && (
+        <Box flexDirection="column">
+          <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+            <Text color={t.text} weight="semibold">{`Flows (${flows.length})`}</Text>
+            <Text size="footnote">
+              <Text color={t.dim}>{`${fmt(totals.ms)} · `}</Text>
+              <Text color={OK}>{`+${totals.add}`}</Text>
+              <Text color={BAD}>{` −${totals.del}`}</Text>
+              <Text color={t.dim}>{` · ${totals.commits} commit${totals.commits === 1 ? '' : 's'}`}</Text>
+            </Text>
+          </Box>
+          {flows.map(f => {
+            const open = s.ui.openFlow === f.id
+            const live = f.status === 'running'
+            const col = live ? BUSY : f.status === 'done' ? OK : BAD
+            const took = (f.endedAt ?? v.now) - f.startedAt
+            return (
+              <Box key={`fl-${f.id}`} flexDirection="column">
+                <Box columnGap={sp(v, 1)}>
+                  <Text color={col}>{live ? '●' : f.status === 'done' ? '✓' : '✕'}</Text>
+                  <Text color={live ? BUSY : t.dim} size="footnote" mono>{fmt(took)}</Text>
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Button key={`flb-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFlow: open ? '' : f.id } }))}>
+                      <Text color={live ? t.text : t.text} bold={live} wrap="truncate-end">{f.task}</Text>
+                    </Button>
+                  </Box>
+                  <Text mono>
+                    {STEPS.map(name => (
+                      <Text key={`fs-${f.id}-${name}`} color={f.reached.includes(name) ? (live && name === f.reached[f.reached.length - 1] ? BUSY : OK) : t.faint}>{f.reached.includes(name) ? (live && name === f.reached[f.reached.length - 1] ? '●' : '✓') : '○'}</Text>
+                    ))}
+                  </Text>
+                  {(f.add || f.del) > 0 && (
+                    <Text size="footnote">
+                      <Text color={OK}>{`+${f.add}`}</Text>
+                      <Text color={BAD}>{` −${f.del}`}</Text>
+                    </Text>
+                  )}
+                  {f.commit !== '' && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+                </Box>
+                {open && (
+                  <Box flexDirection="column" paddingLeft={2}>
+                    <Text color={t.dim} size="footnote" wrap="wrap">{`${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
+                    <Text color={t.dim} size="footnote">{`${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
+                  </Box>
+                )}
+              </Box>
+            )
+          })}
+        </Box>
+      )}
       <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
         <Box justifyContent="space-between">
           <Text color={t.text} weight="semibold">Context window</Text>

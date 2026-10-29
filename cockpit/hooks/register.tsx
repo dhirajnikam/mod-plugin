@@ -29,7 +29,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-8' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-9' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -103,7 +103,16 @@ export const register: Register = on => {
     if (!e.command && !e.isMeta && e.text.trim()) {
       const now = await $.clock.now()
       changedThisTurn = false
-      await set($, { task: e.text.trim().split('\n')[0] ?? '', turnStart: now, isWorking: true, activity: 'Reading the request', reached: ['Understand'] })
+      const task = e.text.trim().split('\n')[0] ?? ''
+      await set($, s => ({
+        task,
+        turnStart: now,
+        isWorking: true,
+        activity: 'Reading the request',
+        reached: ['Understand'],
+        // The previous flow closes if it was still open; this prompt opens a new one
+        flows: [...s.flows.map(f => (f.status === 'running' ? { ...f, status: 'aborted' as const, endedAt: now } : f)), { id: `f${now}`, task, startedAt: now, status: 'running' as const, reached: ['Understand'], ops: 0, add: 0, del: 0, decisions: 0, commit: '' }].slice(-30),
+      }))
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -124,6 +133,7 @@ export const register: Register = on => {
       activity: activityOf(e.tool, input),
       ...(op ? { ops: [...s.ops, op].slice(-200) } : {}),
       ...(step && !s.reached.includes(step) ? { reached: [...s.reached, step] } : {}),
+      flows: s.flows.map((f, i) => (i === s.flows.length - 1 && f.status === 'running' ? { ...f, ops: f.ops + (op ? 1 : 0), add: f.add + (op?.add ?? 0), del: f.del + (op?.del ?? 0), reached: step && !f.reached.includes(step) ? [...f.reached, step] : f.reached } : f)),
     }))
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -136,7 +146,7 @@ export const register: Register = on => {
     const qs = e.questions
     const ids = qs.map((_, i) => `${e.tool_use_id ?? now}-${i}`)
     const decs: Decision[] = qs.map((q, i) => ({ id: ids[i] ?? String(i), q: q.question, opts: q.options.map(o => o.label), at: now, score: 0, signals: [], votes: [], status: 'scoring', result: '' }))
-    await set($, st => ({ decisions: [...st.decisions, ...decs].slice(-50) }))
+    await set($, st => ({ decisions: [...st.decisions, ...decs].slice(-50), flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, decisions: f.decisions + decs.length } : f)) }))
 
     const askPerson = async () => {
       await set($, { waiting: ids[0] ?? '', activity: 'Waiting for your answer' })
@@ -187,7 +197,12 @@ export const register: Register = on => {
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
       return r
     }
-    await set($, st => ({ isWorking: false, activity: 'Done', lastTurnMs: now - st.turnStart }))
+    await set($, st => ({
+      isWorking: false,
+      activity: 'Done',
+      lastTurnMs: now - st.turnStart,
+      flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached: st.reached } : f)),
+    }))
     await refreshRepo($)
     await measure($)
     const s = await read($, S)
