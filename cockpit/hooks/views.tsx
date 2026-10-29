@@ -6,6 +6,7 @@ import {
   commit,
   confirmPending,
   discoverAgentTypes,
+  runExpert,
   ghLoginToken,
   ghLoginWeb,
   planCommit,
@@ -15,8 +16,8 @@ import {
   removeAccount,
   useAccount,
   refreshRepo,
-  runTester,
   set,
+  startPipeline,
   setTheme,
   spawnAgent,
   stopAgent,
@@ -26,6 +27,10 @@ import {
   AUTO_WHENS,
   BRANCH_PRESETS,
   COMMIT_MODES,
+  EXPERTS,
+  PIPELINES,
+  expertName,
+  verifyState,
   GIT_OPTS,
   MSG_PRESETS,
   TYPES,
@@ -159,14 +164,12 @@ export function Header($: $, v: V) {
 export function Tabs($: $, v: V) {
   const { Box, Button, Text } = v.ui
   const { s, t } = v
-  const tFail = [...s.testers.pos.cases, ...s.testers.neg.cases].filter(c => c.st === 'fail').length
-  const tPass = [...s.testers.pos.cases, ...s.testers.neg.cases].filter(c => c.st !== 'fail' && c.st !== 'run').length
+  const vs = verifyState(s.agents)
   const running = s.agents.filter(a => a.status === 'running').length
   const tabs: [Tab, string, string][] = [
     ['overview', 'Overview', s.waiting ? '!' : ''],
     ['files', 'Files', s.ops.length ? String(s.ops.length) : ''],
-    ['tests', 'Tests', tFail ? `✗${tFail}` : tPass ? String(tPass) : ''],
-    ['agents', 'Agents', running ? String(running) : ''],
+    ['agents', 'Agents', running ? String(running) : vs.fail ? `✗${vs.fail}` : ''],
     ['git', 'Git', s.repo.changed.length ? String(s.repo.changed.length) : ''],
   ]
   const total = tabs.reduce((a, [, l, b]) => a + l.length + (b ? b.length + 3 : 0) + 2, 0)
@@ -446,70 +449,6 @@ export function Files($: $, v: V) {
   )
 }
 
-export function Tests($: $, v: V) {
-  const { Box, Button, Text } = v.ui
-  const { s, t, w } = v
-  const all = [...s.testers.pos.cases, ...s.testers.neg.cases]
-  const pass = all.filter(c => c.st === 'pass' || c.st === 'fixed').length
-  const fail = all.filter(c => c.st === 'fail').length
-  const started = s.testers.pos.status !== 'idle' || s.testers.neg.status !== 'idle'
-  const cards: ['pos' | 'neg', string, string, string][] = [
-    ['pos', '✓', 'Positive tester', 'Proves the feature works as intended'],
-    ['neg', '✗', 'Negative tester', 'Tries to break it: abuse, edge cases, bad input'],
-  ]
-  return (
-    <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box flexDirection="column">
-        <Text color={fail ? BAD : started ? OK : t.text} weight="semibold">{started ? `${pass} of ${all.length} cases passing${fail ? ` · ${fail} failing` : ''}` : 'Testers start after a change is written'}</Text>
-        <Text color={t.dim} size="footnote">Two subagents: one proves it works, one tries to break it.</Text>
-      </Box>
-      <Check v={v} id="autotest" on={s.autoTest} label="Run both testers when a turn changes files" onPress={() => set($, st => ({ autoTest: !st.autoTest }))} />
-      {cards.map(([key, icon, name, desc]) => {
-        const tz = s.testers[key]
-        const f = tz.cases.filter(c => c.st === 'fail').length
-        const p = tz.cases.length - f
-        const count = tz.status === 'idle' ? 'not started' : tz.status === 'running' ? `running · ${fmt(v.now - (tz.startedAt ?? v.now))}` : tz.status === 'error' ? 'could not start' : `${p}/${tz.cases.length} passed${f ? ` · ${f} failing` : ''}`
-        const segW = tz.cases.length ? Math.max(1, Math.floor((w - 4 - tz.cases.length) / tz.cases.length)) : 0
-        return (
-          <Box key={`tz-${key}`} flexDirection="column" borderStyle="round" borderColor={f ? BAD : tz.status === 'done' ? OK : tz.status === 'running' ? BUSY : t.divider} paddingX={1}>
-            <Box justifyContent="space-between">
-              <Box flexDirection="column">
-                <Text>
-                  <Text color={f ? BAD : tz.status === 'done' ? OK : t.dim}>{`${icon} `}</Text>
-                  <Text color={t.text}>{name}</Text>
-                </Text>
-                <Text color={t.dim}>{desc}</Text>
-              </Box>
-              <Text color={tz.status === 'running' ? BUSY : tz.status === 'error' || f ? BAD : tz.status === 'done' ? OK : t.dim}>{count}</Text>
-            </Box>
-            {tz.cases.length > 0 && (
-              <Text mono>
-                {tz.cases.map((c, i) => (
-                  <Text key={`cb-${key}-${i}`} color={c.st === 'fail' ? BAD : OK}>{`${'━'.repeat(segW)} `}</Text>
-                ))}
-              </Text>
-            )}
-            {tz.status === 'running' && <Bar ui={v.ui} w={w - 4} frac={((v.now / 400) % 10) / 10} fill={BUSY} track={t.track} />}
-            {tz.cases.map((c, i) => (
-              <Box key={`case-${key}-${i}`} flexDirection="column">
-                <Text>
-                  <Text color={c.st === 'fail' ? BAD : c.st === 'fixed' ? BUSY : OK}>{c.st === 'fail' ? '✗ ' : c.st === 'fixed' ? '↻ ' : '✓ '}</Text>
-                  <Text color={t.text}>{c.n}</Text>
-                </Text>
-                {c.err && <Text color={t.dim}>{`   ${c.err}`}</Text>}
-              </Box>
-            ))}
-            {tz.note && <Text color={t.dim}>{tz.note}</Text>}
-            <Box>
-              <Button key={`rerun-${key}`} label={tz.status === 'idle' ? '▶ Run' : '↻ Re-run'} onPress={() => (tz.status === 'running' ? undefined : runTester($, key))} />
-            </Box>
-          </Box>
-        )
-      })}
-    </Box>
-  )
-}
-
 export function Agents($: $, v: V) {
   const { Box, Button, Input, Select, Text } = v.ui
   const { s, t, w } = v
@@ -526,6 +465,37 @@ export function Agents($: $, v: V) {
           <Text color={t.dim}>{` · ${s.agents.length} total`}</Text>
         </Text>
         <Button key="spawn-toggle" label="+ New agent" onPress={() => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } }))} />
+      </Box>
+      <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+        <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+          <Text color={t.text} weight="semibold">Experts</Text>
+          <Text color={t.dim} size="footnote">work in turn, each handed the reports before it</Text>
+        </Box>
+        <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+          {PIPELINES.map(p => (
+            <Button key={`pipe-${p.name}`} label={`▶ ${p.label}`} variant={s.pipeline?.name === p.name ? 'primary' : 'secondary'} onPress={() => startPipeline($, p.name)} />
+          ))}
+        </Box>
+        {s.pipeline ? (
+          <Text>
+            <Text color={t.accent}>{`${PIPELINES.find(p => p.name === s.pipeline?.name)?.label ?? s.pipeline.name}: `}</Text>
+            {s.pipeline.steps.map((st, i) => (
+              <Text key={`ps-${i}`} color={i < s.pipeline!.index ? OK : i === s.pipeline!.index ? BUSY : t.dim}>{`${i ? ' › ' : ''}${expertName(st)}`}</Text>
+            ))}
+          </Text>
+        ) : (
+          <Text color={t.dim} size="footnote">{PIPELINES.map(p => `${p.label}: ${p.what}`).join(' · ')}</Text>
+        )}
+        {EXPERTS.map(x => (
+          <Box key={`ex-${x.type}`} justifyContent="space-between" columnGap={sp(v, 1)}>
+            <Text wrap="truncate-end">
+              <Text color={t.text}>{x.name}</Text>
+              <Text color={t.dim}>{`  ${x.what}`}</Text>
+            </Text>
+            <Button key={`run-${x.type}`} label="Run" plain onPress={() => runExpert($, x.type)} />
+          </Box>
+        ))}
+        <Check v={v} id="autoverify" on={s.autoVerify} label="Run Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />
       </Box>
       {s.ui.spawnOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
@@ -545,7 +515,7 @@ export function Agents($: $, v: V) {
           <Text color={t.dim} size="footnote">{`${types.length} types: built-ins, agents/*.md in this project and ~/.claude, and each plugin's as plugin:name`}</Text>
         </Box>
       )}
-      {s.agents.length === 0 && <Text color={t.dim}>No subagents yet. Testers, judges' work and agents Claude starts show here.</Text>}
+      {s.agents.length === 0 && <Text color={t.dim}>No agents yet. Experts, pipelines and the agents Claude starts show here.</Text>}
       {s.agents
         .slice()
         .reverse()
@@ -571,9 +541,21 @@ export function Agents($: $, v: V) {
                 <Box gap={sp(v, 1)}>
                   <Button key={`view-${a.id}`} label="View" plain onPress={() => $.ui.view({ agentId: a.id })} />
                   {live && <Button key={`stop-${a.id}`} label="Stop" plain onPress={() => stopAgent($, a.id)} />}
-                  <Button key={`restart-${a.id}`} label="Restart" plain onPress={() => spawnAgent($, a.prompt, a.type.startsWith('Tester') ? 'general-purpose' : a.type)} />
+                  <Button key={`restart-${a.id}`} label="Restart" plain onPress={() => spawnAgent($, a.prompt, a.type)} />
                 </Box>
               </Box>
+              {a.cases.length > 0 && (
+                <Box flexDirection="column">
+                  {a.cases.map((c, i) => (
+                    <Text key={`case-${a.id}-${i}`} wrap="truncate-end">
+                      <Text color={c.st === 'fail' ? BAD : c.st === 'fixed' ? BUSY : OK}>{c.st === 'fail' ? '✗ ' : c.st === 'fixed' ? '↻ ' : '✓ '}</Text>
+                      <Text color={t.text}>{c.n}</Text>
+                      {c.err && <Text color={t.dim}>{` · ${c.err}`}</Text>}
+                    </Text>
+                  ))}
+                </Box>
+              )}
+              {open && a.report !== '' && <Text color={t.dim} wrap="wrap">{a.report}</Text>}
               {open && (
                 <Box flexDirection="column">
                   {a.log.length === 0 && <Text color={t.dim}>No output yet.</Text>}
@@ -823,7 +805,7 @@ function Setup($: $, v: V) {
           <Box flexWrap="wrap" columnGap={sp(v, 3)}>
             <Check v={v} id="opt-push" on={g.push} label="Push after commit" onPress={() => setGit({ push: !g.push })} />
             <Check v={v} id="opt-pr" on={g.pr} label="Open pull request" onPress={() => setGit({ pr: !g.pr })} />
-            <Check v={v} id="opt-preTest" on={g.preTest} label="Only after the testers pass" onPress={() => setGit({ preTest: !g.preTest })} />
+            <Check v={v} id="opt-preTest" on={g.preTest} label="Only after the Verify experts pass" onPress={() => setGit({ preTest: !g.preTest })} />
           </Box>
         </Box>
       )}
@@ -889,29 +871,4 @@ export function seatDots(ui: UI, t: Theme, d: Decision) {
   return d.votes.map((v, i) => (
     <Text key={`dot-${d.id}-${i}`} color={v < 0 ? t.faint : v === top ? OK : t.dim}>{v < 0 || v !== top ? '○' : '●'}</Text>
   ))
-}
-
-// The testers' results above the prompt, as the design's chat card shows them
-export function TesterCard($: $, ui: UI, t: Theme, s: Ph, now: number) {
-  const { Box, Button, Text } = ui
-  const rows: ['pos' | 'neg', string, string][] = [['pos', '✓', 'Positive tester'], ['neg', '✗', 'Negative tester']]
-  return (
-    <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
-      {rows.map(([key, icon, name]) => {
-        const tz = s.testers[key]
-        const f = tz.cases.filter(c => c.st === 'fail').length
-        const status = tz.status === 'idle' ? 'not run' : tz.status === 'running' ? `running · ${fmt(now - (tz.startedAt ?? now))}` : tz.status === 'error' ? 'could not start' : `${tz.cases.length - f}/${tz.cases.length} passed${f ? ` · ${f} failing` : ''}`
-        return (
-          <Box key={`tc-${key}`} columnGap={1}>
-            <Text color={f ? BAD : tz.status === 'done' ? OK : tz.status === 'running' ? BUSY : t.dim}>{icon}</Text>
-            <Button key={`tcard-${key}`} plain onPress={() => set($, { tab: 'tests' })}>
-              <Text color={t.text}>{name}</Text>
-            </Button>
-            <Text color={f ? BAD : tz.status === 'done' ? OK : tz.status === 'running' ? BUSY : t.dim}>{status}</Text>
-          </Box>
-        )
-      })}
-      <Button key="tcard-hide" label="Hide" plain dimColor onPress={() => set($, st => ({ ui: { ...st.ui, testsHidden: true } }))} />
-    </Box>
-  )
 }

@@ -15,7 +15,7 @@ const SITES = [
   { component: 'ToolGroup', requestId: 'tg', props: { calls: [{ tool: 'Read', input: { file_path: '/x/a.ts' }, tool_use_id: 'r1' }, { tool: 'Grep', input: { pattern: 'foo' }, tool_use_id: 'g1' }], isActive: false, isExpanded: false } },
 ] as const
 
-const TABS = ['overview', 'files', 'tests', 'agents', 'git'] as const
+const TABS = ['overview', 'files', 'agents', 'git'] as const
 
 const text = (n: unknown): string => (typeof n === 'string' ? n : n && typeof n === 'object' ? ((n as { children?: unknown[] }).children ?? []).map(text).join('') : '')
 

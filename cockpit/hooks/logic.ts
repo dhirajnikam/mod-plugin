@@ -1,4 +1,4 @@
-import type { Decision, FileOp, GitForm, Line, Ph, TestCase } from '../types'
+import type { Agent, Decision, FileOp, GitForm, Line, Ph, TestCase } from '../types'
 
 export const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit']
 export const TYPES = ['feat', 'fix', 'refactor', 'perf', 'test', 'docs', 'chore']
@@ -15,7 +15,7 @@ export const MSG_PRESETS = [
 ]
 export const AUTO_WHENS = [
   { v: 'step', label: 'after each turn that changes files' },
-  { v: 'tests', label: 'after the testers pass' },
+  { v: 'tests', label: 'after the Verify experts pass' },
 ]
 export const COMMIT_MODES: [GitForm['commitMode'], string, string][] = [
   ['auto', 'Auto-commit', 'Cockpit commits by itself, type and branch chosen for you'],
@@ -44,14 +44,29 @@ export const kindOf = (type: string) => (type === 'feat' ? 'feature' : type)
 export const GIT_OPTS: [keyof GitForm, string][] = [
   ['branchAuto', 'New branch off the base, by the pattern'],
   ['breaking', 'Breaking change'],
-  ['preTest', 'Run tests first'],
+  ['preTest', 'Only after the Verify experts pass'],
   ['push', 'Push after commit'],
   ['pr', 'Open pull request'],
   ['draft', 'PR as draft'],
   ['signoff', 'Sign-off'],
   ['gpg', 'GPG sign'],
 ]
-export const AGENT_TYPES = ['general-purpose', 'Explore', 'Plan']
+// Cockpit's own experts, shipped as agents/<name>.md; they hand their reports to one another along a pipeline
+export const EXPERTS: { type: string; name: string; what: string }[] = [
+  { type: 'cockpit:planner', name: 'Planner', what: 'reads the task and the code, lays out the smallest plan' },
+  { type: 'cockpit:builder', name: 'Builder', what: 'implements the plan with the smallest diff that works' },
+  { type: 'cockpit:reviewer', name: 'Reviewer', what: 'reviews the change for bugs, edge cases and bloat' },
+  { type: 'cockpit:prover', name: 'Prover', what: 'proves the change works: tests for the happy paths' },
+  { type: 'cockpit:breaker', name: 'Breaker', what: 'tries to break the change: abuse, edge cases, bad input' },
+  { type: 'cockpit:scribe', name: 'Scribe', what: 'brings the README, docs and changelog up to date' },
+]
+export const PIPELINES: { name: string; label: string; steps: string[]; what: string }[] = [
+  { name: 'build', label: 'Build', steps: ['cockpit:planner', 'cockpit:builder', 'cockpit:reviewer', 'cockpit:prover', 'cockpit:breaker', 'cockpit:scribe'], what: 'plan, build, review, prove, break, document' },
+  { name: 'verify', label: 'Verify', steps: ['cockpit:prover', 'cockpit:breaker'], what: 'prove it works, then try to break it' },
+  { name: 'review', label: 'Review', steps: ['cockpit:reviewer'], what: 'a second pair of eyes on the diff' },
+]
+export const expertName = (type: string) => EXPERTS.find(x => x.type === type)?.name ?? type
+export const AGENT_TYPES = ['general-purpose', 'Explore', 'Plan', ...EXPERTS.map(x => x.type)]
 
 // Judge seats by complexity, and the two-thirds bar
 export const nJ = (score: number) => (score <= 3 ? 3 : score <= 6 ? 6 : 9)
@@ -199,6 +214,30 @@ export function parseCases(text: string): TestCase[] {
       st: (m[1] ?? '').toUpperCase() === 'PASS' ? 'pass' : (m[1] ?? '').toUpperCase() === 'FIXED' ? 'fixed' : 'fail',
       ...(m[3] ? { err: m[3] } : {}),
     }))
+}
+
+// The REPORT and HANDOFF lines of an expert's answer, or its last lines
+export function parseReport(text: string) {
+  const lines = text.split('\n').map(l => l.trim())
+  const pick = (tag: string) => lines.filter(l => l.toUpperCase().startsWith(`${tag}:`)).map(l => l.slice(tag.length + 1).trim()).pop() ?? ''
+  const report = pick('REPORT')
+  const handoff = pick('HANDOFF')
+  return report || handoff ? `REPORT: ${report || '—'}\nHANDOFF: ${handoff || 'nothing'}` : lines.filter(Boolean).slice(-6).join('\n')
+}
+
+// The latest Prover and Breaker: their cases together, and whether both are done without a failure
+export function verifyState(agents: Agent[]) {
+  const latest = (type: string) => agents.filter(a => a.type === type).pop()
+  const pair = [latest('cockpit:prover'), latest('cockpit:breaker')]
+  const cases = pair.flatMap(a => a?.cases ?? [])
+  const fail = cases.filter(c => c.st === 'fail').length
+  return {
+    cases,
+    fail,
+    pass: cases.length - fail,
+    running: pair.some(a => a?.status === 'running'),
+    passed: pair.every(a => a?.status === 'done') && cases.length > 0 && fail === 0,
+  }
 }
 
 export type TreeRow = { path: string; isDir: boolean; name: string; depth: number; tag: string; op: string; touched: boolean }

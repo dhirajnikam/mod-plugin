@@ -8,7 +8,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
@@ -40,6 +40,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   let spawns = 0
   on('agent.spawn', async (_: unknown, e: any) => {
     log.spawned.push(String(e.description))
+    log.prompts.push(String(e.prompt))
     return st.spawnFails ? { deny: 'no agents here' } : { model: 'haiku', agentId: `ag${++spawns}` }
   })
   // The person answering a question: the second option
@@ -86,28 +87,31 @@ test('ask mode sends every question to you, judges never run', async ($, on) => 
   expect(log.toasts.some(t => t.includes('Judge'))).toBe(false)
 })
 
-test('the testers start as subagents and their CASE lines fill the Tests tab and the band', async ($, on) => {
+test('the Verify pipeline runs the Prover then the Breaker, handing the report along; cases fill the Agents tab and the band', async ($, on) => {
   const log = stand($, on)
   await $.command.run({ command: 'cockpit', args: 'test' } as never)
-  expect(log.spawned).toEqual(['Positive tester', 'Negative tester'])
-  const ag = await $.ui.mount(pane('agents') as never)
+  expect(log.spawned).toEqual(['Prover'])
+  expect(log.prompts[0]).toContain('(none: you are first)')
+  let ag = await $.ui.mount(pane('agents') as never)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
-  expect(JSON.stringify(await ag.drawn())).toContain('Positive tester')
+  let drawn = JSON.stringify(await ag.drawn())
+  expect(drawn).toContain('Prover')
+  expect(drawn).toContain('cockpit:prover')
   await ag.unmount()
-  const tc = await $.turn.complete({ agentId: 'ag1', answer: 'done\nCASE PASS login works\nCASE PASS logout works', reason: 'answer', turnId: 'x', isAborted: false, durationMs: 1000 } as never).catch(e => ({ err: String(e) }))
-  expect(tc).toEqual({ text: '' })
-  const ag2 = await $.ui.mount(pane('agents') as never)
-  expect(JSON.stringify(await ag2.drawn())).toContain('[Done]')
-  await ag2.unmount()
-  await $.turn.complete({ agentId: 'ag2', answer: 'CASE FAIL empty password :: got 200', reason: 'answer', turnId: 'y', isAborted: false, durationMs: 1000 } as never)
-  expect(log.toasts.filter(t => /tester/.test(t))).toEqual(['◆ Started the positive tester', '◆ Started the negative tester', '◆ Positive tester: 2/2 passed', '◆ Negative tester: 0/1 passed · 1 failing'])
-  const ui = await $.ui.mount(pane('tests') as never)
-  await $.command.run({ command: 'cockpit', args: 'tab tests' } as never)
-  const drawn = JSON.stringify(await ui.drawn())
-  expect(drawn).toContain('2 of 3 cases passing · 1 failing')
+  await $.turn.complete({ agentId: 'ag1', answer: 'CASE PASS login works\nCASE PASS logout works\nREPORT: both paths pass\nHANDOFF: try empty passwords', reason: 'answer', turnId: 'x', isAborted: false, durationMs: 1000 } as never)
+  // The Breaker starts with the Prover's report in its brief
+  expect(log.spawned).toEqual(['Prover', 'Breaker'])
+  expect(log.prompts[1]).toContain('PRIOR REPORTS')
+  expect(log.prompts[1]).toContain('REPORT: both paths pass')
+  expect(log.prompts[1]).toContain('HANDOFF: try empty passwords')
+  await $.turn.complete({ agentId: 'ag2', answer: 'CASE FAIL empty password :: got 200\nREPORT: one hole', reason: 'answer', turnId: 'y', isAborted: false, durationMs: 1000 } as never)
+  expect(log.toasts.filter(t => /prover|breaker|pipeline/i.test(t))).toEqual(['◆ Started the prover', '◆ Prover: 2/2 passed', '◆ Started the breaker', '◆ Breaker: 0/1 passed · 1 failing', '◆ Verify pipeline done'])
+  ag = await $.ui.mount(pane('agents') as never)
+  drawn = JSON.stringify(await ag.drawn())
   expect(drawn).toContain('empty password')
   expect(drawn).toContain('got 200')
-  await ui.unmount()
+  expect(drawn).toContain('✓ ')
+  await ag.unmount()
   await $.command.run({ command: 'cockpit', args: 'focus on' } as never)
   const b = await $.ui.mount(band as never)
   expect(JSON.stringify(await b.drawn())).toContain('tests 2/3')

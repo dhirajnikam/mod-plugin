@@ -1,7 +1,7 @@
 export type Palette = 'paper' | 'white' | 'black' | 'solarized' | 'nord'
 // 'auto' follows Claude Code's own light or dark theme
 export type ThemeId = 'auto' | Palette
-export type Tab = 'overview' | 'files' | 'tests' | 'agents' | 'git'
+export type Tab = 'overview' | 'files' | 'agents' | 'git'
 export type Line = { t: string; k: 'a' | 'd' | 'c' }
 
 // One file operation seen in a tool call
@@ -31,14 +31,6 @@ export type Decision = {
 }
 
 export type TestCase = { n: string; st: 'pass' | 'fail' | 'fixed' | 'run'; err?: string }
-export type Tester = {
-  status: 'idle' | 'running' | 'done' | 'error'
-  cases: TestCase[]
-  agentId?: string
-  startedAt?: number
-  note?: string
-}
-
 export type Agent = {
   id: string
   name: string
@@ -50,7 +42,13 @@ export type Agent = {
   endedAt?: number
   tools: number
   log: { at: number; t: string }[]
+  // From the agent's answer: its CASE lines (the testers), and its REPORT and HANDOFF lines (the experts)
+  cases: TestCase[]
+  report: string
 }
+
+// A chain of experts on one task; each gets the reports of the ones before it
+export type Pipeline = { name: string; steps: string[]; index: number; agentId: string; reports: string[]; at: number }
 
 export type GitForm = {
   branch: string
@@ -104,9 +102,12 @@ export type Ph = {
   ops: FileOp[]
   decisions: Decision[]
   waiting: string
-  testers: { pos: Tester; neg: Tester }
-  autoTest: boolean
+  // Run the Verify experts after each turn that changes files
+  autoVerify: boolean
   agents: Agent[]
+  pipeline: Pipeline | null
+  // What Cockpit is starting right now, for its agent.spawn hook to name the record by
+  starting: { name: string; type: string; task: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   git: GitForm
@@ -131,7 +132,6 @@ export type Ph = {
     spawnOpen: boolean
     spawnTask: string
     spawnType: string
-    testsHidden: boolean
     acctOpen: boolean
     acct: Account
     // The setup wizard's step, the token being typed, and the gh web login's note

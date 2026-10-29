@@ -13,9 +13,10 @@ export const INITIAL: Ph = {
   ops: [],
   decisions: [],
   waiting: '',
-  testers: { pos: { status: 'idle', cases: [] }, neg: { status: 'idle', cases: [] } },
-  autoTest: false,
+  autoVerify: false,
   agents: [],
+  pipeline: null,
+  starting: null,
   agentTypes: [],
   git: {
     branch: '',
@@ -61,7 +62,6 @@ export const INITIAL: Ph = {
     spawnOpen: false,
     spawnTask: '',
     spawnType: 'general-purpose',
-    testsHidden: false,
     acctOpen: false,
     acct: { id: '', label: '', name: '', email: '', gh: '' },
     gitStep: 0,
@@ -71,5 +71,5 @@ export const INITIAL: Ph = {
 }
 
 // The state atom is declared in each file that reads it (the engine scans for it there).
-// Bump its 'ph-5' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
+// Bump its 'ph-7' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
 export const PANE = 'cockpit'

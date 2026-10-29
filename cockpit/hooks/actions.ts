@@ -1,12 +1,12 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Changed, Decision, GitForm, Pending, Ph, Tester, ThemeId } from '../types'
-import { AGENT_TYPES, base, branchName, commitMsg, inferType, nJ, parseCases, tally } from './logic'
+import type { Account, Agent, Changed, Decision, GitForm, Pending, Ph, ThemeId } from '../types'
+import { AGENT_TYPES, PIPELINES, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-5' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-7' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -99,9 +99,7 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
   const files = picked.map(f => f.path)
   if (!files.length) return toast($, 'Nothing staged to commit')
   const subject = subjectFor(s, files)
-  if (g.preTest && !(s.testers.pos.status === 'done' && s.testers.neg.status === 'done' && ![...s.testers.pos.cases, ...s.testers.neg.cases].some(c => c.st === 'fail'))) {
-    return toast($, 'Run tests first is on: the testers have not passed yet')
-  }
+  if (g.preTest && !verifyState(s.agents).passed) return toast($, 'Only after the Verify experts pass is on: they have not passed yet')
   const br = p.branch || s.repo.current
   if (br && br !== s.repo.current) {
     const sw = await git($, ['switch', br])
@@ -257,11 +255,6 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
   return t.passes ? winner : ''
 }
 
-const TESTER_PROMPTS = {
-  pos: 'You are the POSITIVE tester. Prove the recent change works as intended: find what changed (git diff, or the files named below), write or run focused tests for the happy paths, and run the existing test suite if there is one.',
-  neg: 'You are the NEGATIVE tester. Try to break the recent change: abuse, edge cases, bad input, races, spoofed or missing data. Write and run focused tests that attack it. Do not fix the code.',
-}
-
 // Starts a subagent in the background and settles once it has started, with its id. A start the auto-mode classifier
 // gave no verdict for (it is asked only for a model's request) is, as its message says, made once more.
 export async function startAgent($: $, a: { prompt: string; description: string; type: string }) {
@@ -272,34 +265,78 @@ export async function startAgent($: $, a: { prompt: string; description: string;
   return { agentId: 'agentId' in r && r.agentId ? r.agentId : '' }
 }
 
-export async function runTester($: $, key: 'pos' | 'neg') {
-  const s = await read($, S)
+// An expert's brief: the task, the files touched, and the reports of the experts before it
+function expertPrompt(s: Ph, prior: string[]) {
   const touched = [...new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path))].slice(-12)
-  const prompt = `${TESTER_PROMPTS[key]}\n\nTask: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}\n\nEnd your answer with one line per test case, exactly:\nCASE PASS <case name>\nCASE FAIL <case name> :: <what went wrong>`
-  const name = key === 'pos' ? 'Positive tester' : 'Negative tester'
-  // Running before the spawn: the agent.spawn hook may record the agent's id on it while the spawn settles
-  await setTester($, key, { status: 'running', cases: [], startedAt: await $.clock.now() })
-  const r = await startAgent($, { prompt, description: name, type: 'general-purpose' })
+  return `Task: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}\n\nPRIOR REPORTS:\n${prior.length ? prior.map((r, i) => `--- ${i + 1} ---\n${r}`).join('\n\n') : '(none: you are first)'}`
+}
+
+// Starts one expert; returns its agent id ('' when the start handed none back: the agent.spawn hook records it), or null when refused
+export async function runExpert($: $, type: string, prior: string[] = []) {
+  const s = await read($, S)
+  const name = expertName(type)
+  await set($, { starting: { name, type, task: s.task || name } })
+  const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type })
+  await set($, { starting: null })
   if ('deny' in r) {
-    await setTester($, key, { status: 'error', cases: [], note: r.deny })
-    return toast($, `${name} could not start: ${r.deny}`)
+    await toast($, `${name} could not start: ${r.deny}`)
+    return null
   }
-  if (r.agentId) await set($, s => ({ testers: { ...s.testers, [key]: { ...s.testers[key], agentId: r.agentId } } }))
-  if (r.agentId) await trackAgent($, { id: r.agentId, name, type: key === 'pos' ? 'Tester +' : 'Tester −', task: name, prompt })
-  await set($, st => ({ reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'] }))
+  if (r.agentId) await trackAgent($, { id: r.agentId, name, type, task: s.task || name, prompt: expertPrompt(s, prior) })
   await toast($, `Started the ${name.toLowerCase()}`)
+  return r.agentId
 }
 
-export async function setTester($: $, key: 'pos' | 'neg', t: Tester) {
-  await set($, s => ({ testers: { ...s.testers, [key]: t } }))
+// A pipeline: the experts in turn, each handed the reports so far
+export async function startPipeline($: $, name: string) {
+  const def = PIPELINES.find(p => p.name === name)
+  if (!def) return
+  const s = await read($, S)
+  if (s.pipeline) return toast($, `${PIPELINES.find(p => p.name === s.pipeline?.name)?.label ?? 'A pipeline'} is still running`)
+  const at = await $.clock.now()
+  await set($, { pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: [], at }, reached: s.reached.includes('Verify') ? s.reached : [...s.reached, 'Verify'] })
+  await bindExpert($, await runExpert($, def.steps[0] ?? '', []))
 }
 
-export async function finishTester($: $, key: 'pos' | 'neg', text: string) {
-  const cases = parseCases(text)
-  const fails = cases.filter(c => c.st === 'fail').length
-  await set($, s => ({ testers: { ...s.testers, [key]: { ...s.testers[key], status: 'done', cases, ...(cases.length ? {} : { note: 'No CASE lines in its answer' }) } } }))
-  await toast($, `${key === 'pos' ? 'Positive' : 'Negative'} tester: ${cases.length - fails}/${cases.length} passed${fails ? ` · ${fails} failing` : ''}`)
-  await note($, `${key === 'pos' ? '✓ Positive' : '✗ Negative'} tester · ${cases.length - fails}/${cases.length} passed${fails ? ` · ${fails} failing` : ''}`)
+// The started expert's id on the pipeline: the call's, else the one the agent.spawn hook recorded; a refusal ends the pipeline
+async function bindExpert($: $, id: string | null) {
+  if (id === null) return set($, { pipeline: null })
+  await set($, st => (st.pipeline ? { pipeline: { ...st.pipeline, agentId: st.pipeline.agentId || id } } : {}))
+}
+
+// The agent that just finished was the pipeline's: keep its report and start the next expert, or finish
+export async function advancePipeline($: $, agentId: string, answer: string) {
+  const s = await read($, S)
+  const p = s.pipeline
+  if (!p || p.agentId !== agentId) return
+  const reports = [...p.reports, `${expertName(p.steps[p.index] ?? '')}:\n${parseReport(answer)}`]
+  const index = p.index + 1
+  const next = p.steps[index]
+  if (!next) {
+    await set($, { pipeline: null })
+    const label = PIPELINES.find(x => x.name === p.name)?.label ?? p.name
+    await toast($, `${label} pipeline done`)
+    await note($, `⧉ ${label} pipeline done · ${reports.length} experts`)
+    const after = await read($, S)
+    if (p.name === 'verify' && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && verifyState(after.agents).passed) await decideCommit($)
+    return
+  }
+  await set($, { pipeline: { ...p, index, reports, agentId: '' } })
+  await bindExpert($, await runExpert($, next, reports))
+}
+
+// An agent's answer arrived: its cases and report go on its record
+export async function finishAgent($: $, agentId: string, answer: string, aborted: boolean) {
+  const at = await $.clock.now()
+  const cases = parseCases(answer)
+  const report = parseReport(answer)
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.status === 'running' ? { ...a, status: aborted ? 'stopped' : 'done', endedAt: at, cases, report, log: [...a.log, { at, t: 'Done · report ready' }] } : a)) }))
+  const a = (await read($, S)).agents.find(x => x.id === agentId)
+  if (a && cases.length) {
+    const fail = cases.filter(c => c.st === 'fail').length
+    await toast($, `${a.name}: ${cases.length - fail}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
+    await note($, `${fail ? '✗' : '✓'} ${a.name} · ${cases.length - fail}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
+  }
 }
 
 export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'>) {
@@ -307,7 +344,7 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
   // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count
   await set($, s => {
     const was = s.agents.find(x => x.id === a.id)
-    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [] }].slice(-40) }
+    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '' }].slice(-40) }
   })
 }
 
@@ -326,11 +363,13 @@ export async function discoverAgentTypes($: $) {
       }
     }
   }
-  await set($, s => ({ agentTypes: [...new Set([...AGENT_TYPES, ...s.agentTypes, ...found, ...s.agents.map(a => a.type)])].filter(x => !x.startsWith('Tester')) }))
+  await set($, s => ({ agentTypes: [...new Set([...AGENT_TYPES, ...s.agentTypes, ...found, ...s.agents.map(a => a.type)])] }))
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
+  await set($, { starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task } })
   const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
+  await set($, { starting: null })
   if ('deny' in r) return toast($, `Could not start the agent: ${r.deny}`)
   if (r.agentId) await trackAgent($, { id: r.agentId, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task })
   await set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '', openAgent: r.agentId } }))
@@ -341,7 +380,7 @@ export async function stopAgent($: $, id: string) {
   const r = await $.tool.call({ tool: 'TaskStop', task_id: id, consent: 'The user pressed "Stop" on an agent in the Cockpit pane' }).catch(e => ({ deny: String(e) }))
   const ok = !('deny' in r && r.deny)
   const at = await $.clock.now()
-  if (ok) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, status: 'stopped', endedAt: at, log: [...a.log, { at, t: 'Stopped by you' }] } : a)) }))
+  if (ok) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, status: 'stopped', endedAt: at, log: [...a.log, { at, t: 'Stopped by you' }] } : a)), pipeline: s.pipeline?.agentId === id ? null : s.pipeline }))
   await toast($, ok ? 'Stopped the agent' : `Could not stop it: ${'deny' in r ? r.deny : ''}`)
 }
 

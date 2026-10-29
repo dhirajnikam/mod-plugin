@@ -7,13 +7,12 @@ A Claude Code mod that shows what a session is doing and gives you its controls,
 - **Side pane** (`/cockpit`) with five tabs:
   - **Overview**: a progress ring, step chips, the context-window breakdown, a "Needs you" card, and a log of Claude's decisions with each judge's vote.
   - **Files**: every file read, written, edited or deleted, as a folder tree or a timeline, with the changed lines.
-  - **Tests**: a positive tester and a negative tester, run as two subagents.
-  - **Agents**: every subagent, with View, Stop and Restart buttons and a form to start a new one. The form lists every agent type it finds: the built-ins, `.claude/agents/*.md` in the project and in `~/.claude`, each installed plugin's agents as `plugin:name`, and any type that has started this session; any other name can be typed in.
+  - **Agents**: Cockpit's six experts and three pipelines, every subagent with View, Stop and Restart, and a form to start any agent type. The experts (`cockpit:planner`, `builder`, `reviewer`, `prover`, `breaker`, `scribe`) ship with the mod and work in turn: each is handed the task and the REPORT and HANDOFF lines of the experts before it. **Build** runs all six; **Verify** runs the Prover (proves the change works) then the Breaker (tries to break it), their CASE lines shown on their cards and as `tests ✓n/m` in the band; **Review** runs the Reviewer. The form lists every agent type it finds: the built-ins, the experts, `.claude/agents/*.md` in the project and in `~/.claude`, each installed plugin's agents as `plugin:name`, and any type that has started this session; any other name can be typed in.
   - **Git**: branch, commit type, a message preview, files to stage, auto-commit, and branch and message patterns.
 - **Above the prompt**: Progress and Context bars. Click either one to open Overview.
 - **Spinner**: `✻ Editing login.ts … 1:23`. The desktop app keeps its own row and shows Cockpit's words in it.
 - **Under the prompt** (terminal only): `[cockpit] ⎇ branch ↑ahead @account +add −del tests $cost mode`.
-- **In the chat**: your prompts as `›` rows, Claude's replies with a `●`, and tool activity as cards (file edits, searches, judge votes, subagents, commits) that open the matching tab when clicked. The latest turn ends with `✻ Done · ready to commit … Done in m:ss`. Tester results show as a card above the prompt.
+- **In the chat**: your prompts as `›` rows, Claude's replies with a `●`, and tool activity as cards (file edits, searches, judge votes, subagents, commits) that open the matching tab when clicked. The latest turn ends with `✻ Done · ready to commit … Done in m:ss`. A running pipeline shows its step above the prompt.
 
 ## Live figures
 
@@ -60,11 +59,11 @@ In **Auto · judge** mode, a quick model rates each question Claude asks from 0 
 | `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch theme (or click the dots in the pane header) |
 | `/cockpit mode <auto\|ask>` | who answers Claude's questions |
 | `/cockpit tab <overview\|files\|tests\|agents\|git>` | open a tab (`git` reads the repo again) |
-| `/cockpit test` | run both testers now |
+| `/cockpit test` | run the Verify pipeline now |
 
 ## Defaults that cost or publish
 
-Push and PR creation are **off** until you turn them on in Git → Patterns & options. Running the testers after each turn that changes files is **off** too (Tests tab), because each run starts two subagents.
+Push and PR creation are **off** until you turn them on in Git → Patterns & options. Running Verify after each turn that changes files is **off** too (Agents tab), because each run starts two subagents.
 
 ## Develop
 
@@ -79,7 +78,8 @@ Saving a file under `hooks/` reloads the mod when the turn ends. `claude plugin 
 |---|---|
 | `hooks/register.tsx` | event hooks: prompt, tool calls, judges, turn end, the spinner, band and status row |
 | `hooks/views.tsx` | the pane's header, tabs and five tab views |
-| `hooks/actions.ts` | git, judges, testers, agents, measuring context |
+| `hooks/actions.ts` | git, judges, experts and pipelines, agents, measuring context |
+| `agents/*.md` | the six experts: planner, builder, reviewer, prover, breaker, scribe |
 | `hooks/logic.ts` | pure helpers: patterns, diffs, tree, progress, ring |
 | `hooks/theme.ts` | the five themes |
 | `hooks/state.ts` | initial state |

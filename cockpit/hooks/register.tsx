@@ -3,11 +3,12 @@ import type { Register } from 'claude-code'
 
 import type { Decision, Tab, ThemeId } from '../types'
 import {
+  advancePipeline,
   commit,
   confirmPending,
   decideCommit,
   discoverAgentTypes,
-  finishTester,
+  finishAgent,
   judge,
   loadAccounts,
   loadGitPrefs,
@@ -15,21 +16,21 @@ import {
   openPane,
   skipPending,
   refreshRepo,
-  runTester,
   set,
+  startPipeline,
   setTheme,
   trackAgent,
 } from './actions'
-import { activityOf, base, fmt, kTok, progress, selfCheck, stepOf, tally, toOp } from './logic'
+import { PIPELINES, activityOf, base, expertName, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 import { BAD, BUSY, OK, THEME_IDS, ctxShades, themeOf } from './theme'
-import { Agents, Card, Files, Git, Header, Overview, Tabs, TesterCard, Tests, seatDots } from './views'
+import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './views'
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-5' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-7' })
 
-const TABS: Tab[] = ['overview', 'files', 'tests', 'agents', 'git']
+const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
 export const register: Register = on => {
   // Root of the session's working directory, for relative paths
@@ -55,7 +56,7 @@ export const register: Register = on => {
     // Live figures: a redraw each second while anything runs; the repo and usage read again every 15 s while the pane is shown
     $.clock.every(1000, async () => {
       const s = await read($, S)
-      const busy = s.isWorking || s.waiting !== '' || s.agents.some(a => a.status === 'running') || s.testers.pos.status === 'running' || s.testers.neg.status === 'running'
+      const busy = s.isWorking || s.waiting !== '' || s.agents.some(a => a.status === 'running')
       if (busy) $.ui.invalidate('ui.render')
     })
     $.clock.every(15000, async () => {
@@ -91,10 +92,7 @@ export const register: Register = on => {
       await set($, { focus: isOn })
       return { text: `Focus ${isOn ? 'on: only your prompts, replies and progress show' : 'off'}` }
     }
-    if (verb === 'test') {
-      await runTester($, 'pos')
-      await runTester($, 'neg')
-    }
+    if (verb === 'test') await startPipeline($, 'verify')
     await openPane($)
     return { text: 'Cockpit pane opened.' }
   })
@@ -167,11 +165,15 @@ export const register: Register = on => {
     const r = await next(e)
     if ('agentId' in r && r.agentId) {
       const id = r.agentId
-      // A tester Cockpit started itself: its id is known here, whether or not the spawn call hands it back
-      const key = e.description === 'Positive tester' ? 'pos' : e.description === 'Negative tester' ? 'neg' : null
-      await trackAgent($, { id, name: key ? e.description : e.subagentType, type: key ? (key === 'pos' ? 'Tester +' : 'Tester −') : e.subagentType, task: key ? e.description : e.description, prompt: e.prompt })
-      if (key) await set($, s => (s.testers[key].status === 'running' && !s.testers[key].agentId ? { testers: { ...s.testers, [key]: { ...s.testers[key], agentId: id } } } : {}))
-      else await set($, s => (s.agentTypes.includes(e.subagentType) ? {} : { agentTypes: [...s.agentTypes, e.subagentType] }))
+      // One Cockpit started itself is named by its note; the model's by the event
+      const own = (await read($, S)).starting
+      const type = e.subagentType || own?.type || 'general-purpose'
+      await trackAgent($, { id, name: own?.name ?? expertName(type), type, task: own?.task ?? e.description, prompt: e.prompt })
+      // A pipeline's expert whose start hands no id back: the id is known here
+      await set($, s => ({
+        agentTypes: s.agentTypes.includes(type) ? s.agentTypes : [...s.agentTypes, type],
+        pipeline: s.pipeline && !s.pipeline.agentId && s.pipeline.steps[s.pipeline.index] === type ? { ...s.pipeline, agentId: id } : s.pipeline,
+      }))
     }
     return r
   }).catch(($, e, next) => next(e))
@@ -180,14 +182,8 @@ export const register: Register = on => {
     const r = await next(e)
     const now = await $.clock.now()
     if (e.agentId) {
-      const s = await read($, S)
-      await set($, st => ({ agents: st.agents.map(a => (a.id === e.agentId && a.status === 'running' ? { ...a, status: e.isAborted ? 'stopped' : 'done', endedAt: now, log: [...a.log, { at: now, t: 'Done · report ready' }] } : a)) }))
-      for (const key of ['pos', 'neg'] as const) {
-        if (s.testers[key].agentId === e.agentId) await finishTester($, key, e.answer)
-      }
-      const after = await read($, S)
-      const passed = after.testers.pos.status === 'done' && after.testers.neg.status === 'done' && ![...after.testers.pos.cases, ...after.testers.neg.cases].some(c => c.st === 'fail')
-      if (passed && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && (s.testers.pos.status === 'running' || s.testers.neg.status === 'running')) await decideCommit($)
+      await finishAgent($, e.agentId, e.answer, e.isAborted)
+      await advancePipeline($, e.agentId, e.answer)
       return r
     }
     await set($, st => ({ isWorking: false, activity: 'Done', lastTurnMs: now - st.turnStart }))
@@ -195,11 +191,7 @@ export const register: Register = on => {
     await measure($)
     const s = await read($, S)
     const commitAfterTests = s.git.commitMode !== 'manual' && s.git.autoWhen === 'tests'
-    if (changedThisTurn && (s.autoTest || commitAfterTests)) {
-      await set($, st => ({ ui: { ...st.ui, testsHidden: false } }))
-      await runTester($, 'pos')
-      await runTester($, 'neg')
-    }
+    if (changedThisTurn && (s.autoVerify || commitAfterTests)) await startPipeline($, 'verify')
     if (changedThisTurn && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
     changedThisTurn = false
     return r
@@ -246,11 +238,17 @@ export const register: Register = on => {
         <Text color={s.focus !== false ? t.accent : t.dim}>{s.focus !== false ? '◉ Focus' : '○ Focus'}</Text>
       </Button>
     )
-    // Testers in one phrase, for the one-line band
-    const tz = [s.testers.pos, s.testers.neg]
-    const testsFail = tz.some(x => x.cases.some(c => c.st === 'fail'))
-    const testsAll = tz.flatMap(x => x.cases)
-    const testsLine = tz.some(x => x.status === 'running') ? 'testing…' : testsAll.length ? `tests ${testsAll.length - testsAll.filter(c => c.st === 'fail').length}/${testsAll.length}` : ''
+    // The Verify experts in one phrase, for the one-line band
+    const vs = verifyState(s.agents)
+    const testsFail = vs.fail > 0
+    const testsLine = vs.running ? 'testing…' : vs.cases.length ? `tests ${vs.pass}/${vs.cases.length}` : ''
+    const pipe = s.pipeline && (
+      <Text>
+        <Text color={t.accent}>{'⧉ '}</Text>
+        <Text color={t.text}>{`${PIPELINES.find(p => p.name === s.pipeline?.name)?.label ?? s.pipeline.name} pipeline`}</Text>
+        <Text color={t.dim}>{` · ${s.pipeline.index + 1}/${s.pipeline.steps.length} · ${expertName(s.pipeline.steps[s.pipeline.index] ?? '')}…`}</Text>
+      </Text>
+    )
     // A proposed commit waits for Commit or Skip right above the prompt
     const ask = s.pending && (
       <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between" flexWrap="wrap" columnGap={2}>
@@ -297,8 +295,6 @@ export const register: Register = on => {
       left -= k
       return <Text key={`cx-${name}`} color={shades[i] ?? t.faint}>{'━'.repeat(k)}</Text>
     })
-    const showTests = (s.testers.pos.status !== 'idle' || s.testers.neg.status !== 'idle') && !s.ui.testsHidden
-    const ui = { Box, Text, Button } as UI
     const progressLabel = (
       <Button key="ph-progress" plain onPress={() => set($, { tab: 'overview' })}>
         <Text color={t.dim}>Progress</Text>
@@ -312,7 +308,7 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" marginTop={1}>
         {ask}
-        {showTests && TesterCard($, ui, t, s, await $.clock.now())}
+        {pipe}
         <Box flexDirection="column" borderStyle="round" borderColor={t.dim} paddingX={1}>
           <Box justifyContent="space-between">
             <Text color={t.faint}>cockpit</Text>
@@ -479,9 +475,10 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const s = await read($, S)
     const t = themeOf(s)
-    const all = [...s.testers.pos.cases, ...s.testers.neg.cases]
-    const pass = all.filter(c => c.st !== 'fail').length
-    const fail = all.length - pass
+    const vs = verifyState(s.agents)
+    const all = vs.cases
+    const pass = vs.pass
+    const fail = vs.fail
     const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
     const dels = s.repo.changed.reduce((a, c) => a + c.del, 0)
     return (
@@ -522,7 +519,6 @@ export const register: Register = on => {
         {Tabs($, v)}
         {s.tab === 'overview' && Overview($, v)}
         {s.tab === 'files' && Files($, v)}
-        {s.tab === 'tests' && Tests($, v)}
         {s.tab === 'agents' && Agents($, v)}
         {s.tab === 'git' && Git($, v)}
       </Box>

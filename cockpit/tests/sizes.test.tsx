@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 // Every computed run of text fits the width it is drawn in, from a narrow pane to a wide terminal
 const WIDTHS = [28, 40, 60, 100, 160]
-const TABS = ['overview', 'files', 'tests', 'agents', 'git'] as const
+const TABS = ['overview', 'files', 'agents', 'git'] as const
 const scroll = { offset: 0, bodyRows: 30 }
 
 // Each row's text as drawn: a column Box starts new rows, anything else joins its row
