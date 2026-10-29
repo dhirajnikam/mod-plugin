@@ -25,7 +25,7 @@ Focus is **on** by default. While it is on, the chat shows only your prompts, Cl
 
 ## Colours
 
-The **Auto** theme (the default) follows Claude Code's own theme: White under a light theme, Black under a dark one, and it switches when you change `/config` → theme. Paper, White, Black, Solarized and Nord can be picked by hand.
+The **Auto** theme (the default) uses Claude Code's own theme colours, so it follows your light or dark theme on every surface, with a gold accent; status colours (green, red, amber) are the theme's too. Paper, White, Black, Solarized and Nord can be picked by hand.
 
 ## Git
 
@@ -41,7 +41,7 @@ The first time you open the Git tab in a repository it asks five things, once: t
 
 ## Git accounts
 
-The **Account** box lists your global git identity and each GitHub login `gh auth status` reports. To add one, paste a personal access token (**Add token** runs `gh auth login --with-token`; gh keeps the token, Cockpit does not), or press **Log in with gh**: gh puts a one-time code on your clipboard and waits for you at github.com/login/device; press **↻ Detect** afterwards. Commits use the chosen account's name and email. With push on, Cockpit runs `gh auth switch` to that account's login first, which changes the active GitHub account for the whole machine. **Use for this repo** writes the identity into the repository's own git config.
+The **Account** box shows the saved login; **Modify** opens the choices and the ways to add one. It lists your global git identity and each GitHub login `gh auth status` reports. To add one, paste a personal access token (**Add token** runs `gh auth login --with-token`; gh keeps the token, Cockpit does not), or press **Log in with gh**: gh puts a one-time code on your clipboard and waits for you at github.com/login/device; press **↻ Detect** afterwards. Commits use the chosen account's name and email. With push on, Cockpit runs `gh auth switch` to that account's login first, which changes the active GitHub account for the whole machine. **Use for this repo** writes the identity into the repository's own git config.
 
 ## Web rendering
 

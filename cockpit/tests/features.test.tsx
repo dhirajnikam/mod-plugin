@@ -179,20 +179,18 @@ test('file operations build the Files tab, the chat cards and the progress steps
   await card.unmount()
 })
 
-test('themes switch by command and by the header dots, and Auto follows the config', async ($, on) => {
-  const log = stand($, on)
+test('themes switch by command and by the header dots; Auto uses the theme keys', async ($, on) => {
+  stand($, on)
   await $.command.run({ command: 'cockpit', args: 'theme nord' } as never)
   let ui = await $.ui.mount(pane('overview') as never)
   expect(JSON.stringify(await ui.drawn())).toContain('#88c0d0')
   await ui.press({ key: 'theme-paper' })
   expect(JSON.stringify(await ui.drawn())).toContain('#b68235')
   await ui.press({ key: 'theme-auto' })
-  expect(JSON.stringify(await ui.drawn())).toContain('#d4a35a')
-  await ui.unmount()
-  log.theme = 'light'
-  await $.config.set({ key: 'theme', value: 'light' } as never).catch(() => null)
-  ui = await $.ui.mount(pane('overview') as never)
-  expect(JSON.stringify(await ui.drawn())).toContain('#9a6a22')
+  const auto = JSON.stringify(await ui.drawn())
+  expect(auto).toContain('#b4833a')
+  expect(auto).toContain('"color":"text"')
+  expect(auto).not.toContain('#e8e6e3')
   await ui.unmount()
 })
 
@@ -201,7 +199,12 @@ test('accounts are detected, a token logs in through gh, and the choice is kept 
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(pane('git') as never)
   await ui.press({ key: 'acct-detect' })
+  // An account is now saved: the box shows it, the choices and the login controls wait behind Modify
   let drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('"Modify"')
+  expect(drawn).not.toContain('gh-token')
+  await ui.press({ key: 'acct-modify' })
+  drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('" two "')
   expect(drawn).toContain('" one "')
   await ui.press({ key: 'acct-gh-one' })
@@ -213,6 +216,8 @@ test('accounts are detected, a token logs in through gh, and the choice is kept 
   expect(log.toasts.some(t => t.includes('Logged in to GitHub'))).toBe(true)
   drawn = JSON.stringify(await ui.drawn())
   expect(drawn).not.toContain('ghp_secret')
+  // Logged in: the controls are hidden again
+  expect(drawn).not.toContain('gh-token')
   await ui.unmount()
 })
 

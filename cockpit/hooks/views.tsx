@@ -95,7 +95,7 @@ function Seg<K extends string>({ v, id, items, value, onPick }: { v: V; id: stri
           <Button key={`${id}-${k}`} label={label} variant={k === value ? 'primary' : 'secondary'} onPress={() => onPick(k)} />
         ) : (
           <Button key={`${id}-${k}`} plain onPress={() => onPick(k)}>
-            <Text backgroundColor={k === value ? v.t.accent : v.t.track} color={k === value ? v.t.bg : v.t.dim} bold={k === value}>
+            <Text backgroundColor={k === value ? v.t.accent : v.t.track} color={k === value ? v.t.bg || 'inverseText' : v.t.dim} bold={k === value}>
               {` ${label} `}
             </Text>
           </Button>
@@ -142,7 +142,7 @@ export function Header($: $, v: V) {
               </Button>
             ))
           )}
-          <Text backgroundColor={t.track} color={s.waiting ? BUSY : s.isWorking ? t.accent : t.dim}>{` ${run} `}</Text>
+          <Text backgroundColor={t.track} color={s.waiting ? BUSY : s.isWorking ? t.accent : t.text}>{` ${run} `}</Text>
         </Box>
       </Box>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 2)}>
@@ -263,7 +263,7 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
         {p.steps.map(x => (
-          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : x.st === 'done' ? t.surface : undefined} color={x.st === 'pending' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'}>
+          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'}>
             <Text color={x.st === 'done' ? OK : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
@@ -707,30 +707,44 @@ function AccountBox($: $, v: V) {
   const { Box, Button, Input, Text } = v.ui
   const { s, t } = v
   const acct = s.accounts.find(a => a.id === s.accountId)
+  // A saved login shows as it is; Modify opens the choices and the ways to add one
+  const modify = s.ui.acctOpen || !acct
+  const toggle = () => set($, st => ({ ui: { ...st.ui, acctOpen: !st.ui.acctOpen } }))
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
       <Box justifyContent="space-between" flexWrap="wrap">
         <Text color={t.text} weight="semibold">Account</Text>
-        <Button key="acct-detect" label="↻ Detect" plain onPress={() => loadAccounts($)} />
+        <Box gap={sp(v, 1)}>
+          {modify && <Button key="acct-detect" label="↻ Detect" plain onPress={() => loadAccounts($)} />}
+          {acct && <Button key="acct-modify" label={s.ui.acctOpen ? 'Done' : 'Modify'} plain onPress={toggle} />}
+        </Box>
       </Box>
-      {s.accounts.length === 0 && <Text color={t.dim}>No git identity or gh login found yet.</Text>}
-      {s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
       {acct && (
-        <Box justifyContent="space-between" flexWrap="wrap">
-          <Text color={t.dim} wrap="truncate-end">{`${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
-          <Box gap={sp(v, 1)} flexWrap="wrap">
-            <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
-            <Button key="acct-remove" label="Remove" plain onPress={() => removeAccount($, acct.id)} />
+        <Text wrap="truncate-end">
+          <Text color={OK}>{'● '}</Text>
+          <Text color={t.text}>{acct.label}</Text>
+          <Text color={t.dim}>{`  ${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
+        </Text>
+      )}
+      {!acct && s.accounts.length === 0 && <Text color={t.dim}>No git identity or gh login found yet.</Text>}
+      {modify && s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
+      {modify && acct && (
+        <Box gap={sp(v, 1)} flexWrap="wrap">
+          <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
+          <Button key="acct-remove" label="Remove" plain onPress={() => removeAccount($, acct.id)} />
+        </Box>
+      )}
+      {modify && (
+        <Box flexDirection="column">
+          <Rule v={{ ...v, w: v.w - 4 }} />
+          <Text color={t.dim} size="footnote">Add a GitHub login: paste a token, or log in with gh in your browser.</Text>
+          <Box columnGap={sp(v, 1)} flexWrap="wrap">
+            <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => ghLoginToken($, val)} />
+            <Button key="gh-token-go" label="Add token" onPress={() => ghLoginToken($, s.ui.ghToken)} />
+            <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
           </Box>
         </Box>
       )}
-      <Rule v={{ ...v, w: v.w - 4 }} />
-      <Text color={t.dim} size="footnote">Add a GitHub login: paste a token, or log in with gh in your browser.</Text>
-      <Box columnGap={sp(v, 1)} flexWrap="wrap">
-        <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => ghLoginToken($, val)} />
-        <Button key="gh-token-go" label="Add token" onPress={() => ghLoginToken($, s.ui.ghToken)} />
-        <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
-      </Box>
       {s.ui.ghNote !== '' && <Text color={BUSY} wrap="wrap">{s.ui.ghNote}</Text>}
     </Box>
   )

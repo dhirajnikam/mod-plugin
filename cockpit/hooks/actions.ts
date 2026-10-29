@@ -185,6 +185,7 @@ export async function ghLoginToken($: $, token: string) {
   await set($, st => ({ ui: { ...st.ui, ghToken: '' } }))
   if (r.exitCode !== 0) return toast($, `gh login failed: ${firstLine(r)}`)
   await loadAccounts($)
+  await set($, st => ({ ui: { ...st.ui, acctOpen: false } }))
   await toast($, 'Logged in to GitHub with the token')
 }
 
@@ -442,14 +443,4 @@ export async function applyAccount($: $) {
   await git($, ['config', 'user.name', a.name])
   await git($, ['config', 'user.email', a.email])
   await toast($, `This repo now commits as ${a.name} <${a.email}>`)
-}
-
-// Read Claude Code's theme setting (dark, light, light-ansi, ...) for the Auto theme
-export async function detectTheme($: $) {
-  const row = (await $.config.list().catch(() => [])).find(r => r.key === 'theme')
-  const isDarkTerm = !/light/i.test(String(row?.value ?? 'dark'))
-  const s = await read($, S)
-  if (s.isDarkTerm === isDarkTerm) return
-  await set($, { isDarkTerm })
-  if (s.theme === 'auto') await openPane($)
 }

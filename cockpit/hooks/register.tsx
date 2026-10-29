@@ -9,7 +9,6 @@ import {
   discoverAgentTypes,
   finishTester,
   judge,
-  detectTheme,
   loadAccounts,
   loadGitPrefs,
   measure,
@@ -51,7 +50,6 @@ export const register: Register = on => {
     await refreshRepo($)
     await loadGitPrefs($)
     await loadAccounts($)
-    await detectTheme($)
     await measure($)
     void discoverAgentTypes($)
     // Live figures: a redraw each second while anything runs; the repo and usage read again every 15 s while the pane is shown
@@ -206,13 +204,6 @@ export const register: Register = on => {
     changedThisTurn = false
     return r
   })
-
-  // Auto theme follows a /config theme change
-  on('config.set', { key: 'theme' }, async ($, e, next) => {
-    const r = await next(e)
-    await detectTheme($).catch(() => null)
-    return r
-  }).catch(($, e, next) => next(e))
 
   on('session.measure', async ($, e, next) => {
     await measure($)
@@ -460,7 +451,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const t = themeOf(await read($, S))
     return (
-      <Box backgroundColor={t.surface} paddingX={1} width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
+      <Box backgroundColor={t.surface || undefined} paddingX={1} width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
         <Text color={t.hi}>{'› '}</Text>
         <Text color={t.text}>{e.props.text}</Text>
       </Box>
