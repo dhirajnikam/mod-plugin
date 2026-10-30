@@ -147,8 +147,13 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    // Cockpit's own hand-off of an agent start is not a task of yours: no flow, no steps
-    if (handoffs.delete(e.text)) return next(e)
+    // Cockpit's own hand-off of an agent start: its request rides along as context, and it is no task of yours (no flow)
+    const queued = handoffs.get(e.text)
+    if (queued?.length) {
+      const ask = queued.shift() ?? ''
+      if (!queued.length) handoffs.delete(e.text)
+      return next({ ...e, context: [...(e.context ?? []), ask] })
+    }
     if (!e.command && !e.isMeta && e.text.trim()) {
       const now = await $.clock.now()
       if (e.origin?.kind === 'composer') personSpoke(now)

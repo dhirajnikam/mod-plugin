@@ -602,34 +602,39 @@ function expertPrompt(s: Ph, prior: string[]) {
 
 // Starts one expert; returns its agent id ('' when the start handed none back: the agent.spawn hook records it), or null when refused
 // Prompts Cockpit sends to hand a refused start to Claude: they open no flow and write no steps of their own
-export const handoffs = new Set<string>()
+// Starts Cockpit hands to Claude: the short line the chat shows, and for each one waiting the request Claude reads with
+// it as context, never shown. Cockpit's prompt.submit hook attaches it, and opens no flow for it
+export const handoffs = new Map<string, string[]>()
 
 // Auto mode judges a subagent by the request to the model that asked for it, and a press in the pane is none, so it
-// refuses with "no verdict". The start then goes to Claude as a request in the conversation: Claude starts the agent
-// in that turn (auto mode judges it like any agent Claude starts), and the agent.spawn hook tracks it and binds it to a
-// waiting pipeline step. False where the prompt did not enter
+// refuses with "no verdict". The start then goes to Claude as a short request in the conversation: Claude starts the
+// agent in that turn (auto mode judges it like any agent Claude starts), and the agent.spawn hook tracks it and binds it
+// to a waiting pipeline step. It never waits for that turn: a press, a command and a turn's end all return at once
 export async function handOff($: $, type: string, brief: string) {
   const name = expertName(type)
-  const text = `⧉ Cockpit: start the ${type} agent now with the Agent tool (subagent_type "${type}", in the background), passing exactly the brief below as its prompt. Do nothing else, and answer in one line.\n\n${brief}`
-  handoffs.add(text)
+  const text = `▶ Start the ${name}`
+  const ask = `Cockpit asks for an agent (from its ▶ button, a pipeline, or its testers; auto mode lets Claude start agents, not a button). Start the ${type} agent now with the Agent tool (subagent_type "${type}", in the background), passing exactly the brief below as its prompt. Do nothing else, and answer in one line.\n\nBrief:\n${brief}`
+  handoffs.set(text, [...(handoffs.get(text) ?? []), ask])
   const failed = async () => {
-    handoffs.delete(text)
-    await note($, `⧉ ${name} could not start: auto mode refused it from the pane, and Claude could not be asked`)
+    const q = handoffs.get(text) ?? []
+    q.splice(q.indexOf(ask), 1)
+    if (!q.length) handoffs.delete(text)
+    await note($, `⧉ ${name} could not start: it could not be handed to Claude`)
   }
   const send = async () => {
     const r = await $.prompt.submit({ text })
     if ('drop' in r && r.drop) await failed()
   }
-  await toast($, `Auto mode lets Claude start agents, not buttons: the ${name.toLowerCase()} goes to Claude to start`)
-  // From a turn's end it goes at once; where the engine refuses it there (inside a command's hook, which holds the turn
-  // the prompt would wait on), it goes from a timer once that hook has returned
-  await send().catch(async () => {
+  await toast($, `Starting the ${name.toLowerCase()}…`)
+  // Where the engine refuses the prompt from here (inside a command's hook, which holds the turn it would wait on), it
+  // goes from a timer once that hook has returned
+  void send().catch(() => {
     try {
       $.clock.after(20, () => {
         void send().catch(() => failed())
       })
     } catch {
-      await failed()
+      void failed()
     }
   })
   return true

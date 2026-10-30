@@ -68,7 +68,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   })
   on('turn.complete', async () => ({ text: '' }))
   on('command.run', async () => ({ text: '' }))
-  on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push(String(e.text)), { text: e.text }))
+  on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push([String(e.text), ...(e.context ?? [])].join('\n')), { text: e.text }))
   return log
 }
 
@@ -161,12 +161,15 @@ test('a start auto mode refuses for want of a request goes to Claude, and the ag
   await modelSpawn($, 'cockpit:builder', 'add a limiter')
   await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b', agentId: 'ag1' } as never)
   await done($, 'ag1', 'REPORT: added it')
-  // Handed to Claude with the expert's brief; no error, and the pipeline waits on the Prover
+  await new Promise(res => (globalThis as any).setTimeout(res, 60))
+  // Handed to Claude: a short line in the chat, the expert's brief as context; no error, the pipeline waits on the Prover
   expect(log.submitted.length).toBe(1)
+  expect(log.submitted[0]!.split('\n')[0]).toBe('▶ Start the Prover')
   expect(log.submitted[0]).toContain('subagent_type "cockpit:prover"')
   expect(log.submitted[0]).toContain('PRIOR REPORTS')
   expect(log.toasts.join('|')).not.toContain('could not start')
-  expect(log.toasts.join('|')).toContain('goes to Claude to start')
+  expect(log.toasts.join('|')).toContain('Starting the prover…')
+  expect(log.toasts.join('|')).not.toContain('Auto mode')
   // The hand-off is no task of the person's: no flow opened
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(agentsPane as never)
