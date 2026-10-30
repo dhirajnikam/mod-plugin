@@ -197,8 +197,13 @@ export function stepOf(tool: string, input: Record<string, unknown>) {
   if (tool === 'Read' || tool === 'Grep' || tool === 'Glob' || tool === 'WebFetch' || tool === 'WebSearch') return 'Explore'
   if (tool === 'AskUserQuestion') return 'Decide'
   if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') return 'Implement'
-  if (tool === 'Bash' && /test|jest|vitest|pytest|go test|cargo test/.test(String(input.command))) return 'Verify'
-  if (tool === 'Bash' && /git commit/.test(String(input.command))) return 'Commit'
+  if (tool !== 'Bash') return ''
+  const cmd = String(input.command ?? '')
+  if (/test|jest|vitest|pytest|go test|cargo test/.test(cmd)) return 'Verify'
+  if (/git commit/.test(cmd)) return 'Commit'
+  // Work done through the shell counts as the tools' would: writing files is implementing, reading them exploring
+  if (/(^|[\s;&|(])(sed\s+-i|perl\s+-p?i|tee\b|mv\b|cp\b|rm\b|mkdir\b|touch\b|patch\b|git\s+apply|python3?\s+-\s*<<|cat\s*>|cat\s*<<[^>]*>)|>\s*[\w./-]+\.\w+/.test(cmd)) return 'Implement'
+  if (/(^|[\s;&|(])(cat|head|tail|less|sed\s+-n|grep|rg|find|ls|awk|wc|tree|git\s+(log|show|diff|status|grep|blame))\b/.test(cmd)) return 'Explore'
   return ''
 }
 
@@ -444,6 +449,9 @@ export function selfCheck() {
     // Implement reached with Explore skipped: Explore is skipped, not done, and left out of the count
     [progressOf('add x', ['Understand', 'Implement'], true).steps.map(x => x.st).join(), 'done,skipped,active,pending,pending'],
     [progressOf('add x', ['Understand', 'Implement'], true).pct, 38],
+    [stepOf('Bash', { command: "python3 - <<'EOF'\nprint(1)\nEOF" }), 'Implement'],
+    [stepOf('Bash', { command: 'grep -n foo hooks/x.ts | head' }), 'Explore'],
+    [stepOf('Bash', { command: 'npx tsc -p . && claude plugin test .' }), 'Verify'],
     [progressOf('x', ['Understand', 'Explore', 'Implement'], true, undefined, [], [{ name: 'Read the hooks', kind: 'Explore' }, { name: 'Fix the path', kind: 'Implement' }, { name: 'Run the tests', kind: 'Verify' }, { name: 'Commit', kind: 'Commit' }]).pct, 38],
     [parseSteps('ok: [{"step":"Read the hooks","kind":"Explore"},{"step":"x","kind":"Nope"},{"step":"Fix it","kind":"implement"}]').map(x => x.kind).join(), 'Explore,Implement'],
     [progressOf('x', [], true, undefined, [{ id: 'a', text: 'a', st: 'completed' }, { id: 'b', text: 'b', st: 'in_progress' }, { id: 'c', text: 'c', st: 'pending' }, { id: 'd', text: 'd', st: 'pending' }]).pct, 38],
@@ -463,11 +471,16 @@ export function selfCheck() {
 export function ringSvg(pct: number, step: string, c: { accent: string; track: string; text: string; dim: string }) {
   const off = (314.16 * (1 - pct / 100)).toFixed(1)
   const esc = (x: string) => x.replace(/[<>&"]/g, ch => `&#${ch.charCodeAt(0)};`)
+  // An SVG reads only real colours: a theme key (Auto's "text", "inactive") becomes a tone that reads on light and dark
+  const real = (x: string, tone: string) => (/^(#|rgb|hsl)/.test(x) ? x : tone)
+  c = { accent: real(c.accent, '#b4833a'), track: real(c.track, 'rgba(128,128,128,0.28)'), text: real(c.text, c.accent), dim: real(c.dim, '#8a8a8a') }
+  // The step's name fits inside the ring: 14 characters at most, cut with an ellipsis
+  const label = step.length > 14 ? `${step.slice(0, 13).trimEnd()}…` : step
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">` +
     `<circle cx="60" cy="60" r="50" fill="none" stroke="${c.track}" stroke-width="8"/>` +
     `<circle cx="60" cy="60" r="50" fill="none" stroke="${c.accent}" stroke-width="8" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="${off}" transform="rotate(-90 60 60)"/>` +
     `<text x="60" y="62" text-anchor="middle" font-family="Georgia, serif" font-size="30" fill="${c.text}">${pct}%</text>` +
-    `<text x="60" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="${c.dim}">${esc(step)}</text></svg>`
+    `<text x="60" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="${c.dim}">${esc(label)}</text></svg>`
 }
 
 // Agent icons for surfaces that draw SVG: line icons in a tinted tile, coloured by state. A running one turns an arc

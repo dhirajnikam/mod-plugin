@@ -9,7 +9,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean; noVerdict?: number }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], files: {} as Record<string, string>, open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], files: {} as Record<string, string>, list: [] as any[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), log.specs.push(e), st.regDeny ? { deny: 'x' } : { value: { agent: `cockpit:${e.name}` } }))
@@ -44,6 +44,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   let spawns = 0
   let refused = 0
   on('fs.write', async (_: unknown, e: any) => ((log.files[e.path] = e.text), { value: undefined }))
+  // The engine's own list of the session's agents
+  on('agent.list', async () => ({ value: log.list }) as never)
   // The engine's own permission verdict for an Agent call; the spawn asks it as the Agent tool would
   on('tool.check', async (_: unknown, e: any) => ({ decision: e.tool === 'Agent' ? st.core ?? 'ask' : 'allow' }))
   // hold: the spawn waits, as the engine's does while it decides, until the test opens it
@@ -237,6 +239,45 @@ test('a batch auto mode refuses goes to Claude in one line', async ($, on) => {
   expect(log.submitted[0]).toContain('- cockpit:planner: brief in /repo/.cockpit/handoffs/')
   expect(log.submitted[0]).toContain('- cockpit:reviewer: brief in /repo/.cockpit/handoffs/')
   expect(log.toasts).toContain('◆ Starting 2 agents…')
+})
+
+test('subagents Claude starts show in the Agents tab from the engine\'s list, and settle when they end', async ($, on) => {
+  const log = stand($, on)
+  log.list.push({ id: 'x1', description: 'scan the repo', type: 'Explore', status: 'running' }, { id: 'x2', description: 'write the docs', type: 'general-purpose', status: 'running' })
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('2 running · 0 done · 2 total')
+  expect(d).toContain('scan the repo')
+  expect(d).toContain('write the docs')
+  // One ends without Cockpit hearing it: the list settles it at the turn's end
+  log.list[0].status = 'completed'
+  await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 'm', isAborted: false, durationMs: 1 } as never)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('1 running · 1 done · 2 total')
+  await ui.unmount()
+})
+
+test('an agent runs again with your instructions, from its team row or from a finished run', async ($, on) => {
+  const log = stand($, on)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await ui.press({ key: 'edit-cockpit:planner' })
+  await (ui as any).input({ key: 'rerun-input', text: 'plan the auth refactor', kind: 'change' })
+  await ui.press({ key: 'rerun-go' })
+  expect(log.spawned).toEqual(['Planner'])
+  expect(log.prompts[0]).toContain('Task: plan the auth refactor')
+  await ui.unmount()
+  // A finished run, again with more said
+  await run($, 'reviewer -- review the login')
+  // (the press's Planner took ag1 in the stand; the kit hands a press-started spawn no id back)
+  await done($, 'ag2', 'REPORT: fine')
+  const ui2 = await $.ui.mount(agentsPane as never)
+  await ui2.press({ key: 'redo-ag2' })
+  await (ui2 as any).input({ key: 'rerun-input', text: 'focus on the error paths', kind: 'change' })
+  await ui2.press({ key: 'rerun-go' })
+  expect(log.prompts[log.prompts.length - 1]).toContain('Task: review the login\n\nInstructions for this run: focus on the error paths')
+  await ui2.unmount()
 })
 
 test('a pipeline started before any prompt leaves progress at 0%, Ready', async ($, on) => {

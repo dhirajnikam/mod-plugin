@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { features, impactOf, memoryText, parseImports, resolveImport } from '../hooks/memory'
+import { factsOf, features, filesSig, impactOf, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
   const repo = new Set(['src/a.ts', 'src/b.tsx', 'types/index.d.ts', 'app/models.py', 'app/__init__.py', 'app/views.py', 'styles/base.css'])
@@ -14,7 +14,17 @@ test('imports resolve to repository files across languages, and a change reaches
   expect(im.features).toEqual(['src'])
   expect(impactOf(files, 'src/b.tsx').affected).toEqual(['src/a.ts'])
   expect(features(files).find(f => f.name === 'src')?.uses).toEqual(['types'])
-  expect(memoryText(files)).toContain('- src (2 files: a.ts, b.tsx); uses types')
+  expect(memoryText(files)).toContain('- src (a.ts, b.tsx); uses types')
+  // Features as a model names them: a description each, links from the imports between their files, a file in one only
+  const named = parseFeatures('Here: [{"name": "Login page", "what": "Signs people in.", "files": ["src/a.ts", "nope.ts"]}, {"name": "Shared types", "what": "Types every part uses.", "files": ["types/index.d.ts", "src/a.ts"]}]', files)
+  expect(named).toEqual([{ name: 'Login page', what: 'Signs people in.', files: ['src/a.ts'] }, { name: 'Shared types', what: 'Types every part uses.', files: ['types/index.d.ts'] }])
+  const fs = features(files, named)
+  expect(fs.find(f => f.name === 'Login page')?.uses).toEqual(['src', 'Shared types'])
+  expect(fs.find(f => f.name === 'Shared types')?.usedBy.sort()).toEqual(['Login page', 'src'])
+  expect(impactOf(files, 'types/index.d.ts', 3, named).feature).toBe('Shared types')
+  expect(memoryText(files, 2600, named)).toContain('- Login page: Signs people in. (a.ts)')
+  expect(factsOf('src/x.ts', '// Keeps the cart in sync with the server\nexport function addItem() {}\nexport const Cart = 1')).toEqual({ exports: ['addItem', 'Cart'], note: 'Keeps the cart in sync with the server' })
+  expect(filesSig({ a: [], b: [] })).toBe(filesSig({ b: [], a: [] }))
   expect(memoryText(files, 120).endsWith('- …')).toBe(true)
 })
 
@@ -52,7 +62,12 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   on('command.register', async () => ({ value: {} }) as never)
   on('clock.every', async () => ({ value: {} }) as never)
   on('session.start', async () => ({ cwd: '/repo' }))
-  on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
+  let named = 0
+  on('model.complete', async (_: unknown, e: any) => {
+    if (!String(e.prompt).includes('Group them into')) return { value: { isAnswered: false, reason: 'empty-reply' } } as never
+    named++
+    return { value: { isAnswered: true, text: '[{"name": "Pages", "what": "The site\'s pages.", "files": ["src/a.ts", "src/b.ts"]}, {"name": "Counter", "what": "Counts things.", "files": ["lib/c.ts"]}]', usage: { inputTokens: 1, outputTokens: 1 } } } as never
+  })
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
     if (cmd === 'git rev-parse --show-toplevel') return ok('/repo\n')
@@ -72,11 +87,14 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   expect(disk['/repo/.cockpit/.gitignore']).toContain('*')
   const mem = JSON.parse(disk['/repo/.cockpit/memory.json'] ?? '{}')
   expect(mem.files['lib/c.ts'].usedBy.sort()).toEqual(['src/a.ts', 'src/b.ts'])
-  expect(disk['/repo/.cockpit/MEMORY.md']).toContain('## src')
+  expect(disk['/repo/.cockpit/MEMORY.md']).toContain('## Pages')
+  expect(disk['/repo/.cockpit/MEMORY.md']).toContain("The site's pages.")
+  expect(mem.features.map((f: any) => f.name)).toEqual(['Pages', 'Counter'])
+  expect(named).toBe(1)
   // Claude reads it in its system prompt
   const composed: any = await $.prompt.compose({ model: 'claude-x', promptModel: 'claude-x', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
   expect(composed.sections.map((x: any) => x.id)).toContain('cockpit:memory')
-  expect(composed.sections.find((x: any) => x.id === 'cockpit:memory').text).toContain('src (2 files')
+  expect(composed.sections.find((x: any) => x.id === 'cockpit:memory').text).toContain('- Pages: The site\'s pages. (a.ts, b.ts); uses Counter')
 
   // Focus off was kept from an earlier session: the status row is the full one
   const hint = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'PromptHint', requestId: 'hint', props: { isDraft: false, isWorking: false, hint: '' } } as never)
@@ -92,7 +110,13 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   const d = JSON.stringify(await ui.drawn())
   expect(d).toContain('Impact · c.ts')
   expect(d).toContain('a.ts · b.ts')
-  expect(d).toContain('2 files in src: check them')
+  expect(d).toContain('in Counter')
+  expect(d).toContain('2 files in Pages: check them')
+  // A feature opens to what it does and its files
+  await ui.press({ key: 'feat-Pages' })
+  const fd = JSON.stringify(await ui.drawn())
+  expect(fd).toContain("The site's pages.")
+  expect(fd).toContain('used by')
   // The edit updated the memory: c.ts now imports a.ts
   expect(JSON.parse(disk['/repo/.cockpit/memory.json'] ?? '{}').files['lib/c.ts'].uses).toEqual(['src/a.ts'])
   await ui.unmount()

@@ -139,7 +139,15 @@ export type Ph = {
   past: Flow[]
   pastAgents: Agent[]
   // The codebase memory: each source file (from the repository root) and the files it imports; at: when it was built
-  memory: { at: number; files: Record<string, string[]> }
+  memory: {
+    at: number
+    files: Record<string, string[]>
+    // The product's features as a model named them from what each file exports, and the file set they were named for
+    features?: { name: string; what: string; files: string[] }[]
+    sig?: string
+    // A model is naming them now
+    naming?: boolean
+  }
   ops: FileOp[]
   // Every path of the project, relative to the root: the Activity tree's skeleton
   project: string[]
@@ -190,6 +198,13 @@ export type Ph = {
     // Agents ticked on the team list, and the task to run them with ('' is the current one)
     selected: Record<string, boolean>
     runTask: string
+    // Clear was pressed and waits for its confirmation
+    confirmClear: boolean
+    // The feature opened in the Activity tab's memory
+    openFeature: string
+    // The run (an agent id) or team agent (type:<type>) being run again with your instructions, and those instructions
+    rerunFor: string
+    rerunText: string
     acctOpen: boolean
     acct: Account
     // The setup wizard's step, the token being typed, and the gh web login's note

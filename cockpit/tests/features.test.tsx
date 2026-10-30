@@ -8,7 +8,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], scored: 0, asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), { value: { agent: `cockpit:${e.name}` } }))
@@ -55,7 +55,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     return { result: 'ok' }
   })
   on('turn.complete', async () => ({ text: '' }))
-  on('command.run', async () => ({ text: '' }))
+  on('command.run', async (_: unknown, e: any) => (log.commands.push(String(e.command)), { text: '' }))
+  on('session.compact', async () => (log.compacted++, { skip: 'the stand keeps the conversation' }) as never)
   on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push(String(e.text)), { text: e.text }))
   on('session.append', async (_: unknown, e: any, next: any) => (log.notes.push(JSON.stringify(e.message?.content ?? '')), next(e)))
   return log
@@ -395,6 +396,24 @@ test('a palette paints its own background in the pane and the band, and the chat
   await $.command.run({ command: 'cockpit', args: 'theme auto' } as never)
   const ui = await $.ui.mount(pane('overview') as never)
   expect(((await ui.drawn()) as any).props.backgroundColor).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the context window compacts, or clears after you confirm', async ($, on) => {
+  const log = stand($, on)
+  const ui = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  await ui.press({ key: 'ctx-compact' })
+  expect(log.compacted).toBe(1)
+  expect(log.toasts.join('|')).toContain('Not compacted: the stand keeps the conversation')
+  await ui.press({ key: 'ctx-clear' })
+  expect(JSON.stringify(await ui.drawn())).toContain('Clear the conversation?')
+  expect(log.commands).not.toContain('clear')
+  await ui.press({ key: 'ctx-clear-no' })
+  expect(JSON.stringify(await ui.drawn())).not.toContain('Clear the conversation?')
+  await ui.press({ key: 'ctx-clear' })
+  await ui.press({ key: 'ctx-clear-yes' })
+  expect(log.commands).toContain('clear')
   await ui.unmount()
 })
 

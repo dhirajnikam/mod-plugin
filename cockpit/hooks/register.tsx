@@ -13,6 +13,7 @@ import {
   TESTERS,
   changedFiles,
   isOwnStart,
+  syncAgents,
   runMany,
   handoffs,
   judgeNext,
@@ -48,7 +49,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-18' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-21' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -90,6 +91,11 @@ export const register: Register = on => {
       const busy = s.isWorking || s.waiting !== '' || s.agents.some(a => a.status === 'running')
       if (busy) $.ui.invalidate('ui.render')
     })
+    // Claude's subagents, from the engine's own list: seen even where Cockpit's hooks are not
+    $.clock.every(2000, async () => {
+      const s = await read($, S)
+      if (s.isWorking || s.agents.some(a => a.status === 'running') || (await $.ui.panes()).some(p => p.id === PANE && p.isPlaced)) await syncAgents($)
+    })
     $.clock.every(15000, async () => {
       if ((await $.ui.panes()).some(p => p.id === PANE && p.isPlaced)) {
         await refreshRepo($)
@@ -116,7 +122,7 @@ export const register: Register = on => {
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'tab' && arg === 'git') await refreshRepo($)
     if (verb === 'tab' && arg === 'files') await loadProject($)
-    if (verb === 'tab' && arg === 'agents') await discoverAgentTypes($)
+    if (verb === 'tab' && arg === 'agents') await Promise.all([discoverAgentTypes($), syncAgents($)])
     if (verb === 'focus') {
       const want = arg.toLowerCase()
       if (want && want !== 'on' && want !== 'off') return { text: 'Use /cockpit focus on, /cockpit focus off, or /cockpit focus to switch' }
@@ -213,9 +219,9 @@ export const register: Register = on => {
   // The codebase memory in Claude's system prompt: the features, their files and how they connect
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
-    const files = (await read($, S)).memory.files
-    if (!Object.keys(files).length) return r
-    return { ...r, sections: [...r.sections, { id: 'cockpit:memory', text: memoryText(files), scope: 'session' as const }] }
+    const m = (await read($, S)).memory
+    if (!Object.keys(m.files).length) return r
+    return { ...r, sections: [...r.sections, { id: 'cockpit:memory', text: memoryText(m.files, 2600, m.features), scope: 'session' as const }] }
   }).catch(($, e, next) => next(e))
 
   // Claude's own task list: while it keeps one, the current flow's steps are its tasks, live
@@ -347,6 +353,7 @@ export const register: Register = on => {
     })
     await refreshRepo($)
     await measure($)
+    await syncAgents($)
     const s = await read($, S)
     if (changesAtStart !== null && s.repo.changed.length && changesOf(s.repo.changed) !== changesAtStart) changedThisTurn = true
     // Files a shell command or script changed reach the memory here

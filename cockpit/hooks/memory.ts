@@ -59,7 +59,9 @@ export function resolveImport(from: string, spec: string, has: (p: string) => bo
 export const featureOf = (path: string) => dirOf(path).split('/').filter(Boolean).slice(0, 2).join('/') || '(root)'
 
 export type Files = Record<string, string[]>
-export type Feature = { name: string; files: string[]; uses: string[]; usedBy: string[] }
+// A feature as people name it: what it is for, and the files that make it up. The model writes these; folders stand in
+export type Named = { name: string; what: string; files: string[] }
+export type Feature = Named & { uses: string[]; usedBy: string[] }
 
 // Who imports each file
 export function importers(files: Files) {
@@ -68,15 +70,26 @@ export function importers(files: Files) {
   return by
 }
 
-// The features, each with its files and the features it uses and is used by, biggest first
-export function features(files: Files): Feature[] {
+// The feature each file belongs to: the named features first (a file in one only), the rest by their folder
+export function membership(files: Files, named: Named[] = []) {
+  const of: Record<string, string> = {}
+  for (const n of named) for (const f of n.files) if (files[f] && !of[f]) of[f] = n.name
+  for (const f of Object.keys(files)) of[f] ??= featureOf(f)
+  return of
+}
+
+// The features, each with what it is for, its files and the features it uses and is used by (from the imports between
+// their files), biggest first
+export function features(files: Files, named: Named[] = []): Feature[] {
+  const of = membership(files, named)
+  const what = new Map(named.map(n => [n.name, n.what]))
   const map = new Map<string, Feature>()
-  const get = (n: string) => map.get(n) ?? (map.set(n, { name: n, files: [], uses: [], usedBy: [] }), map.get(n)!)
-  for (const f of Object.keys(files)) get(featureOf(f)).files.push(f)
+  const get = (n: string) => map.get(n) ?? (map.set(n, { name: n, what: what.get(n) ?? '', files: [], uses: [], usedBy: [] }), map.get(n)!)
+  for (const f of Object.keys(files)) get(of[f]!).files.push(f)
   for (const [f, imps] of Object.entries(files)) {
-    const a = featureOf(f)
+    const a = of[f]!
     for (const i of imps) {
-      const b = featureOf(i)
+      const b = of[i] ?? featureOf(i)
       if (a === b) continue
       if (!get(a).uses.includes(b)) get(a).uses.push(b)
       if (!get(b).usedBy.includes(a)) get(b).usedBy.push(a)
@@ -85,10 +98,11 @@ export function features(files: Files): Feature[] {
   return [...map.values()].sort((x, y) => y.files.length - x.files.length || x.name.localeCompare(y.name))
 }
 
-// What a change to one file reaches: what it imports, who imports it, every file that depends on it within `depth`
-// steps, and the features those are in
-export function impactOf(files: Files, path: string, depth = 3) {
+// What a change to one file reaches: its feature, what it imports, who imports it, every file that depends on it
+// within `depth` steps, and the features those are in
+export function impactOf(files: Files, path: string, depth = 3, named: Named[] = []) {
   const by = importers(files)
+  const of = membership(files, named)
   const reached = new Set<string>()
   let edge = [path]
   for (let d = 0; d < depth && edge.length; d++) {
@@ -96,13 +110,8 @@ export function impactOf(files: Files, path: string, depth = 3) {
     for (const f of edge) reached.add(f)
   }
   const affected = [...reached]
-  return {
-    feature: featureOf(path),
-    uses: files[path] ?? [],
-    usedBy: by[path] ?? [],
-    affected,
-    features: [...new Set(affected.map(featureOf))].filter(f => f !== featureOf(path)),
-  }
+  const feature = of[path] ?? featureOf(path)
+  return { feature, uses: files[path] ?? [], usedBy: by[path] ?? [], affected, features: [...new Set(affected.map(f => of[f] ?? featureOf(f)))].filter(f => f !== feature) }
 }
 
 // The memory key for a path as the session names it (absolute, or relative to a subfolder): the file it ends with
@@ -112,12 +121,58 @@ export function memoryKey(files: Files, path: string) {
   return Object.keys(files).find(k => p.endsWith(`/${k}`) || k.endsWith(`/${p}`)) ?? ''
 }
 
-// The memory as Claude reads it each turn: the features, their files and how they connect, cut to `max` characters
-export function memoryText(files: Files, max = 2600) {
-  const fs = features(files)
+// What a file shows of itself to the model naming the features: the names it exports and its first comment line
+export function factsOf(path: string, text: string) {
+  const exports = /\.py$/i.test(path)
+    ? [...text.matchAll(/^(?:def|class)\s+(\w+)/gm)].map(m => m[1] ?? '')
+    : [...text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|var|class|interface|type|enum)\s+(\w+)/g)].map(m => m[1] ?? '')
+  const note = text.match(/^\s*(?:\/\/+|#+|\/\*+|\*+)\s*([A-Za-z].{10,})$/m)?.[1]?.replace(/\*\/\s*$/, '').trim().slice(0, 120) ?? ''
+  return { exports: [...new Set(exports)].filter(Boolean).slice(0, 8), note }
+}
+
+// A stable name for a set of files: the features are written again only when files come or go
+export function filesSig(files: Files) {
+  let h = 0
+  for (const k of Object.keys(files).sort()) for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) | 0
+  return `${Object.keys(files).length}:${(h >>> 0).toString(36)}`
+}
+
+// The model's brief for naming the features
+export function featurePrompt(files: Files, facts: Record<string, { exports: string[]; note: string }>) {
+  const lines = Object.keys(files)
+    .sort()
+    .slice(0, 400)
+    .map(f => {
+      const x = facts[f]
+      const imps = (files[f] ?? []).map(i => i.split('/').pop()).join(', ')
+      return `${f}${x?.exports.length ? ` | exports ${x.exports.join(', ')}` : ''}${x?.note ? ` | "${x.note}"` : ''}${imps ? ` | imports ${imps}` : ''}`
+    })
+  return `These are the source files of a repository, each with what it exports, its first comment and what it imports.\n\n${lines.join('\n')}\n\nGroup them into the product's features as a person would name them (for example "Hero section", "Contact form", "Theme toggle", "Commit flow"), not by folder. Each feature: a short name of two to four words, one plain sentence on what it does for the user or the codebase, and every file that makes it up. Put shared code (data, types, helpers, styles, config, tests) in features of its own named for what it is. Every file in exactly one feature. Answer with JSON only: [{"name": "...", "what": "...", "files": ["path", ...]}].`
+}
+
+// The features the model wrote, kept only for files the repository has; each file in the first feature that names it
+export function parseFeatures(text: string, files: Files): Named[] {
+  try {
+    const arr = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]') as { name?: unknown; what?: unknown; files?: unknown }[]
+    const seen = new Set<string>()
+    return arr
+      .map(x => ({
+        name: String(x.name ?? '').trim().slice(0, 40),
+        what: String(x.what ?? '').trim().slice(0, 200),
+        files: (Array.isArray(x.files) ? x.files.map(String) : []).filter(f => files[f] && !seen.has(f) && (seen.add(f), true)),
+      }))
+      .filter(x => x.name && x.files.length)
+  } catch {
+    return []
+  }
+}
+
+// The memory as Claude reads it each turn: the features, what each is for, their files and how they connect
+export function memoryText(files: Files, max = 2600, named: Named[] = []) {
+  const fs = features(files, named)
   const lines = [
-    `Cockpit's map of this repository (from imports): ${Object.keys(files).length} source files in ${fs.length} features. Before changing a file, check what imports it; a change reaches those files too.`,
-    ...fs.map(f => `- ${f.name} (${f.files.length} ${f.files.length === 1 ? 'file' : 'files'}: ${f.files.map(x => x.split('/').pop()).slice(0, 8).join(', ')}${f.files.length > 8 ? ', …' : ''})${f.uses.length ? `; uses ${f.uses.join(', ')}` : ''}${f.usedBy.length ? `; used by ${f.usedBy.join(', ')}` : ''}`),
+    `Cockpit's map of this repository (features, and links from imports): ${Object.keys(files).length} source files in ${fs.length} features. Before changing a file, check what imports it; a change reaches those files too.`,
+    ...fs.map(f => `- ${f.name}${f.what ? `: ${f.what}` : ''} (${f.files.map(x => x.split('/').pop()).slice(0, 8).join(', ')}${f.files.length > 8 ? ', …' : ''})${f.uses.length ? `; uses ${f.uses.join(', ')}` : ''}${f.usedBy.length ? `; used by ${f.usedBy.join(', ')}` : ''}`),
   ]
   let out = ''
   for (const l of lines) {
@@ -128,12 +183,13 @@ export function memoryText(files: Files, max = 2600) {
 }
 
 // The memory as a page for people: .cockpit/MEMORY.md
-export function memoryMarkdown(files: Files, when: string) {
+export function memoryMarkdown(files: Files, when: string, named: Named[] = []) {
   const by = importers(files)
-  const fs = features(files)
-  const out = [`# Codebase memory`, ``, `Written by Cockpit from the imports of ${Object.keys(files).length} source files, ${when}. It is rebuilt at each session start and updated after each edit.`, ``]
+  const fs = features(files, named)
+  const out = [`# Codebase memory`, ``, `Written by Cockpit, ${when}: ${Object.keys(files).length} source files in ${fs.length} features${named.length ? ' (named by a model from what each file exports)' : ' (by folder)'}, and how they connect through their imports. Rebuilt at each session start, updated after each edit.`, ``]
   for (const f of fs) {
     out.push(`## ${f.name}`, ``)
+    if (f.what) out.push(f.what, ``)
     if (f.uses.length) out.push(`Uses: ${f.uses.join(', ')}  `)
     if (f.usedBy.length) out.push(`Used by: ${f.usedBy.join(', ')}  `)
     out.push(``)

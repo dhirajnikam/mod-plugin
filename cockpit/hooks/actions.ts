@@ -2,12 +2,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId } from '../types'
-import { importers, isCode, memoryKey, memoryMarkdown, parseImports, resolveImport } from './memory'
+import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from './memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-18' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-21' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -82,7 +82,7 @@ export async function writeSteps($: $, flowId: string, task: string) {
 // The codebase memory, built from every source file's imports at session start (in the background) and kept in
 // .cockpit/memory.json and .cockpit/MEMORY.md
 // ponytail: 1500 files and 300 KB a file; a bigger repository is mapped in part, by git's order
-export async function buildMemory($: $) {
+export async function buildMemory($: $, rename = false) {
   const root = await repoRoot($)
   const r = await git($, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
   if (!root || r.exitCode !== 0) return
@@ -90,16 +90,33 @@ export async function buildMemory($: $) {
   const has = new Set(all)
   const src = all.filter(isCode).slice(0, 1500)
   const files: Record<string, string[]> = {}
+  const facts: Record<string, { exports: string[]; note: string }> = {}
   for (let i = 0; i < src.length; i += 24) {
     await Promise.all(
       src.slice(i, i + 24).map(async p => {
         const text = await $.fs.read(`${root}/${p}`).catch(() => '')
         files[p] = text.length > 300_000 ? [] : [...new Set(parseImports(p, text).map(x => resolveImport(p, x, f => has.has(f))).filter((x): x is string => !!x))]
+        facts[p] = factsOf(p, text.slice(0, 20_000))
       }),
     )
   }
-  await set($, { memory: { at: await $.clock.now(), files } })
+  // The features named last time stand while the same files are there; a new or removed file names them again
+  const sig = filesSig(files)
+  const saved = JSON.parse((await $.fs.read(`${root}/.cockpit/memory.json`).catch(() => '')) || '{}') as { sig?: string; features?: { name: string; what: string; files: string[] }[] }
+  const kept = !rename && saved.sig === sig && saved.features?.length ? saved.features : undefined
+  await set($, { memory: { at: await $.clock.now(), files, ...(kept ? { features: kept, sig } : {}) } })
   await saveMemory($)
+  if (!kept && Object.keys(files).length) await nameFeatures($, files, facts, sig)
+}
+
+// A model names the product's features from each file's exports, first comment and imports, in the background
+export async function nameFeatures($: $, files: Record<string, string[]>, facts: Record<string, { exports: string[]; note: string }>, sig: string) {
+  await set($, s => ({ memory: { ...s.memory, naming: true } }))
+  const r = await $.model.complete({ model: 'sonnet', maxTokens: 6000, system: 'You map codebases. Answer with JSON only.', prompt: featurePrompt(files, facts) }).catch(() => null)
+  const named = r && r.isAnswered ? parseFeatures(r.text, files) : []
+  await set($, s => ({ memory: { ...s.memory, naming: false, ...(named.length ? { features: named, sig } : {}) } }))
+  if (named.length) await saveMemory($)
+  else await toast($, 'The features could not be named: they are shown by folder')
 }
 
 // One file again after an edit: its imports now, the file's entry dropped when it is gone
@@ -118,7 +135,7 @@ export async function updateMemory($: $, path: string) {
     const files = { ...st.memory.files }
     if (imports === null) delete files[rel]
     else files[rel] = imports
-    return { memory: { at, files } }
+    return { memory: { ...st.memory, at, files } }
   })
   await saveMemory($)
 }
@@ -128,8 +145,8 @@ async function saveMemory($: $) {
   if (!dir) return
   const m = (await read($, S)).memory
   const by = importers(m.files)
-  await $.fs.write(`${dir}/memory.json`, JSON.stringify({ version: 1, builtAt: m.at, files: Object.fromEntries(Object.entries(m.files).map(([f, uses]) => [f, { uses, usedBy: by[f] ?? [] }])) }, null, 1)).catch(() => null)
-  await $.fs.write(`${dir}/MEMORY.md`, memoryMarkdown(m.files, new Date(m.at).toISOString().slice(0, 16).replace('T', ' '))).catch(() => null)
+  await $.fs.write(`${dir}/memory.json`, JSON.stringify({ version: 2, builtAt: m.at, sig: m.sig ?? '', features: m.features ?? [], files: Object.fromEntries(Object.entries(m.files).map(([f, uses]) => [f, { uses, usedBy: by[f] ?? [] }])) }, null, 1)).catch(() => null)
+  await $.fs.write(`${dir}/MEMORY.md`, memoryMarkdown(m.files, new Date(m.at).toISOString().slice(0, 16).replace('T', ' '), m.features)).catch(() => null)
 }
 
 export async function loadPrefs($: $) {
@@ -817,6 +834,52 @@ export async function runMany($: $, types: string[], task = '') {
   for (const type of types) await runExpert($, type, [], { ...(task ? { task } : {}), batch })
   await handOff($, batch)
   await set($, s => ({ ui: { ...s.ui, selected: {}, runTask: '' } }))
+}
+
+// The context window, made room in: Compact keeps a summary in the conversation's place (as /compact does), Clear starts
+// the conversation afresh (as /clear does; the transcript stays in your history). Both wait for the session to be idle
+export async function compactNow($: $) {
+  const r = await $.session.compact({}).catch(e => ({ skip: String(e).includes('turn') ? 'a turn is running: try again when it ends' : String(e) }))
+  await toast($, 'skip' in r && r.skip ? `Not compacted: ${r.skip}` : 'Compacted: a summary keeps the conversation')
+  await measure($)
+}
+export async function clearNow($: $) {
+  await set($, s => ({ ui: { ...s.ui, confirmClear: false } }))
+  const r = await $.command.run({ command: 'clear' }).catch(e => ({ text: `Could not clear: ${String(e)}` }))
+  await toast($, 'text' in r && r.text?.startsWith('Could not') ? r.text : 'Context cleared')
+  await measure($)
+}
+
+// The session's agents as the engine lists them, Claude's subagents included: one Cockpit never heard start (another
+// plugin's hook can run before its own) joins the Agents tab, and one it never heard end is settled
+export async function syncAgents($: $) {
+  const list = await $.agent.list().catch(() => null)
+  if (!list?.length) return
+  const at = await $.clock.now()
+  await set($, s => {
+    let agents = s.agents
+    for (const a of list) {
+      const st = a.status === 'completed' ? 'done' : a.status === 'failed' ? 'failed' : a.status === 'killed' ? 'stopped' : 'running'
+      const was = agents.find(x => x.id === a.id)
+      const name = expertName(a.type) !== a.type ? expertName(a.type) : a.description || a.type
+      if (!was) agents = [...agents, { id: a.id, name, type: a.type, task: a.description, prompt: '', status: st, startedAt: at, ...(st !== 'running' ? { endedAt: at } : {}), tools: 0, log: [], cases: [], report: '' }]
+      else if (was.status === 'running' && st !== 'running') agents = agents.map(x => (x.id === a.id ? { ...x, status: st, endedAt: at } : x))
+    }
+    return agents === s.agents ? {} : { agents: agents.slice(-40) }
+  })
+}
+
+// An agent run again with your instructions: a run's own brief with them added, or a team agent with them as its task
+export async function rerun($: $, target: string, text: string) {
+  const s = await read($, S)
+  const said = text.trim()
+  await set($, st => ({ ui: { ...st.ui, rerunFor: '', rerunText: '' } }))
+  if (target.startsWith('type:')) return runExpert($, target.slice(5), [], said ? { task: said } : {})
+  const a = s.agents.find(x => x.id === target)
+  if (!a) return
+  const known = EXPERTS.some(x => x.type === a.type) || s.custom.some(c => c.type === a.type)
+  if (known) return runExpert($, a.type, [], { task: said ? `${a.task}\n\nInstructions for this run: ${said}` : a.task })
+  return spawnAgent($, said ? `${a.prompt || a.task}\n\nInstructions for this run: ${said}` : a.prompt || a.task, a.type)
 }
 
 // Every running agent, stopped

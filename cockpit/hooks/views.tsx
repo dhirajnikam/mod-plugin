@@ -27,6 +27,9 @@ import {
   setTheme,
   spawnAgent,
   stopAgent,
+  rerun,
+  compactNow,
+  clearNow,
   runMany,
   stopAll,
   clearFinished,
@@ -418,7 +421,24 @@ export function Overview($: $, v: V) {
             </Text>
           ))}
         </Box>
-        <Text color={s.ctx.pct >= 80 ? t.bad : t.dim} size="footnote">{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
+        <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+          <Text color={s.ctx.pct >= 80 ? t.bad : t.dim} size="footnote">{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
+          {!s.ui.confirmClear && (
+            <Box columnGap={sp(v, 1)}>
+              <Button key="ctx-compact" label="Compact" plain onPress={() => compactNow($)} />
+              <Button key="ctx-clear" label="Clear" plain onPress={() => set($, st => ({ ui: { ...st.ui, confirmClear: true } }))} />
+            </Box>
+          )}
+        </Box>
+        {s.ui.confirmClear && (
+          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            <Text color={t.busy} size="footnote" wrap="wrap">Clear the conversation? Claude starts afresh; the transcript stays in your history.</Text>
+            <Box columnGap={sp(v, 1)}>
+              <Button key="ctx-clear-yes" label="Clear now" plain onPress={() => clearNow($)} />
+              <Button key="ctx-clear-no" label="Cancel" plain onPress={() => set($, st => ({ ui: { ...st.ui, confirmClear: false } }))} />
+            </Box>
+          </Box>
+        )}
       </Box>
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
@@ -481,49 +501,83 @@ export function Overview($: $, v: V) {
 
 // Activity: the files touched as a tree, the one being worked on pulsing, and under it the live feed of every file
 // operation and every agent's tool calls, newest first; pressing a file narrows the feed to it
-// Memory: the codebase map. For the file chosen in the tree, or else the one edited last: what it uses, what imports it,
-// and every file and feature a change to it reaches. With neither, the features and how they connect
+// Memory: the codebase map. The features (named by a model from what each file exports, or by folder until then), each
+// opening to what it does, its files and what it uses and is used by; and for the file chosen in the tree, or else the
+// one edited last, the Impact: its feature, what it uses, what imports it, and every file and feature a change reaches
 function Memory($: $, v: V) {
   const { Box, Button, Text } = v.ui
   const { s, t } = v
-  const files = s.memory.files
+  const m = s.memory
+  const files = m.files
   const count = Object.keys(files).length
+  const named = m.features ?? []
   const lastEdit = [...s.ops].reverse().find(o => o.op === 'Write' || o.op === 'Edit')
   const key = memoryKey(files, s.ui.treeSel || lastEdit?.path || '')
-  const im = key ? impactOf(files, key) : null
-  const fs = featureList(files)
-  const names = (xs: string[], n = 4) => (xs.length ? `${xs.slice(0, n).map(x => x.split('/').pop()).join(' · ')}${xs.length > n ? ` +${xs.length - n}` : ''}` : '—')
+  const im = key ? impactOf(files, key, 3, named) : null
+  const fs = featureList(files, named)
+  const by: Record<string, number> = {}
+  for (const imps of Object.values(files)) for (const i of imps) by[i] = (by[i] ?? 0) + 1
+  const base = (f: string) => f.split('/').pop() ?? f
+  const names = (xs: string[], n = 4) => (xs.length ? `${xs.slice(0, n).map(base).join(' · ')}${xs.length > n ? ` +${xs.length - n}` : ''}` : '—')
   const row = (label: string, value: string, c: string) => (
     <Text key={`im-${label}`} size="footnote" wrap="truncate-end">
-      <Text color={t.faint}>{`${label.padEnd(9)}`}</Text>
+      <Text color={t.faint}>{label.padEnd(9)}</Text>
       <Text color={c}>{value}</Text>
     </Text>
   )
+  const state = !count ? 'mapping the codebase…' : `${count} files · ${fs.length} features${m.naming ? ' · naming them…' : named.length ? '' : ' · by folder'} · ${fmt(Math.max(0, v.now - m.at))} ago`
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={im && im.usedBy.length ? t.busy : t.divider} paddingX={1}>
       <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
         <Text wrap="truncate-end">
-          <Text color={t.text} weight="semibold">{im ? `Impact · ${key.split('/').pop()}` : 'Memory'}</Text>
-          <Text color={t.dim} size="footnote">{im ? `  in ${im.feature}` : count ? `  ${count} files · ${fs.length} features · ${fmt(Math.max(0, v.now - s.memory.at))} ago` : '  mapping the codebase…'}</Text>
+          <Text color={t.text} weight="semibold">Memory</Text>
+          <Text color={t.dim} size="footnote">{`  ${state}`}</Text>
         </Text>
-        <Button key="mem-rebuild" label="↻" plain onPress={() => buildMemory($)} />
+        <Button key="mem-rebuild" label="↻" plain onPress={() => buildMemory($, true)} />
       </Box>
-      {im ? (
-        <Box flexDirection="column">
+      {im && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text size="footnote" wrap="truncate-end">
+            <Text color={t.text} bold>{`Impact · ${base(key)}`}</Text>
+            <Text color={t.dim}>{`  in ${im.feature}`}</Text>
+          </Text>
           {row('uses', names(im.uses), t.text)}
           {row('used by', im.usedBy.length ? names(im.usedBy) : 'nothing imports it', im.usedBy.length ? t.busy : t.ok)}
           {row('reaches', im.affected.length ? `${im.affected.length} file${im.affected.length === 1 ? '' : 's'}${im.features.length ? ` in ${im.features.join(', ')}` : ''}: check them` : 'only this file', im.affected.length ? t.busy : t.ok)}
         </Box>
-      ) : (
-        fs.slice(0, 8).map(f => (
-          <Text key={`ft-${f.name}`} size="footnote" wrap="truncate-end">
-            <Text color={t.accent}>{f.name}</Text>
-            <Text color={t.dim}>{`  ${f.files.length} file${f.files.length === 1 ? '' : 's'}`}</Text>
-            {f.uses.length > 0 && <Text color={t.faint}>{`  → ${f.uses.join(', ')}`}</Text>}
-            {f.usedBy.length > 0 && <Text color={t.faint}>{`  ← ${f.usedBy.join(', ')}`}</Text>}
-          </Text>
-        ))
       )}
+      {fs.slice(0, 24).map(f => {
+        const open = s.ui.openFeature === f.name
+        return (
+          <Box key={`ft-${f.name}`} flexDirection="column">
+            <Button key={`feat-${f.name}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFeature: open ? '' : f.name } }))}>
+              <Text wrap="truncate-end">
+                <Text color={t.faint}>{open ? '▾ ' : '▸ '}</Text>
+                <Text color={t.accent} bold={open}>{f.name}</Text>
+                <Text color={t.dim}>{`  ${f.files.length} file${f.files.length === 1 ? '' : 's'}`}</Text>
+                {!open && f.what !== '' && <Text color={t.faint}>{`  ${f.what}`}</Text>}
+              </Text>
+            </Button>
+            {open && (
+              <Box flexDirection="column" paddingLeft={2}>
+                {f.what !== '' && <Text color={t.text} size="footnote" wrap="wrap">{f.what}</Text>}
+                {f.uses.length > 0 && row('uses', f.uses.join(', '), t.text)}
+                {f.usedBy.length > 0 && row('used by', f.usedBy.join(', '), t.text)}
+                {f.files.map(file => (
+                  <Button key={`ff-${file}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, treeSel: st.ui.treeSel === file ? '' : file } }))}>
+                    <Text size="footnote" wrap="truncate-end">
+                      <Text color={t.text}>{base(file)}</Text>
+                      <Text color={t.faint}>{`  ${file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''}`}</Text>
+                      <Text color={t.dim}>{`  → ${(files[file] ?? []).length}  ← ${by[file] ?? 0}`}</Text>
+                    </Text>
+                  </Button>
+                ))}
+              </Box>
+            )}
+          </Box>
+        )
+      })}
+      {fs.length > 24 && <Text color={t.faint} size="footnote">{`+${fs.length - 24} more in .cockpit/MEMORY.md`}</Text>}
     </Box>
   )
 }
@@ -739,6 +793,23 @@ export function Agents($: $, v: V) {
       </Text>
     )
   }
+  // Run again with your instructions: a team agent with them as its task, or a run with them added to its brief
+  const instructions = (target: string, hint: string) => (
+    <Box key={`rr-${target}`} flexDirection="column" paddingLeft={4}>
+      <Input
+        key="rerun-input"
+        label="Instructions"
+        placeholder={hint}
+        value={s.ui.rerunText}
+        onInput={val => set($, st => ({ ui: { ...st.ui, rerunText: val } }))}
+        onSubmit={val => rerun($, target, val)}
+      />
+      <Box columnGap={sp(v, 1)}>
+        {pill('rerun-go', '▶ Run with these', true, () => rerun($, target, s.ui.rerunText))}
+        {pill('rerun-cancel', 'Cancel', false, () => set($, st => ({ ui: { ...st.ui, rerunFor: '', rerunText: '' } })))}
+      </Box>
+    </Box>
+  )
   // A button: the surface's own on desktop; on the terminal a filled chip, as the tabs are, in place of [ brackets ]
   const pill = (key: string, label: string, on: boolean, onPress: () => unknown) =>
     v.desk ? (
@@ -852,7 +923,7 @@ export function Agents($: $, v: V) {
           const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
           const right = !a ? '' : live ? `${copies.length > 1 ? `${copies.length} running · ` : ''}${fmt(v.now - a.startedAt)}` : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
           const ticked = !!s.ui.selected[x.type]
-          return (
+          const rowEl = (
             <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
               <Button key={`pick-${x.type}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, selected: { ...st.ui.selected, [x.type]: !st.ui.selected[x.type] } } }))}>
                 <Text color={ticked ? t.accent : t.faint}>{ticked ? '▣' : '□'}</Text>
@@ -865,8 +936,17 @@ export function Agents($: $, v: V) {
               </Box>
               {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
               {copies.length > 0 && <Button key={`halt-${x.type}`} label="■" plain onPress={() => Promise.all(copies.map(r => stopAgent($, r.id, copies.length > 1)))} />}
+              <Button key={`edit-${x.type}`} label="✎" plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === `type:${x.type}` ? '' : `type:${x.type}`, rerunText: '' } }))} />
               <Button key={`run-${x.type}`} label="▶" plain onPress={() => runExpert($, x.type)} />
             </Box>
+          )
+          return s.ui.rerunFor === `type:${x.type}` ? (
+            <Box key={`exw-${x.type}`} flexDirection="column">
+              {rowEl}
+              {instructions(`type:${x.type}`, `Run the ${x.name.toLowerCase()} on…`)}
+            </Box>
+          ) : (
+            rowEl
           )
         })}
       </Box>
@@ -905,8 +985,10 @@ export function Agents($: $, v: V) {
                       <Text color={t.dim}>{` · ${a.tools} tool calls · ${took(a)}`}</Text>
                     </Text>
                     {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}
-                    {live ? <Button key={`stop-${a.id}`} label="■" plain onPress={() => stopAgent($, a.id)} /> : <Button key={`restart-${a.id}`} label="↻" plain onPress={() => spawnAgent($, a.prompt, a.type)} />}
+                    {live ? <Button key={`stop-${a.id}`} label="■" plain onPress={() => stopAgent($, a.id)} /> : <Button key={`restart-${a.id}`} label="↻" plain onPress={() => rerun($, a.id, '')} />}
+                    <Button key={`redo-${a.id}`} label="✎" plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === a.id ? '' : a.id, rerunText: '' } }))} />
                   </Box>
+                  {s.ui.rerunFor === a.id && instructions(a.id, `Run the ${a.name.toLowerCase()} again, and…`)}
                   {(open ? a.cases : failing).map((c, i) => (
                     <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
                       <Text color={c.st === 'fail' ? t.bad : c.st === 'fixed' ? t.busy : t.ok}>{`   ${c.st === 'fail' ? '✗' : c.st === 'fixed' ? '↻' : '✓'} `}</Text>
