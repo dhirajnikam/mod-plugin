@@ -16,7 +16,7 @@ Answer `y` to add this repository as a marketplace, then pick a scope: for you e
 
 - Cockpit writes a `.cockpit/` folder at the top of each repository you use it in: its codebase memory and history. The folder carries its own `.gitignore`, so nothing in it is ever committed.
 - Testing each agent's work is on: every agent run that edits files starts two more subagents (a positive and a negative tester). Switch it off in the Agents tab.
-- Each prompt makes one small model call to write its own flow steps, and the judges make a few for each question Claude asks you (turn them off with `/cockpit mode off`).
+- Each prompt makes one small model call to write its own flow steps, another writes the next commit from the diff whenever the changed files shift, and the judges make a few for each question Claude asks you (turn them off with `/cockpit mode off`).
 - Push, pull requests and Verify after each turn are off until you turn them on.
 - Plugins your organization manages may run before Cockpit and skip some of its hooks; Cockpit's other parts keep working.
 
@@ -75,8 +75,8 @@ The **Auto** theme (the default) uses Claude Code's own theme colours, so it fol
 The first time you open the Git tab in a repository it asks five things, once: the **account** that commits, the **branch pattern**, the **message pattern**, the **commit mode**, and **when**. **⚙ Setup** asks again; **Patterns & options** edits any of it. Everything is remembered per repository.
 
 - **Commit mode**: *Auto-commit* commits by itself, after each turn that changed the repository's files however they were changed (Edit and Write, a shell command, a script) and after each agent run that changed files, then pushes when **Push after commit** is on; *Ask me* proposes each commit above the prompt and in the pane, with Commit and Skip; *Manual* commits only when you press the button.
-- **Type and branch are chosen for you.** The commit type (feat, fix, docs, refactor, perf, test, chore) comes from the words of your prompt, or the files changed; the branch kind (feature, fix, docs, …) follows it. When the work sits on a base branch (main, master, develop, trunk) a branch is cut by the pattern, e.g. `feature/add-login`; on any other branch the commit stays there. In Manual mode you pick the type.
-- The message comes from the first line of your last prompt, or from the files changed; the Next commit card shows it before anything happens.
+- **Type, message and branch are written from the changes, not from your prompt.** A quick model reads the diff of the ticked files (and the start of each new file) and writes the commit type (feat, fix, docs, refactor, perf, test, chore) and the subject, again whenever the ticked files change; the branch kind (feature, fix, docs, …) and the branch's name follow them. When the work sits on a base branch (main, master, develop, trunk) a branch is cut by the pattern, e.g. `feature/add-login`; on any other branch the commit stays there. In Manual mode you pick the type.
+- The Next commit card shows the message before anything happens ("writing from the diff…" while the model works); Commit, Ask me and Auto-commit wait for it. If no model answers, the subject names the files changed.
 - **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
 - The tab reads the repository each time you open it (and after every turn); **↻ Refresh** reads it again.
 - **Open pull request** needs a branch other than the base, which the pattern gives you.
@@ -85,7 +85,11 @@ The first time you open the Git tab in a repository it asks five things, once: t
 
 ## Git accounts
 
-The **Account** box shows the saved login; **Modify** opens the choices and the ways to add one. It lists your global git identity and each GitHub login `gh auth status` reports. To add one, paste a personal access token (**Add token** runs `gh auth login --with-token`; gh keeps the token, Cockpit does not), or press **Log in with gh**: gh puts a one-time code on your clipboard and waits for you at github.com/login/device; press **↻ Detect** afterwards. Commits use the chosen account's name and email. With push on, Cockpit runs `gh auth switch` to that account's login first, which changes the active GitHub account for the whole machine. **Use for this repo** writes the identity into the repository's own git config.
+The **Account** box shows the saved login; **Modify** opens the choices and the ways to add one. It lists your global git identity (pushing as the gh login of the same name, else gh's active one) and each other GitHub login `gh auth status` reports, with its GitHub name and no-reply address.
+
+- **Add** puts the login on this machine. Paste a classic personal access token with the `repo` and `read:org` scopes (**Add token** hands it to `gh auth login --with-token` on stdin; gh keeps it, Cockpit does not), or press **Log in with gh**: gh copies a one-time code to your clipboard, the box shows the code too, and gh waits for you at github.com/login/device. Either way Cockpit then runs `gh auth setup-git` and picks the new login.
+- **Remove** takes it off this machine, after you confirm: `gh auth logout` for its login, and for the global identity `git config --global --unset user.name` and `user.email` as well. ↻ Detect does not bring it back. (Logging out does not revoke the token on GitHub.)
+- Commits use the chosen account's name and email. With push on, and for ↑ Push, Cockpit first runs `gh auth switch` to that account's login (which changes the active GitHub account for the whole machine) and `gh auth setup-git`, so git asks gh for github.com's credentials instead of a helper such as Windows' credential manager that would push as whoever it remembers. **Use for this repo** writes the identity into the repository's own git config.
 
 ## Web rendering
 

@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId } from '../types'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from './memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
+import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
 
@@ -191,14 +191,48 @@ async function git($: $, args: string[]) {
 
 const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
 
-// The subject a commit gets: the typed one, else the task's first line, else the files it touches
-export const subjectFor = (s: Ph, files: string[]) => s.git.subject.trim() || subjectOf(s.task) || (files.length ? `update ${[...new Set(files.map(base))].slice(0, 3).join(', ')}` : '')
+// The ticked files and their figures: a written commit stands while they stay the same
+const commitSig = (s: Ph) => s.repo.changed.filter(f => s.staged[f.path] !== false).map(f => `${f.path} ${f.meta}`).join('\n')
+const suggested = (s: Ph) => (s.suggest && !s.suggest.busy && s.suggest.sig === commitSig(s) ? s.suggest : null)
 
-// A commit subject from the task's first line, when the form has none
-export const subjectOf = (task: string) => {
-  const line = (task.split('\n')[0] ?? '').trim().replace(/[.!?]+$/, '')
-  const s = line.length > 60 ? `${line.slice(0, 59).replace(/\s+\S*$/, '')}…` : line
-  return s.charAt(0).toLowerCase() + s.slice(1)
+// The subject a commit gets: the typed one, else the one written from the diff, else the files it touches
+export const subjectFor = (s: Ph, files: string[]) => s.git.subject.trim() || suggested(s)?.subject || (files.length ? `update ${[...new Set(files.map(base))].slice(0, 3).join(', ')}` : '')
+
+// The commit's type and subject, written by a quick model from the diff of the ticked files (never from the prompt);
+// one write per set of files, shared by everyone waiting on it
+const writing = new Map<string, Promise<void>>()
+export async function suggestCommit($: $) {
+  const s = await read($, S)
+  const sig = commitSig(s)
+  if (!sig || (s.suggest?.sig === sig && !s.suggest.busy)) return
+  const w = writing.get(sig) ?? writeCommit($, s, sig).finally(() => writing.delete(sig))
+  writing.set(sig, w)
+  return w
+}
+
+async function writeCommit($: $, s: Ph, sig: string) {
+  await set($, { suggest: { sig, type: '', subject: '', busy: true } })
+  const picked = s.repo.changed.filter(f => s.staged[f.path] !== false)
+  const root = await repoRoot($)
+  const tracked = picked.filter(f => f.meta !== 'new').flatMap(f => (f.from ? [f.path, f.from] : [f.path]))
+  const diff = tracked.length ? (await git($, ['diff', 'HEAD', '-M', '--', ...tracked])).stdout : ''
+  // ponytail: a new file shows its first 60 lines, ten files at most; the whole prompt is cut at 15k characters
+  const fresh = await Promise.all(
+    picked
+      .filter(f => f.meta === 'new')
+      .slice(0, 10)
+      .map(async f => `new file ${f.path}\n${(await $.fs.read(`${root}/${f.path}`).catch(() => '')).split('\n').slice(0, 60).join('\n')}`),
+  )
+  const r = await $.model
+    .complete({
+      model: 'haiku',
+      maxTokens: 200,
+      system: 'You write git commit messages. Answer with JSON only.',
+      prompt: `Write the commit for this change from what the diff does. type is one of ${TYPES.join(', ')}. subject says what changed, imperative, lower case, under 60 characters, no period and no type prefix (for example "add rate limiting to the login route"). Answer with JSON only: {"type": "...", "subject": "..."}.\n\nFiles:\n${picked.map(f => `${f.path} (${f.meta})`).join('\n')}\n\n${`${diff}\n${fresh.join('\n\n')}`.slice(0, 15000)}`,
+    })
+    .catch(() => null)
+  const c = r && r.isAnswered ? parseCommit(r.text) : null
+  await set($, st => (st.suggest?.sig === sig ? { suggest: { sig, type: c?.type ?? '', subject: c?.subject ?? '' } } : {}))
 }
 
 // Branch, ahead count, local branches and uncommitted files with their line counts
@@ -270,6 +304,8 @@ export async function refreshRepo($: $) {
   const up = await git($, ['log', '--format=%h', '@{u}..HEAD'])
   const unpushed = up.exitCode === 0 ? up.stdout.split('\n').filter(Boolean) : []
   await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed }, git: { ...s.git, base: s.git.base || base } }))
+  // The next commit's message is written in the background; Commit waits for it
+  void suggestCommit($).catch(() => null)
 }
 
 // A commit opened in the graph: its author, date, whole message and the files it changed
@@ -294,10 +330,10 @@ export async function gitInit($: $) {
   await refreshRepo($)
 }
 
-// What the next commit would be: its type (inferred unless you chose Manual), branch, message and files
+// What the next commit would be: its type (from the diff unless you chose Manual), branch, message and files
 export function planCommit(s: Ph): Pending {
   const files = s.repo.changed.filter(f => s.staged[f.path] !== false).map(f => f.path)
-  const type = s.git.commitMode === 'manual' ? s.git.type : inferType(s.task, files)
+  const type = s.git.commitMode === 'manual' ? s.git.type : suggested(s)?.type || inferType('', files)
   const subject = subjectFor(s, files)
   const g = { ...s.git, type, subject }
   const branch = branchName(g, s.repo.current)
@@ -306,6 +342,7 @@ export function planCommit(s: Ph): Pending {
 
 // Commit the staged files; push and open a PR when the form says so. `plan` commits as proposed (ask mode)
 export async function commit($: $, auto: boolean, plan?: Pending) {
+  if (!plan) await suggestCommit($)
   const s = await read($, S)
   const p = plan ?? planCommit(s)
   const g = { ...s.git, type: p.type }
@@ -336,9 +373,8 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
   const extra: string[] = []
   if (auto) extra.push('auto')
   if (g.push && acct?.gh) {
-    // ponytail: gh auth switch changes the machine's active GitHub account, not just this push; per-push tokens if that bites
-    const sw = await $.process.run(['gh', 'auth', 'switch', '--user', acct.gh]).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
-    if (sw.exitCode !== 0) extra.push(`gh switch to ${acct.gh} failed: ${firstLine(sw)}`)
+    const why = await ghUse($, acct.gh)
+    if (why) extra.push(why)
   }
   if (g.push) {
     const p = await git($, ['push', '-u', 'origin', br])
@@ -385,6 +421,7 @@ export async function skipPending($: $) {
 
 // What happens to this turn's changes, by the chosen commit mode
 export async function decideCommit($: $) {
+  await suggestCommit($)
   const s = await read($, S)
   if (s.git.commitMode === 'auto') await commit($, true)
   else if (s.git.commitMode === 'ask') await proposeCommit($)
@@ -394,34 +431,71 @@ export async function decideCommit($: $) {
 export async function pushNow($: $) {
   const s = await read($, S)
   const acct = s.accounts.find(a => a.id === s.accountId)
-  if (acct?.gh) await $.process.run(['gh', 'auth', 'switch', '--user', acct.gh]).catch(() => null)
+  const why = acct?.gh ? await ghUse($, acct.gh) : ''
   const p = await git($, ['push', '-u', 'origin', s.repo.current])
-  await toast($, p.exitCode === 0 ? `Pushed ${s.repo.current}` : `Push failed: ${firstLine(p)}`)
+  await toast($, `${p.exitCode === 0 ? `Pushed ${s.repo.current}` : `Push failed: ${firstLine(p)}`}${why ? ` (${why})` : ''}`)
   await refreshRepo($)
 }
 
-// gh login with a personal access token on stdin; gh keeps the token, Cockpit never does
-export async function ghLoginToken($: $, token: string) {
-  const tk = token.trim()
-  if (!tk) return toast($, 'Paste a GitHub token first')
-  const r = await $.process.run(['gh', 'auth', 'login', '--with-token', '-h', 'github.com'], { stdin: `${tk}\n` }).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
-  await set($, st => ({ ui: { ...st.ui, ghToken: '' } }))
-  if (r.exitCode !== 0) return toast($, `gh login failed: ${firstLine(r)}`)
-  await loadAccounts($)
-  await set($, st => ({ ui: { ...st.ui, acctOpen: false } }))
-  await toast($, 'Logged in to GitHub with the token')
+async function gh($: $, args: string[], stdin?: string) {
+  return $.process.run(['gh', ...args], { env: { GH_PROMPT_DISABLED: '1' }, ...(stdin ? { stdin } : {}) }).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
 }
 
-// gh login in the browser: gh copies a one-time code to the clipboard and waits on github.com/login/device
+// Push as a gh login: make it gh's active account, and have git ask gh for github.com's credentials, or git's own
+// helper (Windows' manager) answers and the push goes out as whoever that remembers. '' when both worked, else why not
+// ponytail: gh auth switch changes the machine's active GitHub account, not just this push; per-push tokens if that bites
+// Each runs whatever the other did: a switch gh refuses must not leave git asking its own helper
+async function ghUse($: $, login: string) {
+  const sw = await gh($, ['auth', 'switch', '-h', 'github.com', '--user', login])
+  const sg = await gh($, ['auth', 'setup-git', '-h', 'github.com'])
+  return [sw.exitCode !== 0 && `gh switch to ${login} failed: ${firstLine(sw)}`, sg.exitCode !== 0 && `gh setup-git failed: ${firstLine(sg)}`].filter(Boolean).join(' · ')
+}
+
+// A gh login just added: git set to use it, the accounts read again, and the new login (gh's active one) chosen
+async function ghAdded($: $) {
+  await gh($, ['auth', 'setup-git', '-h', 'github.com'])
+  const login = (await gh($, ['api', 'user', '--jq', '.login'])).stdout.trim()
+  await loadAccounts($)
+  const s = await read($, S)
+  const a = s.accounts.find(x => x.gh === login && x.id.startsWith('gh-')) ?? s.accounts.find(x => x.gh === login)
+  if (a) await useAccount($, a.id)
+  await set($, st => ({ ui: { ...st.ui, acctOpen: false } }))
+  return login
+}
+
+// gh login with a personal access token (classic, scopes repo and read:org) on stdin; gh keeps it, Cockpit never does
+export async function ghLoginToken($: $, token: string) {
+  const tk = token.trim()
+  await set($, st => ({ ui: { ...st.ui, ghToken: '' } }))
+  if (!tk) return toast($, 'Paste a GitHub token first')
+  const r = await gh($, ['auth', 'login', '--with-token', '-h', 'github.com', '-p', 'https'], `${tk}\n`)
+  if (r.exitCode !== 0) return toast($, `gh login failed: ${firstLine(r)}`)
+  const login = await ghAdded($)
+  await toast($, `Logged in to GitHub as ${login || 'the token’s account'}`)
+}
+
+// gh login in the browser: gh copies a one-time code to the clipboard and waits on github.com/login/device; what it
+// writes is streamed into the note, so the code shows even where the clipboard is not reachable
 export async function ghLoginWeb($: $) {
-  await set($, st => ({ ui: { ...st.ui, ghNote: 'gh has put a one-time code on your clipboard: open github.com/login/device, paste it and approve. Then press Detect.' } }))
-  void $.process
-    .run(['gh', 'auth', 'login', '--web', '-h', 'github.com', '-p', 'https', '--skip-ssh-key'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10 * 60 * 1000 })
-    .then(async r => {
-      await set($, st => ({ ui: { ...st.ui, ghNote: r.exitCode === 0 ? 'Logged in.' : `gh login ended: ${firstLine(r)}` } }))
-      if (r.exitCode === 0) await loadAccounts($)
-    })
-    .catch(() => null)
+  await set($, st => ({ ui: { ...st.ui, ghNote: 'Starting gh…' } }))
+  void (async () => {
+    let said = ''
+    let ok = false
+    const run = $.process.spawn({ argv: ['gh', 'auth', 'login', '--web', '--clipboard', '-h', 'github.com', '-p', 'https', '--skip-ssh-key'], env: { GH_PROMPT_DISABLED: '1' } })
+    // Pulled by hand, not for-await: the stream's return value (how gh ended) is what a for-await drops
+    for (let r = await run.next(); ; r = await run.next()) {
+      if (r.done) {
+        ok = r.value.code === 0
+        break
+      }
+      said += r.value.text
+      const code = said.match(/code[^A-Z0-9]*\(?([A-Z0-9]{4}-[A-Z0-9]{4})/)?.[1]
+      const note = code ? `Open github.com/login/device and enter the code ${code} (also on your clipboard), then approve. Waiting for GitHub…` : said.trim().split('\n').pop() ?? ''
+      await set($, st => ({ ui: { ...st.ui, ghNote: note } }))
+    }
+    const login = ok ? await ghAdded($) : ''
+    await set($, st => ({ ui: { ...st.ui, ghNote: ok ? `Logged in as ${login}.` : `gh login ended: ${said.trim().split('\n').pop() ?? 'no output'}` } }))
+  })().catch(async e => set($, st => ({ ui: { ...st.ui, ghNote: `gh could not start: ${String(e)}` } })))
 }
 
 const PERSONAS = ['a pragmatic senior engineer', 'a security reviewer', 'a long-term maintainer', 'the end user', 'a sceptic who prefers the safest option', 'a performance engineer', 'a test engineer', 'a software architect', 'a minimalist who prefers less code']
@@ -998,15 +1072,23 @@ export async function loadAccounts($: $) {
   const chosen = ((await $.store.get(`account:${await repoRoot($)}`)) as string | undefined) ?? ((await $.store.get('accountId')) as string | undefined) ?? ''
   const name = (await git($, ['config', '--global', 'user.name'])).stdout.trim()
   const email = (await git($, ['config', '--global', 'user.email'])).stdout.trim()
-  const st = await $.process.run(['gh', 'auth', 'status']).catch(() => null)
-  const out = `${st?.stdout ?? ''}${st?.stderr ?? ''}`
+  const st = await gh($, ['auth', 'status', '-h', 'github.com'])
+  const out = `${st.stdout}${st.stderr}`
   // One block per login: "Logged in to github.com account <login> ..." then its "- Active account: true|false"
   const blocks = out.split(/Logged in to /).slice(1)
   const logins = blocks.map(b => b.match(/account (\S+)/)?.[1] ?? '').filter(Boolean)
   const active = blocks.find(b => /Active account: true/.test(b))?.match(/account (\S+)/)?.[1] ?? logins[0] ?? ''
+  // The global identity pushes as the login of its own name when there is one, else as gh's active login
+  const mine = logins.find(l => l.toLowerCase() === name.toLowerCase()) ?? active
   const found: Account[] = []
-  if (name || email) found.push({ id: 'global', label: active || name || 'global', name, email, gh: active })
-  for (const l of logins) if (l && (l !== active || !(name || email))) found.push({ id: `gh-${l}`, label: l, name: l, email: `${l}@users.noreply.github.com`, gh: l })
+  if (name || email) found.push({ id: 'global', label: mine || name || 'global', name, email, gh: mine })
+  // Every other login commits as its GitHub name and its no-reply address, which GitHub links to the account
+  const rest = logins.filter(l => l !== mine || !(name || email))
+  const users = await Promise.all(rest.map(l => gh($, ['api', `users/${l}`, '--jq', '[.id, .name // ""] | @tsv'])))
+  rest.forEach((l, i) => {
+    const [uid = '', real = ''] = (users[i]?.exitCode === 0 ? users[i].stdout.trim() : '').split('\t')
+    found.push({ id: `gh-${l}`, label: l, name: real || l, email: uid ? `${uid}+${l}@users.noreply.github.com` : `${l}@users.noreply.github.com`, gh: l })
+  })
   const accounts = [...saved, ...found.filter(f => !saved.some(a => a.id === f.id))]
   await set($, { accounts, accountId: accounts.some(a => a.id === chosen) ? chosen : (accounts[0]?.id ?? '') })
 }
@@ -1023,11 +1105,27 @@ export async function saveAccount($: $, a: Account) {
   await toast($, `Saved account ${acct.label}`)
 }
 
+// Remove an account from the machine, not only from the list (the next Detect would find it again): its gh login is
+// logged out, and for the global identity git's global user.name and user.email are unset too
 export async function removeAccount($: $, id: string) {
-  const s = await read($, S)
-  const accounts = s.accounts.filter(a => a.id !== id)
-  await $.store.set('accounts', accounts.filter(x => x.id !== 'global' && !x.id.startsWith('gh-')))
-  await set($, { accounts, accountId: accounts[0]?.id ?? '' })
+  await set($, st => ({ ui: { ...st.ui, acctRemove: '' } }))
+  const a = (await read($, S)).accounts.find(x => x.id === id)
+  if (!a) return
+  const why: string[] = []
+  if (a.gh) {
+    const r = await gh($, ['auth', 'logout', '-h', 'github.com', '-u', a.gh])
+    if (r.exitCode !== 0 && !/not logged in/i.test(firstLine(r))) why.push(`gh logout failed: ${firstLine(r)}`)
+  }
+  // Exit 5: the key was not set, which is what removing it wants
+  if (id === 'global')
+    for (const k of ['user.name', 'user.email']) {
+      const r = await git($, ['config', '--global', '--unset', k])
+      if (r.exitCode !== 0 && r.exitCode !== 5) why.push(`git config --unset ${k} failed: ${firstLine(r)}`)
+    }
+  const saved = ((await $.store.get('accounts')) as Account[] | undefined) ?? []
+  await $.store.set('accounts', saved.filter(x => x.id !== id))
+  await loadAccounts($)
+  await toast($, why.length ? why.join(' · ') : `Removed ${a.label} from this machine`)
 }
 
 export async function useAccount($: $, id: string) {
