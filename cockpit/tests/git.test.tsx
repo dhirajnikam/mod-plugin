@@ -17,6 +17,12 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   on('store.set', async () => ({ value: undefined }))
   on('ui.toast', async (_, e) => (toasts.push(String((e as { text?: unknown }).text ?? JSON.stringify(e))), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
+  // The commit is written from the diff: the model sees the changed files, never the prompt
+  const asked: string[] = []
+  on('model.complete', async (_: unknown, e: any) => {
+    asked.push(String(e.prompt))
+    return String(e.prompt).startsWith('Write the commit') ? ({ value: { isAnswered: true, text: '{"type": "refactor", "subject": "Tidy the files."}', usage: { inputTokens: 1, outputTokens: 1 } } } as never) : ({ value: { isAnswered: false, reason: 'empty-reply' } } as never)
+  })
   on('process.run', async (_, e) => {
     const argv = (e as unknown as { argv?: string[]; command?: string[] }).argv ?? (e as unknown as string[])
     const a = Array.isArray(argv) ? argv : Object.values(e as object).find(Array.isArray) as string[]
@@ -25,6 +31,7 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
     const cmd = a.join(' ')
     if (cmd.startsWith('git status')) return out(STATUS)
     if (cmd.startsWith('git diff --numstat')) return out(NUMSTAT)
+    if (cmd.startsWith('git diff HEAD -M')) return out('diff --git a/a.txt b/a.txt\n-old line\n+new line\n')
     if (cmd.startsWith('git branch')) return out('master\nfeature/x\n')
     if (cmd.startsWith('git symbolic-ref')) return out('', 1)
     if (cmd.startsWith('git rev-parse')) return out('abc1234\n')
@@ -66,19 +73,24 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
 
   // Untick keep.txt (staged earlier), give a subject, commit
   await ui.press({ key: 'stage-keep.txt' })
-  // The subject comes from the last prompt
-  await $.prompt.submit({ text: 'Tidy files', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  // The prompt's words are not the message
+  await $.prompt.submit({ text: 'please fix my thing', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   ran.length = 0
   await ui.press({ key: 'git-commit' })
   const commit = ran.find(a => a.includes('commit'))
   expect(commit).toBeDefined()
   const paths = commit!.slice(commit!.indexOf('--') + 1)
   expect(paths.sort()).toEqual(['a.txt', 'gone.txt', 'new.txt', 'newdir/', 'old.txt', 'with space.txt'])
-  // The type is read from the task ("tidy" → refactor), the branch cut off master by the pattern
-  expect(commit).toContain('refactor: tidy files')
+  // Type and subject are written from the diff of the ticked files, the branch cut off master by the pattern
+  expect(commit).toContain('refactor: tidy the files')
+  expect(commit!.join(' ')).not.toContain('please fix my thing')
+  // The commit's message was written from the diff of the ticked files alone (keep.txt was unticked)
+  const briefs = asked.filter(x => x.startsWith('Write the commit'))
+  expect(briefs.some(x => x.includes('+new line') && !x.includes('keep.txt'))).toBe(true)
+  expect(briefs.join(' ')).not.toContain('please fix my thing')
   // A rename's old path is committed but never given to git add, which would refuse it
   expect(ran.find(a => a.includes('add'))).not.toContain('old.txt')
-  expect(ran.some(a => a.join(' ').startsWith('git switch') && a.includes('refactor/tidy-files'))).toBe(true)
+  expect(ran.some(a => a.join(' ').startsWith('git switch') && a.includes('refactor/tidy-the-files'))).toBe(true)
   expect(toasts.join(' ')).toContain('Committed abc1234')
   await ui.unmount()
 })
@@ -109,5 +121,92 @@ test('a failed push says why', async ($, on) => {
   await ui.press({ key: 'setup-done' })
   await ui.press({ key: 'git-commit' })
   expect(toasts.join(' ')).toContain("push failed: fatal: 'origin' does not appear to be a git repository")
+  await ui.unmount()
+})
+
+test('accounts come from and go to the machine: a token logs in with gh, push goes out as the account, Remove logs out', async ($, on) => {
+  const ran: { argv: string[]; stdin?: string }[] = []
+  const toasts: string[] = []
+  const store: Record<string, unknown> = {}
+  // gh's logins as `gh auth status` reports them; the global git identity is bob's
+  let logins = ['alice', 'bob']
+  let active = 'alice'
+  let identity = true
+  let switchFails = false
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('prompt.submit', async (_, e) => ({ text: e.text }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async (_: unknown, e: any) => ({ value: store[e.key] }))
+  on('store.set', async (_: unknown, e: any) => ((store[e.key] = e.value), { value: undefined }))
+  on('ui.toast', async (_, e) => (toasts.push(JSON.stringify(e)), { value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('process.run', async (_, e) => {
+    const { argv, init } = e as unknown as { argv: string[]; init?: { stdin?: string } }
+    ran.push({ argv, stdin: init?.stdin })
+    const cmd = argv.join(' ')
+    const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd.startsWith('git status')) return out('## main...origin/main [ahead 1]\0')
+    if (cmd === 'git config --global user.name') return out(identity ? 'bob\n' : '', identity ? 0 : 1)
+    if (cmd === 'git config --global user.email') return out(identity ? 'bob@x.io\n' : '', identity ? 0 : 1)
+    if (cmd.startsWith('git config --global --unset')) return (identity = false), out('')
+    if (cmd.startsWith('gh auth status')) return out(`github.com\n${logins.map(l => `  ✓ Logged in to github.com account ${l} (keyring)\n  - Active account: ${l === active}\n`).join('\n')}`)
+    if (cmd.startsWith('gh auth login --with-token')) return (logins = [...logins, 'carol']), (active = 'carol'), out('')
+    if (cmd.startsWith('gh auth logout')) return (logins = logins.filter(l => l !== argv[argv.length - 1])), out('')
+    if (cmd.startsWith('gh auth switch')) return switchFails ? out('', 1) : ((active = argv[argv.length - 1]!), out(''))
+    if (cmd === 'gh api user --jq .login') return out(`${active}\n`)
+    if (cmd.startsWith('gh api users/')) return out(`${argv[2]!.length}00\t${argv[2]!.slice(6).toUpperCase()}\n`)
+    return out('')
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const ui = await $.ui.mount(PANE as never)
+  for (let i = 0; i < 4; i++) await ui.press({ key: 'setup-next' })
+  await ui.press({ key: 'setup-done' })
+  await ui.press({ key: 'git-more' })
+  await ui.press({ key: 'acct-detect' }).catch(() => null)
+  let drawn = JSON.stringify(await ui.drawn())
+  // The global identity pushes as the login of its own name; alice is listed with her GitHub no-reply address
+  expect(drawn).toContain('bob <bob@x.io> · gh bob')
+  await ui.press({ key: 'acct-modify' })
+  expect(JSON.stringify(await ui.drawn())).toContain('alice')
+
+  // A token is handed to gh on stdin, git is set to ask gh for credentials, and the new login is chosen
+  await (ui as any).input({ key: 'gh-token', text: 'ghp_secret' })
+  const login = ran.find(r => r.argv.join(' ').startsWith('gh auth login --with-token'))
+  expect(login?.stdin).toBe('ghp_secret\n')
+  expect(login?.argv.join(' ')).not.toContain('ghp_secret')
+  expect(ran.some(r => r.argv.join(' ') === 'gh auth setup-git -h github.com')).toBe(true)
+  drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('· gh carol')
+  expect(drawn).toContain('100+carol@users.noreply.github.com')
+  expect(drawn).not.toContain('ghp_secret')
+
+  // Push as alice: gh switches to her and git asks gh, both before the push
+  await ui.press({ key: 'acct-modify' })
+  await ui.press({ key: 'acct-gh-alice' })
+  ran.length = 0
+  await ui.press({ key: 'git-push' })
+  const order = ran.map(r => r.argv.join(' '))
+  const sw = order.indexOf('gh auth switch -h github.com --user alice')
+  expect(sw).toBeGreaterThan(-1)
+  expect(order.indexOf('gh auth setup-git -h github.com')).toBeGreaterThan(sw)
+  expect(order.findIndex(c => c.startsWith('git push'))).toBeGreaterThan(sw)
+  // A switch gh refuses still leaves git asking gh, and says why
+  switchFails = true
+  ran.length = 0
+  await ui.press({ key: 'git-push' })
+  expect(ran.some(r => r.argv.join(' ') === 'gh auth setup-git -h github.com')).toBe(true)
+  expect(toasts.join(' ')).toContain('gh switch to alice failed')
+  switchFails = false
+
+  // Remove asks first, then logs the login out of gh; Detect does not bring it back
+  await ui.press({ key: 'acct-remove' })
+  expect(JSON.stringify(await ui.drawn())).toContain('from this machine?')
+  ran.length = 0
+  await ui.press({ key: 'acct-remove-yes' })
+  expect(ran.some(r => r.argv.join(' ') === 'gh auth logout -h github.com -u alice')).toBe(true)
+  expect(logins).not.toContain('alice')
+  await ui.press({ key: 'acct-detect' }).catch(() => null)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('acct-gh-alice')
+  expect(toasts.join(' ')).toContain('Removed alice from this machine')
   await ui.unmount()
 })

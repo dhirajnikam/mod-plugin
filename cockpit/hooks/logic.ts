@@ -266,6 +266,18 @@ export function parseSteps(text: string) {
   }
 }
 
+// A commit a model wrote from the diff: {"type", "subject"}; a type it made up or an empty subject is no answer
+export function parseCommit(text: string): { type: string; subject: string } | null {
+  try {
+    const o = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { type?: unknown; subject?: unknown }
+    const type = String(o.type ?? '').trim().toLowerCase()
+    const subject = String(o.subject ?? '').trim().split('\n')[0]!.replace(/[.!]+$/, '').slice(0, 72)
+    return TYPES.includes(type) && subject ? { type, subject: subject.charAt(0).toLowerCase() + subject.slice(1) } : null
+  } catch {
+    return null
+  }
+}
+
 export const progress = (s: Ph) => {
   const f = s.flows[s.flows.length - 1]
   // Before the first prompt there is no task, so nothing has progressed (a pipeline started by hand included)
@@ -443,6 +455,8 @@ export function selfCheck() {
     [inferType('add a settings page', []), 'feat'],
     [inferType('', ['README.md']), 'docs'],
     [inferType('', []), 'chore'],
+    [JSON.stringify(parseCommit('```json\n{"type": "fix", "subject": "Handle an empty token."}\n```')), '{"type":"fix","subject":"handle an empty token"}'],
+    [parseCommit('{"type": "wip", "subject": "x"}'), null],
     [commitMsg(g, 'x'), 'feat(auth): add rate limiting to login'],
     [commitMsg({ ...g, breaking: true }, 'x'), 'feat(auth)!: add rate limiting to login'],
     [nJ(2), 3], [nJ(5), 6], [nJ(8), 9], [thrOf(6), 4],

@@ -17,6 +17,7 @@ import {
   pullNow,
   showCommit,
   skipPending,
+  suggestCommit,
   gitInit,
   loadAccounts,
   removeAccount,
@@ -1096,7 +1097,7 @@ export function Git($: $, v: V) {
           <Text color={t.text} weight="semibold">Next commit</Text>
           <Text>
             <Text color={t.deep} backgroundColor={t.wash || undefined} bold>{` ${plan.type} `}</Text>
-            <Text color={t.dim} size="footnote">{g.commitMode === 'manual' ? '  your pick' : '  from the task'}</Text>
+            <Text color={t.dim} size="footnote">{g.commitMode === 'manual' ? '  your pick' : s.suggest?.busy ? '  writing from the diff…' : '  from the changes'}</Text>
           </Text>
         </Box>
         {g.commitMode === 'manual' && <Seg v={v} id="ctype" value={g.type} items={TYPES.map(x => [x, x] as [string, string])} onPick={k => setGit({ type: k })} />}
@@ -1115,7 +1116,7 @@ export function Git($: $, v: V) {
         <Box justifyContent="space-between" flexWrap="wrap">
           <Text color={t.text} weight="semibold">{`Changes${s.repo.changed.length ? ` (${s.repo.changed.length})` : ''}`}</Text>
           {s.repo.changed.length > 1 && (
-            <Button key="stage-all" plain onPress={() => set($, { staged: allOn ? Object.fromEntries(s.repo.changed.map(c => [c.path, false])) : {} })}>
+            <Button key="stage-all" plain onPress={() => set($, { staged: allOn ? Object.fromEntries(s.repo.changed.map(c => [c.path, false])) : {} }).then(() => suggestCommit($))}>
               <Text color={t.dim}>{allOn ? 'Untick all' : 'Tick all'}</Text>
             </Button>
           )}
@@ -1124,7 +1125,7 @@ export function Git($: $, v: V) {
           <Box key={`ch-${c.path}`} columnGap={sp(v, 1)}>
             <Text color={s.staged[c.path] !== false ? t.accent : t.faint}>{s.staged[c.path] !== false ? '▣' : '□'}</Text>
             <Box flexGrow={1} flexShrink={1}>
-              <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } }))}>
+              <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } })).then(() => suggestCommit($))}>
                 <Text color={s.staged[c.path] !== false ? t.text : t.dim} wrap="truncate-end">{c.path}</Text>
               </Button>
             </Box>
@@ -1251,16 +1252,27 @@ function AccountBox($: $, v: V) {
       )}
       {!acct && s.accounts.length === 0 && <Text color={t.dim}>No git identity or gh login found yet.</Text>}
       {modify && s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
-      {modify && acct && (
+      {modify && acct && s.ui.acctRemove !== acct.id && (
         <Box gap={sp(v, 1)} flexWrap="wrap">
           <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
-          <Button key="acct-remove" label="Remove" plain onPress={() => removeAccount($, acct.id)} />
+          <Button key="acct-remove" label="Remove" plain onPress={() => set($, st => ({ ui: { ...st.ui, acctRemove: acct.id } }))} />
+        </Box>
+      )}
+      {modify && acct && s.ui.acctRemove === acct.id && (
+        <Box flexDirection="column">
+          <Text color={t.busy} wrap="wrap">
+            {`Remove ${acct.label} from this machine? ${[acct.gh && `gh logs out ${acct.gh}`, acct.id === 'global' && `git's global user.name and user.email (${acct.name} <${acct.email}>) are unset`].filter(Boolean).join(', and ') || 'It leaves the saved accounts'}.`}
+          </Text>
+          <Box gap={sp(v, 1)}>
+            <Button key="acct-remove-yes" label="Remove" variant="primary" onPress={() => removeAccount($, acct.id)} />
+            <Button key="acct-remove-no" label="Cancel" onPress={() => set($, st => ({ ui: { ...st.ui, acctRemove: '' } }))} />
+          </Box>
         </Box>
       )}
       {modify && (
         <Box flexDirection="column">
           <Rule v={{ ...v, w: v.w - 4 }} />
-          <Text color={t.dim} size="footnote">Add a GitHub login: paste a token, or log in with gh in your browser.</Text>
+          <Text color={t.dim} size="footnote">Add a GitHub login to this machine's gh: paste a classic token (scopes repo, read:org), or log in with gh in your browser.</Text>
           <Box columnGap={sp(v, 1)} flexWrap="wrap">
             <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => ghLoginToken($, val)} />
             <Button key="gh-token-go" label="Add token" onPress={() => ghLoginToken($, s.ui.ghToken)} />

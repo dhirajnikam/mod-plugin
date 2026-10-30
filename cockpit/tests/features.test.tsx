@@ -35,6 +35,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000, percent: 25, breakdown: { categories: [{ name: 'Messages', tokens: 30000 }, { name: 'System prompt', tokens: 20000 }], totalTokens: 50000 } }, rateLimits: [], cost: { usd: 1.5 } } }))
   on('model.complete', async (_: unknown, e: any) => {
     if (String(e.prompt).startsWith('Break this task') && st.noSteps) return { value: { isAnswered: false, reason: 'empty-reply' } } as never
+    // The commit is written from the diff
+    if (String(e.prompt).startsWith('Write the commit')) return { value: { isAnswered: true, text: '{"type": "fix", "subject": "fix the login bug"}', usage: { inputTokens: 1, outputTokens: 1 } } }
     if (String(e.prompt).startsWith('Break this task')) return { value: { isAnswered: true, text: '[{"step": "Read the limiter code", "kind": "Explore"}, {"step": "Add the rate limit", "kind": "Implement"}, {"step": "Run the tests", "kind": "Verify"}]', usage: { inputTokens: 1, outputTokens: 1 } } }
     const isScore = String(e.prompt).startsWith('Rate how complex')
     if (isScore) log.scored++
