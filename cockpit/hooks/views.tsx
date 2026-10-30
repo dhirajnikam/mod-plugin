@@ -170,7 +170,7 @@ export function Header($: $, v: V) {
               </Button>
             ))
           )}
-          <Text backgroundColor={t.track} color={s.waiting ? t.busy : s.isWorking ? t.accent : t.text}>{` ${run} `}</Text>
+          <Text backgroundColor={s.waiting ? t.busy : s.isWorking ? t.accent : t.text} color={t.bg || 'inverseText'}>{` ${run} `}</Text>
         </Box>
       </Box>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 2)}>
@@ -196,10 +196,10 @@ export function Tabs($: $, v: V) {
     ['git', 'Git', s.repo.changed.length ? String(s.repo.changed.length) : ''],
   ]
   // The underline follows the tab row: each tab's width, and the one-cell gap between tabs
-  const total = tabs.reduce((a, [, l, b]) => a + l.length + (b ? b.length + 3 : 0) + 2, 0) + tabs.length - 1
+  const total = tabs.reduce((a, [, l, b]) => a + l.length + (b ? b.length + 2 : 0) + 2, 0) + tabs.length - 1
   const fits = total <= v.w
   const under = tabs.map(([id, label, badge], i) => {
-    const n = label.length + (badge ? badge.length + 3 : 0) + 2
+    const n = label.length + (badge ? badge.length + 2 : 0) + 2
     return (
       <Text key={`u-${id}`} color={id === s.tab ? t.accent : t.divider}>
         {(id === s.tab ? '━' : '─').repeat(n)}
@@ -299,8 +299,8 @@ export function Overview($: $, v: V) {
         </Box>
       </Box>
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
-        {p.steps.map(x => (
-          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
+        {p.steps.map((x, i) => (
+          <Text key={`step-${i}-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
             <Text color={x.st === 'done' ? t.ok : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
@@ -359,11 +359,11 @@ export function Overview($: $, v: V) {
                       <Text color={live ? t.text : t.text} bold={live} wrap="truncate-end">{f.task}</Text>
                     </Button>
                   </Box>
-                  <Text mono>
-                    {fp.steps.map(x => (
-                      <Text key={`fs-${f.id}-${x.name}`} color={x.st === 'active' ? t.busy : x.st === 'done' ? t.ok : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
+                  {w >= 40 && <Text mono>
+                    {fp.steps.map((x, i) => (
+                      <Text key={`fs-${f.id}-${i}`} color={x.st === 'active' ? t.busy : x.st === 'done' ? t.ok : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
                     ))}
-                  </Text>
+                  </Text>}
                   <Text color={t.dim} size="footnote">{`${fp.pct}%`}</Text>
                   {(f.add || f.del) > 0 && (
                     <Text size="footnote">
@@ -371,7 +371,7 @@ export function Overview($: $, v: V) {
                       <Text color={t.bad}>{` −${f.del}`}</Text>
                     </Text>
                   )}
-                  {f.commit !== '' && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+                  {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
                 </Box>
                 {open && (
                   <Box flexDirection="column" paddingLeft={2}>
@@ -398,7 +398,7 @@ export function Overview($: $, v: V) {
                 <Text color={t.dim} wrap="truncate-end">{f.task}</Text>
               </Box>
               {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
-              {f.commit !== '' && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+              {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
             </Box>
           ))}
         </Box>
@@ -587,7 +587,12 @@ export function Files($: $, v: V) {
   const { s, t, w } = v
   const adds = s.ops.reduce((a, o) => a + o.add, 0)
   const dels = s.ops.reduce((a, o) => a + o.del, 0)
-  const rel = (p: string) => p.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', '')
+  // As the tree has it (logic.ts tree): the root stripped only as a prefix, so the filter and the "now" mark match its rows
+  const rootSlash = v.root.replace(/\\/g, '/').replace(/\/?$/, '/')
+  const rel = (p: string) => {
+    const q = p.replace(/\\/g, '/')
+    return q.startsWith(rootSlash) ? q.slice(rootSlash.length) : q
+  }
   const opGlyph = (op: string) => (op === 'Read' ? '○' : op === 'Search' ? '⌕' : op === 'Write' ? '✚' : op === 'Edit' ? '✎' : '✖')
   const opColor = (op: string) => (op === 'Write' ? t.ok : op === 'Edit' ? t.hi : op === 'Delete' ? t.bad : t.dim)
   const lineColor = (k: string): [string | undefined, string] => (k === 'a' ? ['diffAdded', t.text] : k === 'd' ? ['diffRemoved', t.text] : [undefined, t.dim])
@@ -878,7 +883,7 @@ export function Agents($: $, v: V) {
             <Button key="describe-go" label={s.creating ? 'Making the agent…' : 'Create agent'} variant="primary" onPress={() => (s.ui.describe.trim() && !s.creating ? createAgent($, s.ui.describe.trim()) : undefined)} />
             <Text color={t.dim} size="footnote" wrap="wrap">{s.creating ? `${spin} writing its definition` : 'Joins the team, kept for later sessions'}</Text>
           </Box>
-          <Rule v={v} />
+          <Rule v={{ ...v, w: v.w - 4 }} />
           <Text color={t.dim} size="footnote">Or run a task now with any agent type</Text>
           <Input
             key="spawn-task"
@@ -890,7 +895,7 @@ export function Agents($: $, v: V) {
           />
           <Box columnGap={sp(v, 2)} flexWrap="wrap">
             <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={[...types, ...(types.includes(s.ui.spawnType) ? [] : [s.ui.spawnType])].map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val } }))} />
-            <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={types.includes(s.ui.spawnType) ? '' : s.ui.spawnType} onInput={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} onSubmit={val => val.trim() && set($, st => ({ ui: { ...st.ui, spawnType: val.trim() } }))} />
+            <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={types.includes(s.ui.spawnType) ? '' : s.ui.spawnType} onInput={val => set($, st => ({ ui: { ...st.ui, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} onSubmit={val => set($, st => ({ ui: { ...st.ui, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} />
             <Button key="spawn-go" label="Start" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
           </Box>
         </Box>

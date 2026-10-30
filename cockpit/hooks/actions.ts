@@ -102,7 +102,12 @@ export async function buildMemory($: $, rename = false) {
   }
   // The features named last time stand while the same files are there; a new or removed file names them again
   const sig = filesSig(files)
-  const saved = JSON.parse((await $.fs.read(`${root}/.cockpit/memory.json`).catch(() => '')) || '{}') as { sig?: string; features?: { name: string; what: string; files: string[] }[] }
+  let saved: { sig?: string; features?: { name: string; what: string; files: string[] }[] } = {}
+  try {
+    saved = JSON.parse((await $.fs.read(`${root}/.cockpit/memory.json`).catch(() => '')) || '{}')
+  } catch {
+    // A memory file that does not parse is written again below
+  }
   const kept = !rename && saved.sig === sig && saved.features?.length ? saved.features : undefined
   await set($, { memory: { at: await $.clock.now(), files, ...(kept ? { features: kept, sig } : {}) } })
   await saveMemory($)
@@ -313,7 +318,7 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
     const sw = await git($, ['switch', br])
     if (sw.exitCode !== 0) {
       const mk = await git($, ['switch', '-c', br])
-      if (mk.exitCode !== 0) return toast($, `Could not switch to ${br}: ${mk.stderr.trim()}`)
+      if (mk.exitCode !== 0) return toast($, `Could not switch to ${br}: ${firstLine(/already exists/.test(mk.stderr) ? sw : mk)}`)
     }
   }
   const add = await git($, ['add', '-A', '--', ...files])
@@ -364,7 +369,7 @@ export async function proposeCommit($: $) {
   const s = await read($, S)
   const p = { ...planCommit(s), at: await $.clock.now() }
   if (!p.files.length || !p.msg) return
-  await set($, { pending: p, waiting: s.waiting })
+  await set($, { pending: p })
   await toast($, `Commit proposed: ${p.msg}`)
 }
 
@@ -588,7 +593,7 @@ export async function createAgent($: $, describe: string) {
     const name = String(raw.name ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
     if (!name || !raw.description || !raw.prompt) return toast($, r.isAnswered ? 'Could not make the agent: the definition came back incomplete' : `Could not make the agent: ${r.reason}`)
     if (EXPERTS.some(x => x.type === `cockpit:${name}`)) return toast($, `"${name}" is one of Cockpit's own experts: describe it differently`)
-    const tools = (raw.tools ?? []).filter(t => TOOLS.includes(t))
+    const tools = (Array.isArray(raw.tools) ? raw.tools : []).filter(t => TOOLS.includes(t))
     const spec: MadeAgent = { name, description: String(raw.description), prompt: String(raw.prompt), ...(tools.length ? { tools } : {}) }
     const reg = await $.agent.register(spec).catch(e => ({ deny: String(e) }))
     if ('deny' in reg) return toast($, `Could not register the agent: ${reg.deny}`)
@@ -744,7 +749,11 @@ export async function advancePipeline($: $, agentId: string, answer: string, abo
     await toast($, `${label} pipeline done`)
     await note($, `⧉ ${label} pipeline done · ${reports.length} experts`)
     const after = await read($, S)
-    if (p.name === 'verify' && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && verifyState(after.agents).passed) await decideCommit($)
+    if (p.name === 'verify' && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && verifyState(after.agents).passed) {
+      // The testers may have written files since the turn's end read the repository
+      await refreshRepo($)
+      await decideCommit($)
+    }
     return
   }
   await set($, { pipeline: { ...p, index, reports, agentId: '' } })
@@ -756,7 +765,7 @@ export async function finishAgent($: $, agentId: string, answer: string, aborted
   const at = await $.clock.now()
   const cases = parseCases(answer)
   const report = parseReport(answer)
-  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.status === 'running' ? { ...a, status: aborted ? 'stopped' : failed ? 'failed' : 'done', endedAt: at, cases, report, log: [...a.log, { at, t: failed ? 'Failed · the run ended on an error' : 'Done · report ready' }] } : a)) }))
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && (a.status === 'running' || (a.status !== 'stopped' && !a.report && !a.cases.length)) ? { ...a, status: aborted ? 'stopped' : failed ? 'failed' : 'done', endedAt: at, cases, report, log: [...a.log, { at, t: failed ? 'Failed · the run ended on an error' : 'Done · report ready' }] } : a)) }))
   const a = (await read($, S)).agents.find(x => x.id === agentId)
   if (a && cases.length) {
     const fail = cases.filter(c => c.st === 'fail').length
@@ -773,7 +782,7 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
     const was = s.agents.find(x => x.id === a.id)
     const p = s.pipeline
     const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
-    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...a, status: 'running' as const, startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
+    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...was, ...a, status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
   })
 }
 
@@ -899,16 +908,18 @@ export async function clearFinished($: $) {
     cleared: [...s.cleared, ...s.agents.filter(a => a.status !== 'running').map(a => a.id)].slice(-300),
     clearedAt: at,
     agents: s.agents.filter(a => a.status === 'running'),
+    // saveHistory writes the file from pastAgents and agents: the cleared runs stay there
+    pastAgents: [...s.pastAgents.filter(p => !s.agents.some(a => a.id === p.id)), ...s.agents.filter(a => a.status !== 'running').map(summary)],
     ui: { ...s.ui, openAgent: '' },
   }))
 }
 
 export async function stopAgent($: $, id: string, quiet = false) {
   const r = await $.tool.call({ tool: 'TaskStop', task_id: id, consent: 'The user pressed "Stop" on an agent in the Cockpit pane' }).catch(e => ({ deny: String(e) }))
-  const ok = !('deny' in r && r.deny)
+  const ok = !('deny' in r && r.deny) && !('isError' in r && r.isError)
   const at = await $.clock.now()
-  if (ok) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, status: 'stopped', endedAt: at, log: [...a.log, { at, t: 'Stopped by you' }] } : a)), pipeline: s.pipeline?.agentId === id ? null : s.pipeline }))
-  if (!quiet || !ok) await toast($, ok ? 'Stopped the agent' : `Could not stop it: ${'deny' in r ? r.deny : ''}`)
+  if (ok) await set($, s => ({ agents: s.agents.map(a => (a.id === id && a.status === 'running' ? { ...a, status: 'stopped', endedAt: at, log: [...a.log, { at, t: 'Stopped by you' }] } : a)), pipeline: s.pipeline?.agentId === id ? null : s.pipeline }))
+  if (!quiet || !ok) await toast($, ok ? 'Stopped the agent' : `Could not stop it: ${'deny' in r && r.deny ? r.deny : ('text' in r && r.text) || ''}`)
 }
 
 // Refresh context fill, its breakdown and cost
@@ -988,7 +999,7 @@ export async function loadAccounts($: $) {
   const active = blocks.find(b => /Active account: true/.test(b))?.match(/account (\S+)/)?.[1] ?? logins[0] ?? ''
   const found: Account[] = []
   if (name || email) found.push({ id: 'global', label: active || name || 'global', name, email, gh: active })
-  for (const l of logins) if (l && l !== active) found.push({ id: `gh-${l}`, label: l, name: l, email: `${l}@users.noreply.github.com`, gh: l })
+  for (const l of logins) if (l && (l !== active || !(name || email))) found.push({ id: `gh-${l}`, label: l, name: l, email: `${l}@users.noreply.github.com`, gh: l })
   const accounts = [...saved, ...found.filter(f => !saved.some(a => a.id === f.id))]
   await set($, { accounts, accountId: accounts.some(a => a.id === chosen) ? chosen : (accounts[0]?.id ?? '') })
 }
@@ -1023,7 +1034,8 @@ export async function applyAccount($: $) {
   const s = await read($, S)
   const a = s.accounts.find(x => x.id === s.accountId)
   if (!a) return toast($, 'Pick an account first')
-  await git($, ['config', 'user.name', a.name])
-  await git($, ['config', 'user.email', a.email])
+  const n = await git($, ['config', 'user.name', a.name])
+  const m = n.exitCode === 0 ? await git($, ['config', 'user.email', a.email]) : n
+  if (m.exitCode !== 0) return toast($, `Could not set the identity: ${firstLine(m)}`)
   await toast($, `This repo now commits as ${a.name} <${a.email}>`)
 }

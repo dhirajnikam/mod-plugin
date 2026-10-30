@@ -1,4 +1,5 @@
 import type { Agent, Decision, FileOp, GitForm, Line, Ph, PlanItem, TestCase } from '../types'
+import { chatThemeOf, themeOf } from './theme'
 
 // Every step a flow can reach, in order. A flow shows its own template's steps plus any it reaches beyond them
 export const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
@@ -48,10 +49,10 @@ export const BASE_BRANCHES = ['main', 'master', 'develop', 'trunk']
 export function inferType(task: string, paths: string[]) {
   const t = task.toLowerCase()
   if (/\b(fix|bug|broken|crash|error|issue|wrong|fail)/.test(t)) return 'fix'
-  if (/\b(test|spec|coverage)/.test(t)) return 'test'
+  if (/\b(test|specs?\b|coverage)/.test(t)) return 'test'
   if (/\b(doc|readme|comment|changelog)/.test(t)) return 'docs'
   if (/\b(refactor|clean|simplif|rename|reorgani|tidy)/.test(t)) return 'refactor'
-  if (/\b(perf|faster|speed|optimi|cache)/.test(t)) return 'perf'
+  if (/\b(perf\b|performance|faster|speed|optimi|cache)/.test(t)) return 'perf'
   if (/\b(chore|bump|upgrade|depend|config|ci\b|lint|format)/.test(t)) return 'chore'
   if (t) return 'feat'
   if (paths.length && paths.every(p => /\.(md|txt|rst)$/i.test(p))) return 'docs'
@@ -98,7 +99,7 @@ export const fmt = (ms: number) => {
 }
 export const kTok = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`)
 export const slug = (t: string) =>
-  t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 40)
 export const base = (p: string) => p.split(/[\\/]/).pop() ?? p
 
 export const branchName = (g: GitForm, current: string) => {
@@ -108,7 +109,7 @@ export const branchName = (g: GitForm, current: string) => {
   return g.branchPattern
     .replace(/\{kind\}/g, kindOf(g.type))
     .replace(/\{type\}/g, g.type)
-    .replace(/\{ticket\}/g, g.ticket.toLowerCase())
+    .replace(/\{ticket\}/g, slug(g.ticket))
     .replace(/\{slug\}/g, slug(g.subject))
     .replace(/\{user\}/g, slug(g.user))
     .replace(/\{scope\}/g, slug(g.scope))
@@ -122,12 +123,12 @@ export const branchName = (g: GitForm, current: string) => {
 export const commitMsg = (g: GitForm, branch: string) => {
   let m = g.msgPattern
     .replace(/\{type\}/g, g.type)
-    .replace(/\(\{scope\}\)/g, g.scope ? `(${g.scope})` : '')
-    .replace(/\{scope\}/g, g.scope)
-    .replace(/\{subject\}/g, g.subject)
-    .replace(/\{Subject\}/g, g.subject.charAt(0).toUpperCase() + g.subject.slice(1))
-    .replace(/\{ticket\}/g, g.ticket)
-    .replace(/\{branch\}/g, branch)
+    .replace(/\(\{scope\}\)/g, () => (g.scope ? `(${g.scope})` : ''))
+    .replace(/\{scope\}/g, () => g.scope)
+    .replace(/\{subject\}/g, () => g.subject)
+    .replace(/\{Subject\}/g, () => g.subject.charAt(0).toUpperCase() + g.subject.slice(1))
+    .replace(/\{ticket\}/g, () => g.ticket)
+    .replace(/\{branch\}/g, () => branch)
   if (g.breaking) {
     const i = m.indexOf(': ')
     m = i > 0 ? `${m.slice(0, i)}!${m.slice(i)}` : `BREAKING: ${m}`
@@ -139,6 +140,8 @@ const A = (t: string): Line => ({ t: `+ ${t}`, k: 'a' })
 const D = (t: string): Line => ({ t: `− ${t}`, k: 'd' })
 const C = (t: string): Line => ({ t: `  ${t}`, k: 'c' })
 const lines = (s: string) => s.replace(/\r/g, '').split('\n')
+// A shell command that runs tests (a whole word, so `latest` or `cat tests/x` is not one)
+const TESTS = /\b(test|jest|vitest|pytest|unittest)\b/
 
 // A tool call's input as a file operation, or null for tools that touch no file
 export function toOp(tool: string, input: Record<string, unknown>, id: string, at: number): FileOp | null {
@@ -181,7 +184,7 @@ export function activityOf(tool: string, input: Record<string, unknown>) {
     case 'Glob':
       return `Searching ${p || 'the project'}`
     case 'Bash':
-      return /test|jest|vitest|pytest|go test|cargo test/.test(String(input.command)) ? 'Running tests' : `Running ${String(input.command ?? '').split(/\s+/)[0]}`
+      return TESTS.test(String(input.command)) ? 'Running tests' : `Running ${String(input.command ?? '').split(/\s+/)[0]}`
     case 'Agent':
     case 'Task':
       return `Starting a subagent`
@@ -199,8 +202,8 @@ export function stepOf(tool: string, input: Record<string, unknown>) {
   if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') return 'Implement'
   if (tool !== 'Bash') return ''
   const cmd = String(input.command ?? '')
-  if (/test|jest|vitest|pytest|go test|cargo test/.test(cmd)) return 'Verify'
   if (/git commit/.test(cmd)) return 'Commit'
+  if (TESTS.test(cmd)) return 'Verify'
   // Work done through the shell counts as the tools' would: writing files is implementing, reading them exploring
   if (/(^|[\s;&|(])(sed\s+-i|perl\s+-p?i|tee\b|mv\b|cp\b|rm\b|mkdir\b|touch\b|patch\b|git\s+apply|python3?\s+-\s*<<|cat\s*>|cat\s*<<[^>]*>)|>\s*[\w./-]+\.\w+/.test(cmd)) return 'Implement'
   if (/(^|[\s;&|(])(cat|head|tail|less|sed\s+-n|grep|rg|find|ls|awk|wc|tree|git\s+(log|show|diff|status|grep|blame))\b/.test(cmd)) return 'Explore'
@@ -253,7 +256,7 @@ function tallySteps(steps: { st: string }[]) {
 const KINDS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
 export function parseSteps(text: string) {
   try {
-    const arr = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]') as { step?: unknown; kind?: unknown }[]
+    const arr = JSON.parse(text.match(/\[\s*\{[\s\S]*\]/)?.[0] ?? '[]') as { step?: unknown; kind?: unknown }[]
     return arr
       .map(x => ({ name: String(x.step ?? '').trim().slice(0, 60), kind: KINDS.find(k => k.toLowerCase() === String(x.kind ?? '').toLowerCase()) ?? '' }))
       .filter(x => x.name && x.kind)
@@ -357,7 +360,11 @@ export type TreeRow = { path: string; isDir: boolean; name: string; depth: numbe
 // Folder tree of the project and every path the session touched. A folder not toggled by hand is open when
 // something under it was touched and folded away otherwise, so a large project stays short
 export function tree(ops: FileOp[], collapsed: Record<string, boolean>, root: string, project: string[] = []): TreeRow[] {
-  const rel = (p: string) => p.replace(/\\/g, '/').replace(root.replace(/\\/g, '/').replace(/\/?$/, '/'), '')
+  const r = root.replace(/\\/g, '/').replace(/\/?$/, '/')
+  const rel = (p: string) => {
+    const q = p.replace(/\\/g, '/')
+    return q.startsWith(r) ? q.slice(r.length) : q
+  }
   const files = ops.filter(o => o.op !== 'Search' && o.path)
   const isClosed = (d: string) => collapsed[d] ?? !files.some(o => rel(o.path).startsWith(`${d}/`))
   const paths = [...new Set([...project, ...files.map(o => rel(o.path))])].sort((a, b) => {
@@ -462,6 +469,24 @@ export function selfCheck() {
     [parseCases('CASE PASS works\nCASE FAIL bad :: got 200').map(c => c.st).join(), 'pass,fail'],
     [tally({ id: 'd', q: '', opts: ['a', 'b'], at: 0, score: 5, signals: [], votes: [0, 0, 0, 0, 1, -1], status: 'voting', result: '' }).passes, true],
     // d on lane 0 opens lane 1 for c; c sits on lane 1; b on lane 0 with c's lane passing; a takes both lanes in
+    // $ in a subject is text, not a replacement pattern; a ticket with a space still makes a valid branch
+    [commitMsg({ ...g, subject: "show $' price" }, 'x'), "feat(auth): show $' price"],
+    [branchName({ ...g, ticket: 'API 12' }, 'main'), 'feat/api-12-add-rate-limiting-to-login'],
+    [branchName({ ...g, ticket: '', subject: 'ログインを追加' }, 'main'), 'feat/ログインを追加'],
+    // A test run is a whole word: latest and tests/ are not one, and a commit whose message names a test is a commit
+    [stepOf('Bash', { command: 'npm i x@latest' }), ''],
+    [stepOf('Bash', { command: 'cat tests/a.ts' }), 'Explore'],
+    [stepOf('Bash', { command: 'git commit -m "fix flaky test"' }), 'Commit'],
+    [stepOf('Bash', { command: 'python -m unittest' }), 'Verify'],
+    [inferType('add a specific field', []), 'feat'],
+    [inferType('make it perfect', []), 'feat'],
+    [parseSteps('Here [see below]: [{"step":"a","kind":"Explore"}]').length, 1],
+    // The root is stripped only as a prefix: a relative path keeps its slashes before the root is known
+    [tree([{ id: '1', op: 'Edit', path: 'src/a.ts', at: 0, meta: '', add: 0, del: 0, lines: [] }], {}, '').map(r => r.path).join(), 'src,src/a.ts'],
+    [tree([{ id: '1', op: 'Edit', path: 'C:\\r\\src\\a.ts', at: 0, meta: '', add: 0, del: 0, lines: [] }], {}, 'C:\\r').map(r => r.path).join(), 'src,src/a.ts'],
+    // A theme id the store kept from elsewhere draws as Auto instead of throwing
+    [themeOf({ theme: 'gone' as never }).accent, '#b4833a'],
+    [chatThemeOf({ theme: 'gone' as never }).accent, '#b4833a'],
     [graphCheck(), JSON.stringify([[0, [1], [], []], [1, [], [], [0]], [0, [], [], [1]], [0, [], [1], []]])],
   ]
   return checks.filter(([a, b]) => a !== b)

@@ -21,7 +21,7 @@ export function parseImports(path: string, text: string): string[] {
     for (const m of text.matchAll(/^\s*import\s+([\w.]+(?:\s*,\s*[\w.]+)*)/gm)) for (const n of (m[1] ?? '').split(',')) out.add(n.trim())
     return [...out].filter(Boolean)
   }
-  for (const m of text.matchAll(/(?:\bimport\b|\bfrom\b|\bexport\b[^'"\n]*\bfrom\b|\brequire\s*\(|\bimport\s*\(|@import)\s*['"]([^'"\n]+)['"]/g)) out.add(m[1] ?? '')
+  for (const m of text.matchAll(/(?:\bimport\b|\bfrom\b|\bexport\b(?:[^'"\n]*\bfrom\b)?|\bpart\b|\brequire\s*\(|\bimport\s*\(|@import\s*(?:url\()?)\s*['"]([^'"\n]+)['"]/g)) out.add(m[1] ?? '')
   return [...out].filter(Boolean)
 }
 
@@ -29,8 +29,10 @@ const dirOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) :
 function join(dir: string, rel: string) {
   const parts = dir ? dir.split('/') : []
   for (const seg of rel.split('/')) {
-    if (seg === '..') parts.pop()
-    else if (seg && seg !== '.') parts.push(seg)
+    if (seg === '..') {
+      if (!parts.length) return null
+      parts.pop()
+    } else if (seg && seg !== '.') parts.push(seg)
   }
   return parts.join('/')
 }
@@ -48,10 +50,16 @@ export function resolveImport(from: string, spec: string, has: (p: string) => bo
     for (const c of [`${stem}.py`, `${stem}/__init__.py`, ...(dots ? [] : [`${join(dirOf(from), name)}.py`])]) if (has(c)) return c
     return null
   }
-  if (!spec.startsWith('.') && !spec.startsWith('/')) return null
+  // Dart and CSS name a file in the same folder bare ('src/a.dart', "base.css"); a scheme (package:, dart:, http:) is not one
+  const bare = /\.(dart|s?css)$/i.test(from) && !/^\w+:/.test(spec)
+  if (!spec.startsWith('.') && !spec.startsWith('/') && !bare) return null
   const stem = spec.startsWith('/') ? spec.slice(1) : join(dirOf(from), spec)
+  if (stem === null) return null
   for (const e of EXTS) if (has(stem + e)) return stem + e
   for (const e of EXTS.slice(1)) if (has(`${stem}/index${e}`)) return `${stem}/index${e}`
+  // ESM TypeScript names its imports by the compiled file: './b.js' is b.ts
+  const js = stem.match(/^(.*)\.(m|c)?js(x?)$/)
+  for (const c of js ? [`${js[1]}.${js[2] ?? ''}ts${js[3]}`, `${js[1]}.tsx`] : []) if (has(c)) return c
   return null
 }
 
@@ -118,7 +126,8 @@ export function impactOf(files: Files, path: string, depth = 3, named: Named[] =
 export function memoryKey(files: Files, path: string) {
   const p = path.replace(/\\/g, '/')
   if (files[p]) return p
-  return Object.keys(files).find(k => p.endsWith(`/${k}`) || k.endsWith(`/${p}`)) ?? ''
+  const keys = Object.keys(files)
+  return keys.filter(k => p.endsWith(`/${k}`)).sort((a, b) => b.length - a.length)[0] ?? keys.find(k => k.endsWith(`/${p}`)) ?? ''
 }
 
 // What a file shows of itself to the model naming the features: the names it exports and its first comment line
@@ -153,7 +162,7 @@ export function featurePrompt(files: Files, facts: Record<string, { exports: str
 // The features the model wrote, kept only for files the repository has; each file in the first feature that names it
 export function parseFeatures(text: string, files: Files): Named[] {
   try {
-    const arr = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]') as { name?: unknown; what?: unknown; files?: unknown }[]
+    const arr = JSON.parse(text.match(/\[\s*\{[\s\S]*\]/)?.[0] ?? '[]') as { name?: unknown; what?: unknown; files?: unknown }[]
     const seen = new Set<string>()
     return arr
       .map(x => ({

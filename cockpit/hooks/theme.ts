@@ -35,12 +35,12 @@ export const THEME_IDS: ThemeId[] = ['auto', ...(Object.keys(THEMES) as Palette[
 export const AUTO: Theme = { bg: '', surface: '', text: 'text', dim: 'subtle', faint: 'inactive', track: 'inactive', divider: 'inactive', accent: '#b4833a', hi: '#c4934c', deep: '#a07a3c', lo: '#cfa159', wash: 'inactive', ok: 'success', bad: 'error', busy: 'warning' }
 
 // The palette in force
-export const themeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : THEMES[s.theme])
+export const themeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : THEMES[s.theme] ?? AUTO)
 
 // The chat's rows (spinner, cards, your messages, the status line) sit on the terminal's own background, which a palette
 // does not paint: they keep the surface's own text colours and take only the palette's accent, so White on a dark
 // terminal, or Black on a light one, never draws text the background hides
-export const chatThemeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme].accent })
+export const chatThemeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme]?.accent ?? AUTO.accent })
 
 // Status colours by meaning, for what draws on the surface's own background (Auto's theme keys); inside the pane and the
 // band a palette's own (t.ok, t.bad, t.busy) are used

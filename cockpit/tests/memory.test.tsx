@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { factsOf, features, filesSig, impactOf, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
+import { factsOf, features, filesSig, impactOf, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
   const repo = new Set(['src/a.ts', 'src/b.tsx', 'types/index.d.ts', 'app/models.py', 'app/__init__.py', 'app/views.py', 'styles/base.css'])
@@ -26,6 +26,20 @@ test('imports resolve to repository files across languages, and a change reaches
   expect(factsOf('src/x.ts', '// Keeps the cart in sync with the server\nexport function addItem() {}\nexport const Cart = 1')).toEqual({ exports: ['addItem', 'Cart'], note: 'Keeps the cart in sync with the server' })
   expect(filesSig({ a: [], b: [] })).toBe(filesSig({ b: [], a: [] }))
   expect(memoryText(files, 120).endsWith('- …')).toBe(true)
+})
+
+test('ESM .js specs, bare Dart and CSS imports, imports that leave the repository, and the longest memory key', async () => {
+  const repo = new Set(['src/a.ts', 'src/b.ts', 'lib/main.dart', 'lib/src/w.dart', 'lib/c.dart', 'lib/d.dart', 's/a.css', 's/base.css', 's/x.css', 'c.ts'])
+  const has = (p: string) => repo.has(p)
+  expect(resolveImport('src/a.ts', './b.js', has)).toBe('src/b.ts')
+  const dart = parseImports('lib/main.dart', "import 'package:flutter/material.dart';\nimport 'dart:io';\nimport 'src/w.dart';\nexport 'c.dart';\npart 'd.dart';")
+  expect(dart.map(x => resolveImport('lib/main.dart', x, has))).toEqual([null, null, 'lib/src/w.dart', 'lib/c.dart', 'lib/d.dart'])
+  const css = parseImports('s/a.css', '@import "base.css";\n@import url("x.css");')
+  expect(css.map(x => resolveImport('s/a.css', x, has))).toEqual(['s/base.css', 's/x.css'])
+  expect(parseImports('src/a.ts', "export const x = 'foo'\nconst part = 'z'\nexport default 'bar'")).toEqual([])
+  expect(resolveImport('src/a.ts', '../../c', has)).toBe(null)
+  expect(memoryKey({ 'a.ts': [], 'src/a.ts': [] }, '/repo/src/a.ts')).toBe('src/a.ts')
+  expect(parseFeatures('Grouped [by feature]: [{"name": "A", "what": "w", "files": ["src/a.ts"]}]', { 'src/a.ts': [] }).length).toBe(1)
 })
 
 // A session against a small repository on an in-memory disk
