@@ -42,7 +42,7 @@ import {
 import { FLOWS, PIPELINES, activityOf, applyPlan, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
 import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
-import { BAD, BUSY, OK, THEME_IDS, ctxShades, themeOf } from './theme'
+import { BAD, BUSY, OK, THEME_IDS, chatThemeOf, ctxShades, themeOf } from './theme'
 import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './views'
 import type { UI } from './views'
 
@@ -360,7 +360,7 @@ export const register: Register = on => {
     // The desktop keeps its own row and takes only its words
     if (e.surface !== 'terminal') return next({ ...e, props: { ...e.props, message: what } })
     const { Box, Text } = $.ui.resolve(e)
-    const t = themeOf(s)
+    const t = chatThemeOf(s)
     const now = await $.clock.now()
     const glyph = ['✻', '✼', '✽', '✾', '✽', '✼'][Math.floor(now / 180) % 6]
     return (
@@ -426,7 +426,7 @@ export const register: Register = on => {
     )
     if (s.focus !== false) {
       return (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} backgroundColor={t.bg || undefined}>
         {ask}
         {advice}
         <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
@@ -468,7 +468,7 @@ export const register: Register = on => {
       </Button>
     )
     return (
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column" marginTop={1} backgroundColor={t.bg || undefined}>
         {ask}
         {advice}
         {pipe}
@@ -532,7 +532,7 @@ export const register: Register = on => {
     const p = e.props
     if (p.isExpanded || p.isErrored || p.isInterrupted) return next(e)
     const s = await read($, S)
-    const t = themeOf(s)
+    const t = chatThemeOf(s)
     const table = $.ui.resolve(e)
     if (s.focus !== false) return <table.Box display='none' />
     const ui = { Box: table.Box, Text: table.Text, Button: table.Button } as UI
@@ -577,7 +577,7 @@ export const register: Register = on => {
     const table = $.ui.resolve(e)
     if (s.focus !== false) return <table.Box display='none' />
     if (!ops.length) return next(e)
-    const t = themeOf(s)
+    const t = chatThemeOf(s)
     const ui = { Box: table.Box, Text: table.Text, Button: table.Button } as UI
     const text = ops.map(o => (o.op === 'Search' ? `Search ${o.path.split('  ')[1] ?? ''}` : `${o.op} ${base(o.path)}`)).join(' · ')
     const files = new Set(ops.filter(o => o.op !== 'Search').map(o => o.path)).size
@@ -590,7 +590,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const s = await read($, S)
     if (s.focus !== false) return <Box display='none' />
-    const t = themeOf(s)
+    const t = chatThemeOf(s)
     // ponytail: the latest turn is told by its duration matching the one turn.complete measured; two equal turns both match
     const isLatest = Math.abs(e.props.durationMs - s.lastTurnMs) < 2500
     return (
@@ -608,7 +608,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     if (e.props.isExpanded || e.props.origin.kind !== 'composer') return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const t = themeOf(await read($, S))
+    const t = chatThemeOf(await read($, S))
     return (
       <Box backgroundColor={t.surface || undefined} paddingX={1} width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
         <Text color={t.hi}>{'› '}</Text>
@@ -622,7 +622,7 @@ export const register: Register = on => {
     const table = $.ui.resolve(e)
     if (!('Markdown' in table)) return next(e)
     const { Box, Markdown, Text } = table
-    const t = themeOf(await read($, S))
+    const t = chatThemeOf(await read($, S))
     return (
       <Box>
         <Text color={t.accent}>{e.props.isFirstOfReply ? '● ' : '  '}</Text>
@@ -637,7 +637,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'PromptHint' }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const s = await read($, S)
-    const t = themeOf(s)
+    const t = chatThemeOf(s)
     const vs = verifyState(s.agents)
     const all = vs.cases
     const pass = vs.pass
@@ -676,8 +676,10 @@ export const register: Register = on => {
     const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Svg' in table && e.surface !== 'terminal' ? { Svg: table.Svg } : {}) }
     const v = { ui, s, t, w: Math.max(16, e.props.bodyColumns - 2), now: await $.clock.now(), root, desk: e.surface !== 'terminal' }
     const { Box } = ui
+    // A palette paints its own background over the whole pane, so its text reads on any terminal
+    const rows = (e.props as { scroll?: { bodyRows?: number } }).scroll?.bodyRows
     return (
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={1} backgroundColor={t.bg || undefined} {...(t.bg && rows ? { minHeight: rows } : {})}>
         {Header($, v)}
         {Tabs($, v)}
         {s.tab === 'overview' && Overview($, v)}

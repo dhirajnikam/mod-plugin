@@ -370,6 +370,34 @@ test("while Claude keeps a task list, the flow's steps are its tasks and progres
   await ui.unmount()
 })
 
+test('a palette paints its own background in the pane and the band, and the chat keeps the terminal\'s text colours', async ($, on) => {
+  stand($, on)
+  const bgs: Record<string, string> = { paper: '#f3f2f2', white: '#ffffff', black: '#0b0b0b', solarized: '#002b36', nord: '#2e3440' }
+  const texts = ['#1d1b18', '#111111', '#e8e6e3', '#eee8d5', '#eceff4']
+  for (const [name, bg] of Object.entries(bgs)) {
+    await $.command.run({ command: 'cockpit', args: `theme ${name}` } as never)
+    const ui = await $.ui.mount(pane('overview') as never)
+    const root: any = await ui.drawn()
+    expect(root.props.backgroundColor).toBe(bg)
+    expect(root.props.minHeight).toBe(60)
+    await ui.unmount()
+    await $.command.run({ command: 'cockpit', args: 'focus off' } as never)
+    const b = await $.ui.mount(band as never)
+    expect(((await b.drawn()) as any).props.backgroundColor).toBe(bg)
+    await b.unmount()
+    // Your message in the chat: the surface's own text colour, never the palette's
+    const um = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'UserMessage', requestId: 'um', props: { text: 'hi', origin: { kind: 'composer' }, isExpanded: false } } as never)
+    const d = JSON.stringify(await um.drawn())
+    for (const c of texts) expect(d).not.toContain(c)
+    await um.unmount()
+  }
+  // Auto paints nothing: it follows the terminal
+  await $.command.run({ command: 'cockpit', args: 'theme auto' } as never)
+  const ui = await $.ui.mount(pane('overview') as never)
+  expect(((await ui.drawn()) as any).props.backgroundColor).toBeUndefined()
+  await ui.unmount()
+})
+
 test('themes switch by command and by the header dots; Auto uses the theme keys', async ($, on) => {
   stand($, on)
   await $.command.run({ command: 'cockpit', args: 'theme nord' } as never)

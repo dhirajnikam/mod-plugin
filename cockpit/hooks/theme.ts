@@ -33,6 +33,11 @@ export const AUTO: Theme = { bg: '', surface: '', text: 'text', dim: 'subtle', f
 // The palette in force
 export const themeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : THEMES[s.theme])
 
+// The chat's rows (spinner, cards, your messages, the status line) sit on the terminal's own background, which a palette
+// does not paint: they keep the surface's own text colours and take only the palette's accent, so White on a dark
+// terminal, or Black on a light one, never draws text the background hides
+export const chatThemeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme].accent })
+
 // Status colours by meaning: Claude Code's own theme keys, so they follow the person's theme on every surface
 export const OK = 'success'
 export const BAD = 'error'
