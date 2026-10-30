@@ -152,6 +152,18 @@ test('a run that only read files is tested when you press Test; the setting turn
   expect(log.spawned).toEqual(['review the diff', 'Prover', 'write b'])
 })
 
+test('a pipeline started before any prompt leaves progress at 0%, Ready', async ($, on) => {
+  stand($, on)
+  await verify($)
+  await done($, 'ag1', 'REPORT: ok')
+  const b = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll: { offset: 0, bodyRows: 60 }, view: {} } } as never)
+  const d = JSON.stringify(await b.drawn())
+  expect(d).toContain('"0%"')
+  expect(d).toContain(' Ready')
+  expect(d).not.toContain('80%')
+  await b.unmount()
+})
+
 test('an agent whose run ends on an error shows as failed', async ($, on) => {
   stand($, on)
   await verify($)

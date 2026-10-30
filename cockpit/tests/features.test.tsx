@@ -302,12 +302,14 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   d = JSON.stringify(await ui.drawn())
   expect(d).toContain('Build flow')
   expect(d).toContain(' Commit ')
-  expect(d).toContain('"60%"')
+  // Explore was skipped (the edit came first): left out of the count, 2 of 4 steps
+  expect(d).toContain('"50%"')
+  expect(d).toContain('1 skipped, not counted')
   await ui.unmount()
   // Verify run between turns reaches the closed flow too
   await $.command.run({ command: 'cockpit', args: 'test' } as never)
   ui = await $.ui.mount(pane('overview') as never)
-  expect(JSON.stringify(await ui.drawn())).toContain('"80%"')
+  expect(JSON.stringify(await ui.drawn())).toContain('"75%"')
   // A flow picked by hand stands: by command, then by the picker
   const r = await $.command.run({ command: 'cockpit', args: 'flow answer' } as never)
   expect(JSON.stringify(r)).toContain('Answer flow')

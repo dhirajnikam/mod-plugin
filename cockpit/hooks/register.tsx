@@ -491,7 +491,7 @@ export const register: Register = on => {
               return (
                 <Text key={`pg-${x.name}`}>
                   <Text color={t.accent}>{'━'.repeat(k)}</Text>
-                  <Text color={t.track}>{'━'.repeat(segW - k)}</Text>
+                  <Text color={t.track}>{(x.st === 'skipped' ? '╌' : '━').repeat(segW - k)}</Text>
                   {i < gaps && <Text> </Text>}
                 </Text>
               )

@@ -294,8 +294,8 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
         {p.steps.map(x => (
-          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'}>
-            <Text color={x.st === 'done' ? OK : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : '○'}`}</Text>
+          <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
+            <Text color={x.st === 'done' ? OK : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
         ))}
@@ -308,7 +308,7 @@ export function Overview($: $, v: V) {
       )}
       {s.flows.length > 0 && (
         <Text size="footnote" wrap="wrap">
-          <Text color={t.dim}>{`${p.done} of ${p.steps.length} steps done`}</Text>
+          <Text color={t.dim}>{`${p.done} of ${p.total} steps done${p.skipped ? ` (${p.skipped} skipped, not counted)` : ''}`}</Text>
           {p.active > 0 && <Text color={BUSY}>{` + ${p.active} in progress at ½`}</Text>}
           <Text color={t.dim}>{` = ${p.pct}%  ·  `}</Text>
           <Text color={t.faint}>{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${s.flows[s.flows.length - 1]?.kind ? ', your pick' : ''}`}</Text>
@@ -355,7 +355,7 @@ export function Overview($: $, v: V) {
                   </Box>
                   <Text mono>
                     {fp.steps.map(x => (
-                      <Text key={`fs-${f.id}-${x.name}`} color={x.st === 'active' ? BUSY : x.st === 'done' ? OK : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : '○'}</Text>
+                      <Text key={`fs-${f.id}-${x.name}`} color={x.st === 'active' ? BUSY : x.st === 'done' ? OK : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
                     ))}
                   </Text>
                   <Text color={t.dim} size="footnote">{`${fp.pct}%`}</Text>
@@ -736,6 +736,15 @@ export function Agents($: $, v: V) {
       </Text>
     )
   }
+  // A button: the surface's own on desktop; on the terminal a filled chip, as the tabs are, in place of [ brackets ]
+  const pill = (key: string, label: string, on: boolean, onPress: () => unknown) =>
+    v.desk ? (
+      <Button key={key} label={label} variant={on ? 'primary' : 'secondary'} onPress={onPress} />
+    ) : (
+      <Button key={key} label={label} plain onPress={onPress}>
+        <Text backgroundColor={on ? t.accent : t.track} color={on ? t.bg || 'inverseText' : t.text} bold={on}>{` ${label} `}</Text>
+      </Button>
+    )
   const section = (label: string, extra = '') => (
     <Text size="footnote">
       <Text color={t.dim} bold>{label.toUpperCase()}</Text>
@@ -746,11 +755,9 @@ export function Agents($: $, v: V) {
     <Box flexDirection="column" gap={sp(v, 2)}>
       <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'sm' : 0}>
         <Box flexWrap="wrap" columnGap={sp(v, 1)}>
-          {PIPELINES.map(p => (
-            <Button key={`pipe-${p.name}`} label={`▶ ${p.label}`} variant={pipe?.name === p.name ? 'primary' : 'secondary'} onPress={() => startPipeline($, p.name)} />
-          ))}
+          {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, pipe?.name === p.name, () => startPipeline($, p.name)))}
         </Box>
-        <Button key="spawn-toggle" label={s.ui.spawnOpen ? '✕ Close' : '+ New agent'} variant={s.ui.spawnOpen ? 'secondary' : 'primary'} onPress={() => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } }))} />
+        {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', !s.ui.spawnOpen, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
       </Box>
       {pipe && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>

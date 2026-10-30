@@ -211,33 +211,38 @@ export function progressOf(task: string, reached: string[], isWorking: boolean, 
   // Steps written for the task: the furthest one whose kind of work was reached is in progress, the ones before it done
   if (own.length && !template && (kind === 'task' || !plan.length)) {
     const last = own.reduce((m, x, i) => (reached.includes(x.kind) ? i : m), -1)
-    const steps = own.map((x, i) => ({ name: x.name, st: i < last || (i === last && !isWorking && reached.length > 0) ? 'done' : i === last ? 'active' : 'pending' }))
-    const done = steps.filter(x => x.st === 'done').length
-    const active = steps.filter(x => x.st === 'active').length
-    const at = steps.find(x => x.st === 'active')
+    const steps = own.map((x, i) => ({ name: x.name, st: stepState(i, last, reached.includes(x.kind), isWorking) }))
     const flow = { name: 'task', label: 'Task', steps: steps.map(x => x.name), what: 'steps written for this task' }
-    return { flow, steps, done, active, pct: Math.round(((done + active / 2) / steps.length) * 100), stepName: at ? at.name : reached.length ? 'Idle' : 'Ready' }
+    return { flow, steps, ...tallySteps(steps), stepName: steps.find(x => x.st === 'active')?.name ?? (reached.length ? 'Idle' : 'Ready') }
   }
   if (plan.length && !template) {
     const steps = plan.map(p => ({ name: p.text.length > 48 ? `${p.text.slice(0, 47)}…` : p.text, st: p.st === 'completed' ? 'done' : p.st === 'in_progress' ? 'active' : 'pending' }))
-    const done = steps.filter(x => x.st === 'done').length
-    const active = steps.filter(x => x.st === 'active').length
-    const at = steps.find(x => x.st === 'active')
     const flow = { name: 'plan', label: 'Plan', steps: steps.map(x => x.name), what: "Claude's own task list" }
-    return { flow, steps, done, active, pct: Math.round(((done + active / 2) / steps.length) * 100), stepName: at ? at.name : done === steps.length ? 'Done' : isWorking ? 'Working' : 'Idle' }
+    const t = tallySteps(steps)
+    return { flow, steps, ...t, stepName: steps.find(x => x.st === 'active')?.name ?? (t.done === steps.length ? 'Done' : isWorking ? 'Working' : 'Idle') }
   }
   const flow = flowOf(task, reached, template ? kind : undefined)
   const names = STEPS.filter(n => flow.steps.includes(n) || reached.includes(n))
   const last = names.reduce((m, name, i) => (reached.includes(name) ? i : m), -1)
-  const steps = names.map((name, i) => ({
-    name,
-    st: i < last || (i === last && !isWorking && reached.length > 0) ? 'done' : i === last ? 'active' : 'pending',
-  }))
+  const steps = names.map((name, i) => ({ name, st: stepState(i, last, reached.includes(name), isWorking) }))
+  return { flow, steps, ...tallySteps(steps), stepName: steps.find(x => x.st === 'active')?.name ?? (reached.length ? 'Idle' : 'Ready') }
+}
+
+// A step's state on a template or written steps: the furthest one reached is in progress while the turn runs and done
+// after; one before it is done if its work was reached, else skipped (shown so, and left out of the count)
+function stepState(i: number, last: number, isReached: boolean, isWorking: boolean) {
+  if (i > last) return 'pending'
+  if (i === last) return isWorking ? 'active' : 'done'
+  return isReached ? 'done' : 'skipped'
+}
+
+// Progress: (steps done + ½ × steps in progress) ÷ the steps that count, a skipped one not among them
+function tallySteps(steps: { st: string }[]) {
   const done = steps.filter(x => x.st === 'done').length
   const active = steps.filter(x => x.st === 'active').length
-  const pct = Math.round(((done + active / 2) / names.length) * 100)
-  const at = steps.find(x => x.st === 'active')
-  return { flow, steps, done, active, pct, stepName: at ? at.name : reached.length ? 'Idle' : 'Ready' }
+  const skipped = steps.filter(x => x.st === 'skipped').length
+  const total = steps.length - skipped
+  return { done, active, skipped, total, pct: total ? Math.round(((done + active / 2) / total) * 100) : 0 }
 }
 // Steps a model wrote for a task, kept only where each names a known kind of work
 const KINDS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
@@ -255,7 +260,9 @@ export function parseSteps(text: string) {
 
 export const progress = (s: Ph) => {
   const f = s.flows[s.flows.length - 1]
-  return progressOf(s.task, s.reached, s.isWorking, f?.kind, f?.plan, f?.steps)
+  // Before the first prompt there is no task, so nothing has progressed (a pipeline started by hand included)
+  if (!f) return progressOf('', [], false)
+  return progressOf(s.task, s.reached, s.isWorking, f.kind, f.plan, f.steps)
 }
 
 // Claude's task list after one of its plan tools: TodoWrite sends the whole list; TaskCreate adds one (its id is in the
@@ -374,32 +381,36 @@ export function tree(ops: FileOp[], collapsed: Record<string, boolean>, root: st
   return rows
 }
 
-// The progress ring as rows of half-block text runs: each cell holds two pixels, top and bottom, as ▀ with two colours.
-// Cells outside the ring stay transparent, so the ring sits on any terminal background.
+// The progress ring for the terminal, in braille: each cell holds 2 × 4 dots, so 14 × 7 cells make a 28 × 28 dot
+// circle, smooth where half blocks are blocky. A cell takes the fill colour where its angle is within the percentage,
+// the track's beyond; the percentage sits in the middle row. Cells outside the ring stay blank, on any background.
 export type Run = { t: string; fg?: string; bg?: string }
+const DOT = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]]
 export function ringRuns(pct: number, fill: string, track: string, ink: string, cols = 14): Run[][] {
   const rows = Math.ceil(cols / 2)
-  const c = (cols - 1) / 2
-  const r1 = cols / 2 - 0.3
-  const r0 = r1 - 2.1
-  const px = (x: number, y: number) => {
-    const d = Math.hypot(x - c, y - c)
-    if (d > r1 || d < r0) return undefined
-    const a = (Math.atan2(x - c, -(y - c)) / (2 * Math.PI) + 1) % 1
-    return a <= pct / 100 ? fill : track
-  }
+  const w = cols * 2
+  const h = rows * 4
+  const cx = (w - 1) / 2
+  const cy = (h - 1) / 2
+  const r1 = Math.min(w, h) / 2 - 0.4
+  const r0 = r1 - 3.2
   const label = `${pct}%`
   const mid = Math.floor(rows / 2)
   const start = Math.floor((cols - label.length) / 2)
   return Array.from({ length: rows }, (_, row) => {
     const runs: Run[] = []
     for (let col = 0; col < cols; col++) {
+      let bits = 0
+      for (let dy = 0; dy < 4; dy++)
+        for (let dx = 0; dx < 2; dx++) {
+          const d = Math.hypot(col * 2 + dx - cx, row * 4 + dy - cy)
+          if (d <= r1 && d >= r0) bits |= DOT[dy]![dx]!
+        }
       const ch = row === mid ? label[col - start] : undefined
-      const top = px(col, row * 2)
-      const bot = px(col, row * 2 + 1)
-      const cell: Run = ch ? { t: ch, fg: ink } : top && bot ? { t: '▀', fg: top, bg: bot } : top ? { t: '▀', fg: top } : bot ? { t: '▄', fg: bot } : { t: ' ' }
+      const a = (Math.atan2(col * 2 + 0.5 - cx, -(row * 4 + 1.5 - cy)) / (2 * Math.PI) + 1) % 1
+      const cell: Run = ch ? { t: ch, fg: ink } : bits ? { t: String.fromCharCode(0x2800 + bits), fg: pct > 0 && a <= pct / 100 ? fill : track } : { t: ' ' }
       const last = runs[runs.length - 1]
-      if (last && last.fg === cell.fg && last.bg === cell.bg) last.t += cell.t
+      if (last && last.fg === cell.fg) last.t += cell.t
       else runs.push(cell)
     }
     return runs
@@ -430,6 +441,9 @@ export function selfCheck() {
     [flowOf('what is x', ['Understand', 'Explore', 'Implement']).name, 'build'],
     [flowOf('what is x', ['Understand', 'Explore', 'Implement'], 'answer').name, 'answer'],
     [progressOf('why?', ['Understand', 'Explore', 'Answer'], false).pct, 100],
+    // Implement reached with Explore skipped: Explore is skipped, not done, and left out of the count
+    [progressOf('add x', ['Understand', 'Implement'], true).steps.map(x => x.st).join(), 'done,skipped,active,pending,pending'],
+    [progressOf('add x', ['Understand', 'Implement'], true).pct, 38],
     [progressOf('x', ['Understand', 'Explore', 'Implement'], true, undefined, [], [{ name: 'Read the hooks', kind: 'Explore' }, { name: 'Fix the path', kind: 'Implement' }, { name: 'Run the tests', kind: 'Verify' }, { name: 'Commit', kind: 'Commit' }]).pct, 38],
     [parseSteps('ok: [{"step":"Read the hooks","kind":"Explore"},{"step":"x","kind":"Nope"},{"step":"Fix it","kind":"implement"}]').map(x => x.kind).join(), 'Explore,Implement'],
     [progressOf('x', [], true, undefined, [{ id: 'a', text: 'a', st: 'completed' }, { id: 'b', text: 'b', st: 'in_progress' }, { id: 'c', text: 'c', st: 'pending' }, { id: 'd', text: 'd', st: 'pending' }]).pct, 38],

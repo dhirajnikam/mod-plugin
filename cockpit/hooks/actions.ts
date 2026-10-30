@@ -633,8 +633,8 @@ export async function startPipeline($: $, name: string, opts: { for?: string; pr
     const at = await $.clock.now()
     await set($, st => ({
       pipeline: { name, steps: def.steps, index: 0, agentId: '', reports: opts.prior ?? [], at, ...(opts.for ? { for: opts.for } : {}) },
-      reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'],
-      // The last flow, running or just closed: Verify runs after the turn that changed the files
+      // Verify counts toward the flow it tests: the last one, running or just closed; before any prompt there is none
+      ...(st.flows.length ? { reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'] } : {}),
       flows: st.flows.map((f, i) => (i === st.flows.length - 1 && !f.reached.includes('Verify') ? { ...f, reached: [...f.reached, 'Verify'] } : f)),
     }))
     await bindExpert($, await runExpert($, def.steps[0] ?? '', opts.prior ?? []))
