@@ -42,7 +42,7 @@ import {
 import { FLOWS, PIPELINES, activityOf, applyPlan, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
 import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
-import { BAD, BUSY, OK, THEME_IDS, chatThemeOf, ctxShades, themeOf } from './theme'
+import { THEME_IDS, chatThemeOf, ctxShades, themeOf } from './theme'
 import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './views'
 import type { UI } from './views'
 
@@ -419,7 +419,7 @@ export const register: Register = on => {
     const ask = s.pending && (
       <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between" flexWrap="wrap" columnGap={2}>
         <Text>
-          <Text color={BUSY}>{'⎇ Commit? '}</Text>
+          <Text color={t.busy}>{'⎇ Commit? '}</Text>
           <Text color={t.text} wrap="truncate-end">{s.pending.msg}</Text>
           <Text color={t.dim}>{` → ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
         </Text>
@@ -438,8 +438,8 @@ export const register: Register = on => {
           <Text>
             <Text color={t.accent}>{`${p.pct}%`}</Text>
             <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
-            <Text color={s.ctx.pct >= 80 ? BUSY : t.text}>{`${s.ctx.pct}%`}</Text>
-            {testsLine && <Text color={testsFail ? 'error' : testsLine === 'testing…' ? BUSY : 'success'}>{`  ·  ${testsLine}`}</Text>}
+            <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`${s.ctx.pct}%`}</Text>
+            {testsLine && <Text color={testsFail ? t.bad : testsLine === 'testing…' ? t.busy : t.ok}>{`  ·  ${testsLine}`}</Text>}
           </Text>
           {toggle}
         </Box>
@@ -513,7 +513,7 @@ export const register: Register = on => {
             <Box columnGap={1}>
               {contextLabel}
               <Text>
-                <Text color={s.ctx.pct >= 80 ? BUSY : t.text}>{`${s.ctx.pct}%`}</Text>
+                <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`${s.ctx.pct}%`}</Text>
                 <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
               </Text>
             </Box>
@@ -524,7 +524,7 @@ export const register: Register = on => {
               {ctxCells}
               <Text color={t.track}>{'━'.repeat(Math.max(0, left))}</Text>
             </Text>
-            {!narrow && <Text color={s.ctx.pct >= 80 ? BUSY : t.text}>{`  ${s.ctx.pct}%`}</Text>}
+            {!narrow && <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`  ${s.ctx.pct}%`}</Text>}
             {!narrow && <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>}
           </Box>
         </Box>
@@ -656,13 +656,13 @@ export const register: Register = on => {
         {s.accounts.some(a => a.id === s.accountId) && <Text color={t.dim}>{`@ ${s.accounts.find(a => a.id === s.accountId)?.label}`}</Text>}
         {adds || dels ? (
           <Text>
-            <Text color={OK}>{`+${adds}`}</Text>
-            <Text color={BAD}>{` −${dels}`}</Text>
+            <Text color={t.ok}>{`+${adds}`}</Text>
+            <Text color={t.bad}>{` −${dels}`}</Text>
           </Text>
         ) : (
           <Text color={t.dim}>no changes</Text>
         )}
-        <Text color={fail ? BAD : all.length ? OK : t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
+        <Text color={fail ? t.bad : all.length ? t.ok : t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
         <Text color={t.accent}>{`$${s.cost.toFixed(2)}`}</Text>
         <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
         {e.props.isWorking && <Text color={t.faint}>esc to interrupt</Text>}

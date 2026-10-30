@@ -63,7 +63,7 @@ import {
 import type { IconState } from './logic'
 import { features as featureList, impactOf, memoryKey } from './memory'
 import { pickFlow, setGit as setGitPref } from './actions'
-import { BAD, BUSY, OK, THEMES, THEME_IDS, ctxShades } from './theme'
+import { THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
 
 type $ = EngineInterface
@@ -164,7 +164,7 @@ export function Header($: $, v: V) {
               </Button>
             ))
           )}
-          <Text backgroundColor={t.track} color={s.waiting ? BUSY : s.isWorking ? t.accent : t.text}>{` ${run} `}</Text>
+          <Text backgroundColor={t.track} color={s.waiting ? t.busy : s.isWorking ? t.accent : t.text}>{` ${run} `}</Text>
         </Box>
       </Box>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 2)}>
@@ -249,7 +249,7 @@ export function Overview($: $, v: V) {
       {needs !== '' && (
         <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between">
           <Box flexDirection="column">
-            <Text color={BUSY} bold>NEEDS YOU</Text>
+            <Text color={t.busy} bold>NEEDS YOU</Text>
             <Text color={t.text}>{needs}</Text>
           </Box>
           {s.pending ? (
@@ -283,7 +283,7 @@ export function Overview($: $, v: V) {
             {s.flows.length > 0 && <Text color={t.dim}>{` · ${p.flow.label} flow`}</Text>}
           </Text>
           <Box columnGap={sp(v, 3)} flexWrap="wrap">
-            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? BUSY : t.text], ['Changes', diff, adds || dels ? OK : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
+            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Changes', diff, adds || dels ? t.ok : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
                 <Text color={t.dim} size="footnote">{label}</Text>
                 <Text color={c} bold>{val}</Text>
@@ -295,7 +295,7 @@ export function Overview($: $, v: V) {
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
         {p.steps.map(x => (
           <Text key={`step-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
-            <Text color={x.st === 'done' ? OK : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
+            <Text color={x.st === 'done' ? t.ok : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
         ))}
@@ -309,7 +309,7 @@ export function Overview($: $, v: V) {
       {s.flows.length > 0 && (
         <Text size="footnote" wrap="wrap">
           <Text color={t.dim}>{`${p.done} of ${p.total} steps done${p.skipped ? ` (${p.skipped} skipped, not counted)` : ''}`}</Text>
-          {p.active > 0 && <Text color={BUSY}>{` + ${p.active} in progress at ½`}</Text>}
+          {p.active > 0 && <Text color={t.busy}>{` + ${p.active} in progress at ½`}</Text>}
           <Text color={t.dim}>{` = ${p.pct}%  ·  `}</Text>
           <Text color={t.faint}>{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${s.flows[s.flows.length - 1]?.kind ? ', your pick' : ''}`}</Text>
         </Text>
@@ -332,22 +332,22 @@ export function Overview($: $, v: V) {
             <Text color={t.text} weight="semibold">{`Flows (${flows.length})`}</Text>
             <Text size="footnote">
               <Text color={t.dim}>{`${fmt(totals.ms)} · `}</Text>
-              <Text color={OK}>{`+${totals.add}`}</Text>
-              <Text color={BAD}>{` −${totals.del}`}</Text>
+              <Text color={t.ok}>{`+${totals.add}`}</Text>
+              <Text color={t.bad}>{` −${totals.del}`}</Text>
               <Text color={t.dim}>{` · ${totals.commits} commit${totals.commits === 1 ? '' : 's'}`}</Text>
             </Text>
           </Box>
           {flows.map(f => {
             const open = s.ui.openFlow === f.id
             const live = f.status === 'running'
-            const col = live ? BUSY : f.status === 'done' ? OK : BAD
+            const col = live ? t.busy : f.status === 'done' ? t.ok : t.bad
             const took = (f.endedAt ?? v.now) - f.startedAt
             const fp = progressOf(f.task, f.reached, live, f.kind, f.plan, f.steps)
             return (
               <Box key={`fl-${f.id}`} flexDirection="column">
                 <Box columnGap={sp(v, 1)}>
                   <Text color={col}>{live ? '●' : f.status === 'done' ? '✓' : '✕'}</Text>
-                  <Text color={live ? BUSY : t.dim} size="footnote" mono>{fmt(took)}</Text>
+                  <Text color={live ? t.busy : t.dim} size="footnote" mono>{fmt(took)}</Text>
                   <Box flexGrow={1} flexShrink={1}>
                     <Button key={`flb-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFlow: open ? '' : f.id } }))}>
                       <Text color={live ? t.text : t.text} bold={live} wrap="truncate-end">{f.task}</Text>
@@ -355,14 +355,14 @@ export function Overview($: $, v: V) {
                   </Box>
                   <Text mono>
                     {fp.steps.map(x => (
-                      <Text key={`fs-${f.id}-${x.name}`} color={x.st === 'active' ? BUSY : x.st === 'done' ? OK : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
+                      <Text key={`fs-${f.id}-${x.name}`} color={x.st === 'active' ? t.busy : x.st === 'done' ? t.ok : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
                     ))}
                   </Text>
                   <Text color={t.dim} size="footnote">{`${fp.pct}%`}</Text>
                   {(f.add || f.del) > 0 && (
                     <Text size="footnote">
-                      <Text color={OK}>{`+${f.add}`}</Text>
-                      <Text color={BAD}>{` −${f.del}`}</Text>
+                      <Text color={t.ok}>{`+${f.add}`}</Text>
+                      <Text color={t.bad}>{` −${f.del}`}</Text>
                     </Text>
                   )}
                   {f.commit !== '' && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
@@ -386,7 +386,7 @@ export function Overview($: $, v: V) {
           </Box>
           {s.past.slice(-8).reverse().map(f => (
             <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
-              <Text color={f.status === 'done' ? OK : BAD}>{f.status === 'done' ? '✓' : '✕'}</Text>
+              <Text color={f.status === 'done' ? t.ok : t.bad}>{f.status === 'done' ? '✓' : '✕'}</Text>
               <Text color={t.faint} size="footnote" mono>{fmt((f.endedAt ?? f.startedAt) - f.startedAt)}</Text>
               <Box flexGrow={1} flexShrink={1}>
                 <Text color={t.dim} wrap="truncate-end">{f.task}</Text>
@@ -401,7 +401,7 @@ export function Overview($: $, v: V) {
         <Box justifyContent="space-between">
           <Text color={t.text} weight="semibold">Context window</Text>
           <Text>
-            <Text color={s.ctx.pct >= 80 ? BAD : s.ctx.pct >= 50 ? BUSY : OK}>{kTok(used)}</Text>
+            <Text color={s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.ok}>{kTok(used)}</Text>
             <Text color={t.dim}>{` / ${kTok(win)}`}</Text>
           </Text>
         </Box>
@@ -415,7 +415,7 @@ export function Overview($: $, v: V) {
             </Text>
           ))}
         </Box>
-        <Text color={s.ctx.pct >= 80 ? BAD : t.dim} size="footnote">{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
+        <Text color={s.ctx.pct >= 80 ? t.bad : t.dim} size="footnote">{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
       </Box>
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
@@ -439,7 +439,7 @@ export function Overview($: $, v: V) {
                 <Text color={d.status === 'you' ? t.dim : t.deep}>{`${d.kind === 'next' ? 'next step · ' : ''}${d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}`}</Text>
               </Box>
               <Box justifyContent="space-between">
-                <Text color={d.status === 'decided' ? OK : d.status === 'split' ? BUSY : d.status === 'you' ? t.text : d.status === 'advised' ? t.accent : t.deep} wrap="truncate-end">{[d.result, d.advice && d.status !== 'advised' ? `· ${d.advice}` : d.advice].filter(Boolean).join(' ') || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
+                <Text color={d.status === 'decided' ? t.ok : d.status === 'split' ? t.busy : d.status === 'you' ? t.text : d.status === 'advised' ? t.accent : t.deep} wrap="truncate-end">{[d.result, d.advice && d.status !== 'advised' ? `· ${d.advice}` : d.advice].filter(Boolean).join(' ') || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
                 <Text color={t.dim}>{fmt(d.at - (s.decisions[0]?.at ?? d.at))}</Text>
               </Box>
               {open && (
@@ -457,7 +457,7 @@ export function Overview($: $, v: V) {
                   {d.votes.length > 0 && (
                     <Box gap={sp(v, 1)}>
                       {d.votes.map((vote, i) => (
-                        <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? OK : BAD}>
+                        <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>
                           {vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
                         </Text>
                       ))}
@@ -497,7 +497,7 @@ function Memory($: $, v: V) {
     </Text>
   )
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={im && im.usedBy.length ? BUSY : t.divider} paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={im && im.usedBy.length ? t.busy : t.divider} paddingX={1}>
       <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
         <Text wrap="truncate-end">
           <Text color={t.text} weight="semibold">{im ? `Impact · ${key.split('/').pop()}` : 'Memory'}</Text>
@@ -508,8 +508,8 @@ function Memory($: $, v: V) {
       {im ? (
         <Box flexDirection="column">
           {row('uses', names(im.uses), t.text)}
-          {row('used by', im.usedBy.length ? names(im.usedBy) : 'nothing imports it', im.usedBy.length ? BUSY : OK)}
-          {row('reaches', im.affected.length ? `${im.affected.length} file${im.affected.length === 1 ? '' : 's'}${im.features.length ? ` in ${im.features.join(', ')}` : ''}: check them` : 'only this file', im.affected.length ? BUSY : OK)}
+          {row('used by', im.usedBy.length ? names(im.usedBy) : 'nothing imports it', im.usedBy.length ? t.busy : t.ok)}
+          {row('reaches', im.affected.length ? `${im.affected.length} file${im.affected.length === 1 ? '' : 's'}${im.features.length ? ` in ${im.features.join(', ')}` : ''}: check them` : 'only this file', im.affected.length ? t.busy : t.ok)}
         </Box>
       ) : (
         fs.slice(0, 8).map(f => (
@@ -532,7 +532,7 @@ export function Files($: $, v: V) {
   const dels = s.ops.reduce((a, o) => a + o.del, 0)
   const rel = (p: string) => p.replace(/\\/g, '/').replace(v.root.replace(/\\/g, '/') + '/', '')
   const opGlyph = (op: string) => (op === 'Read' ? '○' : op === 'Search' ? '⌕' : op === 'Write' ? '✚' : op === 'Edit' ? '✎' : '✖')
-  const opColor = (op: string) => (op === 'Write' ? OK : op === 'Edit' ? t.hi : op === 'Delete' ? BAD : t.dim)
+  const opColor = (op: string) => (op === 'Write' ? t.ok : op === 'Edit' ? t.hi : op === 'Delete' ? t.bad : t.dim)
   const lineColor = (k: string): [string | undefined, string] => (k === 'a' ? ['diffAdded', t.text] : k === 'd' ? ['diffRemoved', t.text] : [undefined, t.dim])
   const diffLines = (id: string, ls: { t: string; k: string }[]) =>
     ls.map((l, i) => {
@@ -555,7 +555,7 @@ export function Files($: $, v: V) {
     const runs: { c: string; n: number }[] = []
     for (let i = 0; i < n; i++) {
       const d = Math.abs(i - at)
-      const c = d === 0 ? BUSY : d < 3 ? t.accent : d < 6 ? t.lo : t.track
+      const c = d === 0 ? t.busy : d < 3 ? t.accent : d < 6 ? t.lo : t.track
       const last = runs[runs.length - 1]
       if (last && last.c === c) last.n++
       else runs.push({ c, n: 1 })
@@ -583,18 +583,18 @@ export function Files($: $, v: V) {
   const doing = s.isWorking ? s.activity : running.length ? `${running.length} agent${running.length > 1 ? 's' : ''} working: ${running.map(a => a.name).join(', ')}` : s.turnStart ? 'Idle' : 'Ready'
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box flexDirection="column" borderStyle="round" borderColor={live ? BUSY : t.divider} paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={live ? t.busy : t.divider} paddingX={1}>
         <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
           <Text wrap="truncate-end">
-            <Text color={live ? BUSY : t.dim}>{`${live ? spin : '✻'} `}</Text>
+            <Text color={live ? t.busy : t.dim}>{`${live ? spin : '✻'} `}</Text>
             <Text color={live ? t.text : t.dim} bold>{doing}</Text>
           </Text>
           <Text size="footnote">
-            {s.isWorking && <Text color={BUSY}>{`${fmt(v.now - s.turnStart)}  `}</Text>}
+            {s.isWorking && <Text color={t.busy}>{`${fmt(v.now - s.turnStart)}  `}</Text>}
             {adds || dels ? (
               <Text>
-                <Text color={OK}>{`+${adds}`}</Text>
-                <Text color={BAD}>{` −${dels}`}</Text>
+                <Text color={t.ok}>{`+${adds}`}</Text>
+                <Text color={t.bad}>{` −${dels}`}</Text>
               </Text>
             ) : (
               <Text color={t.dim}>no changes</Text>
@@ -614,7 +614,7 @@ export function Files($: $, v: V) {
           {rows_.map(n => {
             const isNow = nowPath !== '' && n.path === nowPath
             const chosen = filter === n.path
-            const col = n.isDir ? (n.touched ? t.hi : t.dim) : n.op === 'Delete' ? BAD : n.op === 'Write' ? OK : n.op === 'Edit' ? t.hi : n.op ? t.text : t.dim
+            const col = n.isDir ? (n.touched ? t.hi : t.dim) : n.op === 'Delete' ? t.bad : n.op === 'Write' ? t.ok : n.op === 'Edit' ? t.hi : n.op ? t.text : t.dim
             return (
               <Box key={`tree-${n.path}`} justifyContent="space-between" columnGap={sp(v, 1)}>
                 <Box flexGrow={1} flexShrink={1}>
@@ -624,14 +624,14 @@ export function Files($: $, v: V) {
                     onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !n.collapsed } } } : { ui: { ...st.ui, treeSel: chosen ? '' : n.path } }))}
                   >
                     <Text backgroundColor={chosen ? t.wash : undefined} mono>
-                      <Text color={isNow && blink ? BUSY : t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (n.collapsed ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
-                      <Text color={isNow ? BUSY : col} bold={isNow || chosen} strikethrough={n.op === 'Delete'} wrap="truncate-end">
+                      <Text color={isNow && blink ? t.busy : t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (n.collapsed ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
+                      <Text color={isNow ? t.busy : col} bold={isNow || chosen} strikethrough={n.op === 'Delete'} wrap="truncate-end">
                         {n.name}
                       </Text>
                     </Text>
                   </Button>
                 </Box>
-                <Text color={isNow ? BUSY : opColor(n.op)} size="footnote" wrap="truncate-end">{isNow ? `${n.tag} · now` : n.tag}</Text>
+                <Text color={isNow ? t.busy : opColor(n.op)} size="footnote" wrap="truncate-end">{isNow ? `${n.tag} · now` : n.tag}</Text>
               </Box>
             )
           })}
@@ -652,10 +652,10 @@ export function Files($: $, v: V) {
         if (r.kind === 'agent') {
           return (
             <Box key={r.key} columnGap={sp(v, 1)}>
-              <Text color={r.running ? BUSY : t.faint}>{r.running && blink ? '●' : '○'}</Text>
+              <Text color={r.running ? t.busy : t.faint}>{r.running && blink ? '●' : '○'}</Text>
               <Box flexGrow={1} flexShrink={1}>
                 <Text wrap="truncate-end">
-                  <Text color={r.running ? BUSY : t.accent}>{`${r.glyph} ${r.who}  `}</Text>
+                  <Text color={r.running ? t.busy : t.accent}>{`${r.glyph} ${r.who}  `}</Text>
                   <Text color={t.text}>{r.text}</Text>
                 </Text>
               </Box>
@@ -669,7 +669,7 @@ export function Files($: $, v: V) {
         return (
           <Box key={r.key} flexDirection="column">
             <Box columnGap={sp(v, 1)}>
-              <Text color={hot && blink ? BUSY : opColor(o.op)}>{opGlyph(o.op)}</Text>
+              <Text color={hot && blink ? t.busy : opColor(o.op)}>{opGlyph(o.op)}</Text>
               <Box flexGrow={1} flexShrink={1}>
                 <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
                   <Text color={opColor(o.op)}>{`${o.op} `}</Text>
@@ -677,7 +677,7 @@ export function Files($: $, v: V) {
                   <Text color={t.dim}>{o.lines.length ? (open ? ' ⌄' : ' ›') : ''}</Text>
                 </Button>
               </Box>
-              <Text color={o.add || o.del ? (o.add >= o.del ? OK : BAD) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
+              <Text color={o.add || o.del ? (o.add >= o.del ? t.ok : t.bad) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
               <Text color={t.dim} size="footnote">{ago(o.at)}</Text>
             </Box>
             {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={2}>{diffLines(o.id, o.lines)}</Box>}
@@ -700,7 +700,7 @@ export function Agents($: $, v: V) {
   const finished = s.agents.filter(a => a.status === 'done').length
   const team = [...EXPERTS.map(x => ({ type: x.type, name: x.name, what: x.what })), ...s.custom]
   const stateOf = (a?: Agent): IconState => (!a ? 'idle' : a.status === 'running' ? 'running' : a.status === 'failed' || a.cases.some(c => c.st === 'fail') ? 'failed' : a.status === 'stopped' ? 'stopped' : 'done')
-  const colorOf = (st: IconState) => (st === 'running' ? BUSY : st === 'done' ? OK : st === 'failed' ? BAD : st === 'idle' ? t.accent : t.dim)
+  const colorOf = (st: IconState) => (st === 'running' ? t.busy : st === 'done' ? t.ok : st === 'failed' ? t.bad : st === 'idle' ? t.accent : t.dim)
   const spin = ['◐', '◓', '◑', '◒'][Math.floor(v.now / 200) % 4] ?? '◐'
   // The icon: SVG where the surface draws it (animated while running), else a glyph that turns while running
   const icon = (type: string, st: IconState, size: number) =>
@@ -719,10 +719,10 @@ export function Agents($: $, v: V) {
   }
   const verdict = (x: Agent | undefined, label: string, sign: string, waiting: boolean) => {
     if (!x) return waiting ? { t: `${sign} ${label} waiting`, c: t.faint } : undefined
-    if (x.status === 'running') return { t: `${spin} ${label} testing`, c: BUSY }
+    if (x.status === 'running') return { t: `${spin} ${label} testing`, c: t.busy }
     const fail = x.cases.filter(c => c.st === 'fail').length
-    if (x.status !== 'done') return { t: `${sign} ${label} ${word(x).toLowerCase()}`, c: BAD }
-    return { t: x.cases.length ? `${sign} ${label} ${x.cases.length - fail}/${x.cases.length}` : `${sign} ${label} done`, c: fail ? BAD : OK }
+    if (x.status !== 'done') return { t: `${sign} ${label} ${word(x).toLowerCase()}`, c: t.bad }
+    return { t: x.cases.length ? `${sign} ${label} ${x.cases.length - fail}/${x.cases.length}` : `${sign} ${label} done`, c: fail ? t.bad : t.ok }
   }
   const testLine = (id: string, key: string) => {
     const { pos, neg } = testsOf(id)
@@ -763,7 +763,7 @@ export function Agents($: $, v: V) {
         <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
           <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
             <Text wrap="truncate-end">
-              <Text color={BUSY} bold>{`${PIPELINES.find(p => p.name === pipe.name)?.label ?? pipe.name} pipeline`}</Text>
+              <Text color={t.busy} bold>{`${PIPELINES.find(p => p.name === pipe.name)?.label ?? pipe.name} pipeline`}</Text>
               <Text color={t.dim}>{` · ${expertName(pipe.steps[pipe.index] ?? '')} · ${fmt(v.now - pipe.at)}`}</Text>
             </Text>
             {pipe.agentId !== '' && <Button key="pipe-stop" label="■ Stop" plain onPress={() => stopAgent($, pipe.agentId)} />}
@@ -773,7 +773,7 @@ export function Agents($: $, v: V) {
               const at: IconState = i < pipe.index ? 'done' : i === pipe.index ? 'running' : 'pending'
               return (
                 <Box key={`ps-${i}`} alignItems="center" columnGap={sp(v, 1)}>
-                  {i > 0 && <Text color={i <= pipe.index ? OK : t.faint}>›</Text>}
+                  {i > 0 && <Text color={i <= pipe.index ? t.ok : t.faint}>›</Text>}
                   {icon(st, at, 24)}
                   <Text color={at === 'pending' ? t.dim : colorOf(at)} bold={at === 'running'} size="footnote">{expertName(st)}</Text>
                 </Box>
@@ -833,7 +833,7 @@ export function Agents($: $, v: V) {
               <Box flexShrink={0}>{icon(x.type, st, 30)}</Box>
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
-                <Text color={live ? BUSY : t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
+                <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
                 {a && testLine(a.id, `tl-${x.type}`)}
               </Box>
               {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
@@ -861,7 +861,7 @@ export function Agents($: $, v: V) {
                       <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
                         <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
                       </Button>
-                      <Text color={live ? BUSY : t.dim} size="footnote" wrap="truncate-end">
+                      <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">
                         {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${a.log[a.log.length - 1]?.t ?? 'starting'}` : ''}` : live ? a.log[a.log.length - 1]?.t ?? 'starting' : a.task}
                       </Text>
                       {testLine(a.id, `rl-${a.id}`)}
@@ -875,7 +875,7 @@ export function Agents($: $, v: V) {
                   </Box>
                   {(open ? a.cases : failing).map((c, i) => (
                     <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
-                      <Text color={c.st === 'fail' ? BAD : c.st === 'fixed' ? BUSY : OK}>{`   ${c.st === 'fail' ? '✗' : c.st === 'fixed' ? '↻' : '✓'} `}</Text>
+                      <Text color={c.st === 'fail' ? t.bad : c.st === 'fixed' ? t.busy : t.ok}>{`   ${c.st === 'fail' ? '✗' : c.st === 'fixed' ? '↻' : '✓'} `}</Text>
                       <Text color={t.text}>{c.n}</Text>
                       {c.err && <Text color={t.dim}>{` · ${c.err}`}</Text>}
                     </Text>
@@ -930,13 +930,13 @@ export function Git($: $, v: V) {
   const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
   const when = g.commitMode === 'manual' ? '' : ` · ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
   const newBranch = plan.branch !== s.repo.current
-  const kindColor = (meta: string) => (meta === 'new' ? OK : meta === 'deleted' ? BAD : meta.startsWith('renamed') ? BUSY : t.hi)
+  const kindColor = (meta: string) => (meta === 'new' ? t.ok : meta === 'deleted' ? t.bad : meta.startsWith('renamed') ? t.busy : t.hi)
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
         <Text>
           <Text color={t.accent} bold>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
-          {s.repo.ahead > 0 && <Text color={BUSY}>{`  ↑${s.repo.ahead} to push`}</Text>}
+          {s.repo.ahead > 0 && <Text color={t.busy}>{`  ↑${s.repo.ahead} to push`}</Text>}
           {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
           {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
         </Text>
@@ -949,8 +949,8 @@ export function Git($: $, v: V) {
       </Box>
       <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
       {s.pending && (
-        <Box flexDirection="column" borderStyle="round" borderColor={BUSY} paddingX={1}>
-          <Text color={BUSY} bold>Commit this?</Text>
+        <Box flexDirection="column" borderStyle="round" borderColor={t.busy} paddingX={1}>
+          <Text color={t.busy} bold>Commit this?</Text>
           <Text color={t.hi} mono wrap="truncate-end">{s.pending.msg}</Text>
           <Text color={t.dim} size="footnote">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
           <Box gap={sp(v, 1)}>
@@ -961,7 +961,7 @@ export function Git($: $, v: V) {
       )}
       {s.repo.changed.length === 0 && (
         <Text>
-          <Text color={OK}>{'✓ '}</Text>
+          <Text color={t.ok}>{'✓ '}</Text>
           <Text color={t.text}>Working tree clean</Text>
           <Text color={t.dim}>{s.repo.ahead ? `  ·  ${s.repo.ahead} to push` : s.repo.unpushed.length || s.repo.log.length ? '  ·  nothing to commit or push' : '  ·  nothing to commit'}</Text>
         </Text>
@@ -978,7 +978,7 @@ export function Git($: $, v: V) {
         {g.commitMode === 'manual' && <Seg v={v} id="ctype" value={g.type} items={TYPES.map(x => [x, x] as [string, string])} onPick={k => setGit({ type: k })} />}
         <Text color={plan.msg ? t.hi : t.dim} mono wrap="truncate-end">{plan.msg || 'Send a prompt, or change a file'}</Text>
         <Text size="footnote" wrap="truncate-end">
-          <Text color={newBranch ? OK : t.dim}>{newBranch ? `⎇ new ${plan.branch}` : `⎇ ${plan.branch}`}</Text>
+          <Text color={newBranch ? t.ok : t.dim}>{newBranch ? `⎇ new ${plan.branch}` : `⎇ ${plan.branch}`}</Text>
           <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : ''}`}</Text>
         </Text>
         <Box justifyContent="flex-end">
@@ -1037,7 +1037,7 @@ function History($: $, v: V) {
     const name = ref.replace(/^HEAD -> /, '').replace(/^tag: /, '')
     const kind = head ? 'head' : ref.startsWith('tag: ') ? 'tag' : s.repo.branches.includes(name) ? 'branch' : 'remote'
     const [fg, bg, mark] =
-      kind === 'head' ? [t.bg || 'inverseText', t.accent, '⎇ '] : kind === 'branch' ? [t.hi, t.wash, '⎇ '] : kind === 'tag' ? [OK, t.surface || undefined, '⌑ '] : [t.dim, t.surface || undefined, '☁ ']
+      kind === 'head' ? [t.bg || 'inverseText', t.accent, '⎇ '] : kind === 'branch' ? [t.hi, t.wash, '⎇ '] : kind === 'tag' ? [t.ok, t.surface || undefined, '⌑ '] : [t.dim, t.surface || undefined, '☁ ']
     return (
       <Text key={key} color={fg} backgroundColor={bg} bold={kind === 'head'}>{` ${mark}${name} `}</Text>
     )
@@ -1078,7 +1078,7 @@ function History($: $, v: V) {
                   <Text wrap="truncate-end">
                     {c.refs.map((ref, k) => chip(ref, `ref-${c.sha}-${k}`))}
                     {c.refs.length > 0 && <Text> </Text>}
-                    <Text color={unpushed ? BUSY : t.text} bold={isHead}>{c.msg}</Text>
+                    <Text color={unpushed ? t.busy : t.text} bold={isHead}>{c.msg}</Text>
                     {own && <Text color={t.accent}>{own.auto ? '  ✦ auto' : '  ✦'}</Text>}
                   </Text>
                 </Button>
@@ -1120,7 +1120,7 @@ function AccountBox($: $, v: V) {
       </Box>
       {acct && (
         <Text wrap="truncate-end">
-          <Text color={OK}>{'● '}</Text>
+          <Text color={t.ok}>{'● '}</Text>
           <Text color={t.text}>{acct.label}</Text>
           <Text color={t.dim}>{`  ${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
         </Text>
@@ -1144,7 +1144,7 @@ function AccountBox($: $, v: V) {
           </Box>
         </Box>
       )}
-      {s.ui.ghNote !== '' && <Text color={BUSY} wrap="wrap">{s.ui.ghNote}</Text>}
+      {s.ui.ghNote !== '' && <Text color={t.busy} wrap="wrap">{s.ui.ghNote}</Text>}
     </Box>
   )
 }
@@ -1174,7 +1174,7 @@ function Setup($: $, v: V) {
     <Box flexDirection="column" gap={sp(v, 1)}>
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
         {titles.slice(0, last + 1).map((name, i) => (
-          <Text key={`st-${i}`} color={i === step ? t.accent : i < step ? OK : t.dim} bold={i === step}>{`${i < step ? '✓' : '○'} ${name}`}</Text>
+          <Text key={`st-${i}`} color={i === step ? t.accent : i < step ? t.ok : t.dim} bold={i === step}>{`${i < step ? '✓' : '○'} ${name}`}</Text>
         ))}
       </Box>
       {step === 0 && (
@@ -1286,6 +1286,6 @@ export function seatDots(ui: UI, t: Theme, d: Decision) {
   const { Text } = ui
   const top = tally(d).top
   return d.votes.map((v, i) => (
-    <Text key={`dot-${d.id}-${i}`} color={v < 0 ? t.faint : v === top ? OK : t.dim}>{v < 0 || v !== top ? '○' : '●'}</Text>
+    <Text key={`dot-${d.id}-${i}`} color={v < 0 ? t.faint : v === top ? t.ok : t.dim}>{v < 0 || v !== top ? '○' : '●'}</Text>
   ))
 }
