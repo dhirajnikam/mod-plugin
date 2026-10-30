@@ -19,6 +19,7 @@ import {
   judgeNext,
   personSpoke,
   RISKY,
+  PERSONAL,
   loadPrefs,
   loadHistory,
   writeSteps,
@@ -49,7 +50,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-22' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -87,10 +88,10 @@ export const register: Register = on => {
     // Claude's subagents, from the engine's own list: seen even where Cockpit's hooks are not
     timers.push($.clock.every(2000, async () => {
       const s = await read($, S)
-      if (s.isWorking || s.agents.some(a => a.status === 'running') || (await $.ui.panes()).some(p => p.id === PANE && p.isPlaced)) await syncAgents($)
+      if (s.isWorking || s.agents.some(a => a.status === 'running') || (await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) await syncAgents($)
     }))
     timers.push($.clock.every(15000, async () => {
-      if ((await $.ui.panes()).some(p => p.id === PANE && p.isPlaced)) {
+      if ((await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) {
         await refreshRepo($)
         await measure($)
       }
@@ -181,7 +182,7 @@ export const register: Register = on => {
     if (handoffs.delete(e.text)) return next(e)
     if (e.command || e.isMeta || !e.text.trim()) return next(e)
     const now = await $.clock.now()
-    if (e.origin?.kind === 'composer') personSpoke(now)
+    if (e.origin?.kind === 'composer') await personSpoke($, now)
     // Typed over a running turn: that turn and its flow go on; this one opens its own flow if a turn starts with it
     if (e.turnId) {
       const r = await next(e)
@@ -304,7 +305,7 @@ export const register: Register = on => {
       return r
     }
 
-    const judgeable = qs.every(q => !q.multiSelect && q.options.length >= 2)
+    const judgeable = qs.every(q => !q.multiSelect && q.options.length >= 2 && !PERSONAL.test(q.question))
     if (s.mode === 'off' || !judgeable) return askPerson()
     // Ask me, or a decision that is hard to undo: the judges advise while the question waits for you
     const risky = qs.some(q => RISKY.test(`${q.question} ${q.options.map(o => `${o.label} ${o.description ?? ''}`).join(' ')}`))
@@ -342,7 +343,7 @@ export const register: Register = on => {
       const note = (await read($, S)).starting
       const own = note && (!e.subagentType || e.subagentType === note.type) ? note : null
       const type = e.subagentType || own?.type || 'general-purpose'
-      await trackAgent($, { id, name: own?.name ?? expertName(type), type, task: own?.task ?? e.description, prompt: e.prompt })
+      await trackAgent($, { id, name: own?.name ?? (expertName(type) !== type ? expertName(type) : e.description || type), type, task: own?.task ?? e.description, prompt: e.prompt })
       // A pipeline's expert whose start hands no id back: the id is known here
       await set($, s => ({
         agentTypes: s.agentTypes.includes(type) ? s.agentTypes : [...s.agentTypes, type],

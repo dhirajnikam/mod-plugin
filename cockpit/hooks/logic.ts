@@ -141,7 +141,7 @@ const D = (t: string): Line => ({ t: `− ${t}`, k: 'd' })
 const C = (t: string): Line => ({ t: `  ${t}`, k: 'c' })
 const lines = (s: string) => s.replace(/\r/g, '').split('\n')
 // A shell command that runs tests (a whole word, so `latest` or `cat tests/x` is not one)
-const TESTS = /\b(test|jest|vitest|pytest|unittest)\b/
+const TESTS = /\b(tests?|jest|vitest|pytest|unittest|nextest)\b(?!\/)/
 
 // A tool call's input as a file operation, or null for tools that touch no file
 export function toOp(tool: string, input: Record<string, unknown>, id: string, at: number): FileOp | null {
@@ -478,6 +478,10 @@ export function selfCheck() {
     [stepOf('Bash', { command: 'cat tests/a.ts' }), 'Explore'],
     [stepOf('Bash', { command: 'git commit -m "fix flaky test"' }), 'Commit'],
     [stepOf('Bash', { command: 'python -m unittest' }), 'Verify'],
+    [stepOf('Bash', { command: 'make tests' }), 'Verify'],
+    [stepWords('Bash cd /Users/x/cockpit && claude plugin test .'), 'Running the tests'],
+    [stepWords('Edit /Users/x/cockpit/hooks/views.tsx'), 'Editing views.tsx'],
+    [stepWords('Bash cd /a && git status --short'), 'Running git status --short'],
     [inferType('add a specific field', []), 'feat'],
     [inferType('make it perfect', []), 'feat'],
     [parseSteps('Here [see below]: [{"step":"a","kind":"Explore"}]').length, 1],
@@ -638,4 +642,26 @@ export function graphCheck() {
     { sha: 'a', parents: [] },
   ])
   return JSON.stringify(rows.map(r => [r.col, r.out, r.into, r.through]))
+}
+
+// An agent's last step, as its log line says it ("Bash cd /x && npm test", "Edit /a/b.ts"), in plain words
+export function stepWords(line?: string) {
+  if (!line) return 'starting'
+  const sp = line.indexOf(' ')
+  const tool = sp < 0 ? line : line.slice(0, sp)
+  const rest = sp < 0 ? '' : line.slice(sp + 1).trim()
+  const file = rest.split(/[\\/]/).pop() ?? rest
+  if (tool === 'Read') return `Reading ${file}`
+  if (tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') return `Editing ${file}`
+  if (tool === 'Write') return `Writing ${file}`
+  if (tool === 'Grep' || tool === 'Glob') return `Searching ${rest.slice(0, 40)}`
+  if (tool === 'Bash') {
+    const cmd = rest.replace(/^(cd\s+\S+\s*&&\s*)+/, '')
+    if (TESTS.test(cmd) || /plugin test/.test(cmd)) return 'Running the tests'
+    if (/\btsc\b/.test(cmd)) return 'Type-checking'
+    return `Running ${cmd.split(/\s+/).slice(0, 3).join(' ').slice(0, 40)}`
+  }
+  if (tool === 'Agent' || tool === 'Task') return 'Starting a subagent'
+  if (tool === 'WebFetch' || tool === 'WebSearch') return 'Reading the web'
+  return `Using ${tool}`
 }

@@ -448,7 +448,8 @@ test('agents md without frontmatter, CRLF, empty tools, colonless line', async (
     'f.md': '---\nname: f\ndescription: d\ntools: Read,, Bash\n---\nbody',
     'g.md': '---\nname: g\n---\nbody',
   })
-  expect(specs.map(s => s.name).sort()).toEqual(['c', 'd', 'f', 'g'])
+  // b.md has Windows line endings (CRLF): it registers like the rest
+  expect(specs.map(s => s.name).sort()).toEqual(['b', 'c', 'd', 'f', 'g'])
   expect(specs.find(s => s.name === 'c').tools).toBeUndefined()
   expect(specs.find(s => s.name === 'f').tools).toEqual(['Read', 'Bash'])
 })

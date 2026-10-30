@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Cockpit: progress by flow, codebase memory with impact, agents with positive and negative testers, judges, and a git graph, around the prompt and in a side pane",
   "types": "./types/index.d.ts",
   "author": {

@@ -30,9 +30,10 @@ export const THEMES: Record<Palette, Theme> = {
 
 export const THEME_IDS: ThemeId[] = ['auto', ...(Object.keys(THEMES) as Palette[])]
 
+// Auto: no wash (a chip sits on the surface's own background: gold on its grey 'inactive' read at 1–2:1).
 // Auto: Claude Code's own theme keys, which follow the person's light or dark theme on every surface
 // (the desktop's appearance is not readable from a setting), and a mid-tone gold that reads on both
-export const AUTO: Theme = { bg: '', surface: '', text: 'text', dim: 'subtle', faint: 'inactive', track: 'inactive', divider: 'inactive', accent: '#b4833a', hi: '#c4934c', deep: '#a07a3c', lo: '#cfa159', wash: 'inactive', ok: 'success', bad: 'error', busy: 'warning' }
+export const AUTO: Theme = { bg: '', surface: '', text: 'text', dim: 'subtle', faint: 'inactive', track: 'inactive', divider: 'inactive', accent: '#b4833a', hi: '#c4934c', deep: '#a07a3c', lo: '#cfa159', wash: '', ok: 'success', bad: 'error', busy: 'warning' }
 
 // The palette in force
 export const themeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : THEMES[s.theme] ?? AUTO)

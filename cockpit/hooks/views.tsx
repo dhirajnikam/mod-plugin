@@ -38,6 +38,7 @@ import {
 } from './actions'
 import {
   AGENT_TYPES,
+  stepWords,
   graphRows,
   graphSvg,
   graphText,
@@ -216,8 +217,8 @@ export function Tabs($: $, v: V) {
             <Button key={`tab-${id}`} label={badge ? `${label} ${badge}` : label} variant={id === s.tab ? 'primary' : 'secondary'} onPress={open} />
           ) : (
             <Button key={`tab-${id}`} plain onPress={open}>
-              <Text color={id === s.tab ? t.text : t.dim} bold={id === s.tab} backgroundColor={!fits && id === s.tab ? t.wash : undefined}>{` ${label}`}</Text>
-              {badge ? <Text backgroundColor={t.wash} color={t.deep}>{` ${badge} `}</Text> : <Text> </Text>}
+              <Text color={id === s.tab ? t.text : t.dim} bold={id === s.tab} backgroundColor={!fits && id === s.tab ? t.wash || undefined : undefined}>{` ${label}`}</Text>
+              {badge ? <Text backgroundColor={t.wash || undefined} color={t.deep}>{` ${badge} `}</Text> : <Text> </Text>}
               {badge ? <Text> </Text> : <Text />}
             </Button>
           )
@@ -300,7 +301,7 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
         {p.steps.map((x, i) => (
-          <Text key={`step-${i}-${x.name}`} backgroundColor={x.st === 'active' ? t.wash : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
+          <Text key={`step-${i}-${x.name}`} backgroundColor={x.st === 'active' ? t.wash || undefined : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
             <Text color={x.st === 'done' ? t.ok : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
@@ -685,7 +686,7 @@ export function Files($: $, v: V) {
                     plain
                     onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !n.collapsed } } } : { ui: { ...st.ui, treeSel: chosen ? '' : n.path } }))}
                   >
-                    <Text backgroundColor={chosen ? t.wash : undefined} mono>
+                    <Text backgroundColor={chosen ? t.wash || undefined : undefined} mono>
                       <Text color={isNow && blink ? t.busy : t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (n.collapsed ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
                       <Text color={isNow ? t.busy : col} bold={isNow || chosen} strikethrough={n.op === 'Delete'} wrap="truncate-end">
                         {n.name}
@@ -769,7 +770,7 @@ export function Agents($: $, v: V) {
   // The icon: SVG where the surface draws it (animated while running), else a glyph that turns while running
   const icon = (type: string, st: IconState, size: number) =>
     Svg ? (
-      <Svg source={agentIconSvg(type, st)} alt={`${expertName(type)}: ${st}`} width={size} height={size} {...(st === 'running' ? { isInteractive: true } : {})} />
+      <Svg source={agentIconSvg(type, st)} alt={`${expertName(type)}: ${st}`} width={size} height={size} />
     ) : (
       <Text color={colorOf(st)} bold>{st === 'running' ? spin : expertGlyph(type)}</Text>
     )
@@ -926,7 +927,7 @@ export function Agents($: $, v: V) {
           const st = stateOf(a)
           const live = st === 'running'
           const fails = a?.cases.filter(c => c.st === 'fail').length ?? 0
-          const sub = live ? `${a?.log[a.log.length - 1]?.t ?? 'starting'}` : reportOf(a) || x.what
+          const sub = live ? stepWords(a?.log[a.log.length - 1]?.t) : reportOf(a) || x.what
           const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
           const right = !a ? '' : live ? `${copies.length > 1 ? `${copies.length} running · ` : ''}${fmt(v.now - a.startedAt)}` : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
           const ticked = !!s.ui.selected[x.type]
@@ -983,7 +984,7 @@ export function Agents($: $, v: V) {
                         <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
                       </Button>
                       <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">
-                        {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${a.log[a.log.length - 1]?.t ?? 'starting'}` : ''}` : live ? a.log[a.log.length - 1]?.t ?? 'starting' : a.task}
+                        {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${stepWords(a.log[a.log.length - 1]?.t)}` : ''}` : live ? stepWords(a.log[a.log.length - 1]?.t) : a.task}
                       </Text>
                       {testLine(a.id, `rl-${a.id}`)}
                     </Box>
@@ -1094,7 +1095,7 @@ export function Git($: $, v: V) {
         <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
           <Text color={t.text} weight="semibold">Next commit</Text>
           <Text>
-            <Text color={t.deep} backgroundColor={t.wash} bold>{` ${plan.type} `}</Text>
+            <Text color={t.deep} backgroundColor={t.wash || undefined} bold>{` ${plan.type} `}</Text>
             <Text color={t.dim} size="footnote">{g.commitMode === 'manual' ? '  your pick' : '  from the task'}</Text>
           </Text>
         </Box>
@@ -1160,7 +1161,7 @@ function History($: $, v: V) {
     const name = ref.replace(/^HEAD -> /, '').replace(/^tag: /, '')
     const kind = head ? 'head' : ref.startsWith('tag: ') ? 'tag' : s.repo.branches.includes(name) ? 'branch' : 'remote'
     const [fg, bg, mark] =
-      kind === 'head' ? [t.bg || 'inverseText', t.accent, '⎇ '] : kind === 'branch' ? [t.hi, t.wash, '⎇ '] : kind === 'tag' ? [t.ok, t.surface || undefined, '⌑ '] : [t.dim, t.surface || undefined, '☁ ']
+      kind === 'head' ? [t.bg || 'inverseText', t.accent, '⎇ '] : kind === 'branch' ? [t.hi, t.wash || undefined, '⎇ '] : kind === 'tag' ? [t.ok, t.surface || undefined, '⌑ '] : [t.dim, t.surface || undefined, '☁ ']
     return (
       <Text key={key} color={fg} backgroundColor={bg} bold={kind === 'head'}>{` ${mark}${name} `}</Text>
     )

@@ -142,6 +142,10 @@ export type Ph = {
   // row shows no run older than that
   cleared: string[]
   clearedAt: number
+  // When you last sent a prompt of your own, and how many next steps the judges answered since: kept in state, so a
+  // reload does not forget a late answer or reset the count
+  personAt: number
+  judgedRun: number
   // The codebase memory: each source file (from the repository root) and the files it imports; at: when it was built
   memory: {
     at: number

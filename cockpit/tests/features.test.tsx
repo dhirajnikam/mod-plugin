@@ -132,6 +132,27 @@ test('in Auto the judges answer a next-step question by sending the winning repl
   await b.unmount()
 })
 
+test('the judges leave settings, questions only you can answer, and late answers to you', async ($, on) => {
+  const log = stand($, on, { votes: [0, 0, 0] })
+  // A settings change is hard to undo: advice only
+  await nextStep($, "Add permission allow rules for Cockpit's agents to your settings?", [{ label: 'Add the rules', message: 'Add them.' }, { label: 'Not now' }])
+  await settle()
+  expect(log.submitted).toEqual([])
+  expect(log.notes.join()).toContain('it is hard to undo, so it is yours to decide')
+  // What you saw is yours to say: not judged at all
+  const scored = log.scored
+  await nextStep($, 'After updating the plugin there, did ▶ start the agent?', [{ label: 'It started', message: 'It started.' }, { label: 'Still refused', message: 'Still refused.' }])
+  await nextStep($, 'Does the new Agents tab look right in your pane?', [{ label: 'Looks good', message: 'Good.' }, { label: 'Needs changes', message: 'Change it.' }])
+  await settle()
+  expect(log.scored).toBe(scored)
+  expect(log.submitted).toEqual([])
+  // A newer question while the judges vote on an older one: only the newer answer is sent
+  void nextStep($, 'First step?', [{ label: 'Go', message: 'Go on with the first.' }, { label: 'Stop', message: 'Stop.' }])
+  void nextStep($, 'Second step?', [{ label: 'Go', message: 'Go on with the second.' }, { label: 'Stop', message: 'Stop.' }])
+  await settle()
+  expect(log.submitted).toEqual(['Go on with the second.'])
+})
+
 test('the judges answer at most three next steps in a row; your own prompt starts the count again', async ($, on) => {
   const log = stand($, on, { votes: [0, 0, 0] })
   for (const n of [1, 2, 3, 4]) {
@@ -208,7 +229,8 @@ test('subagents show in the Agents tab with their tool calls, and Stop stops the
   let drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('1 running')
   expect(drawn).toContain('1 total')
-  expect(drawn).toContain('Explore')
+  // Named by what it was asked to do, not by its type
+  expect(drawn).toContain('look around')
   expect(drawn).toContain('1 tool calls')
   await ui.press({ key: 'stop-ag1' })
   expect(log.stopped).toEqual(['ag1'])

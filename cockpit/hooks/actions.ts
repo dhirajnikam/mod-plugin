@@ -5,9 +5,10 @@ import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending,
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from './memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
+import { THEME_IDS } from './theme'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-22' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -157,7 +158,7 @@ async function saveMemory($: $) {
 export async function loadPrefs($: $) {
   const p = (await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined
   if (!p || typeof p !== 'object') return
-  const pick = Object.fromEntries(PREFS.filter(k => k in p && p[k] !== undefined).map(k => [k, p[k]]))
+  const pick = Object.fromEntries(PREFS.filter(k => k in p && p[k] !== undefined && (k !== 'theme' || THEME_IDS.includes(p.theme as ThemeId))).map(k => [k, p[k]]))
   await update($, S, s => ({ ...s, ...pick }))
 }
 
@@ -432,7 +433,10 @@ async function recentContext($: $, s: Ph, q: string) {
 
 // Score a question's complexity, seat 3/6/9 judges, and let them vote; returns the winning label or '' for a split
 // Decisions that publish, push, delete, merge, send or are otherwise hard to undo: the judges only advise on these
-export const RISKY = /\b(public|publish|push|pushed|delete|remove|merge|deploy|release|send|post|email|force|drop|reset|overwrite|revoke|pay|purchase|production|prod)\b/i
+export const RISKY = /\b(public|publish|push|pushed|delete|remove|merge|deploy|release|send|post|email|force|drop|reset|overwrite|revoke|pay|purchase|production|prod|permissions?|settings?|config|rules?|allow|credentials?|tokens?|secrets?|passwords?|keys?|auth|login)\b/i
+
+// Questions only the person can answer, about what they saw, did or want: the judges never take these
+export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call))\b/i
 
 // Score a question's complexity, seat 3/6/9 judges and let them vote; returns the winning label, or '' on a split.
 // act false: the judges only advise (their pick is kept as advice, the decision stays the person's)
@@ -491,11 +495,8 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
 }
 
 // Answers the judges gave in a row with nobody's own prompt between: three, then the next decision is the person's
-let judgedInARow = 0
-let personAt = 0
-export function personSpoke(at: number) {
-  judgedInARow = 0
-  personAt = at
+export async function personSpoke($: $, at: number) {
+  await set($, { personAt: at, judgedRun: 0 })
 }
 
 // The app's next-step box: Claude ends a turn with a question and reply buttons. In Auto mode the judges vote between
@@ -505,27 +506,33 @@ export async function judgeNext($: $, input: Record<string, unknown>) {
   const s = await read($, S)
   const ask = typeof input.ask === 'string' ? input.ask.trim() : ''
   const acts = (Array.isArray(input.actions) ? input.actions : []) as { action?: string; label?: string; message?: string }[]
-  if (s.mode === 'off' || !ask || acts.length < 2) return
+  // Off, no question, one button, or a question only you can answer (what you saw, did or want): left to you
+  if (s.mode === 'off' || !ask || acts.length < 2 || PERSONAL.test(ask)) return
   const opts = acts.map(a => ({ label: a.label || a.action || 'Option', ...(a.message ? { description: a.message } : {}) }))
   const at = await $.clock.now()
   // The tool call's own id keeps two next steps apart
   const id = `next-${String(input.tool_use_id ?? '')}-${at}`
   await set($, st => ({ decisions: [...st.decisions, { id, q: ask, opts: opts.map(o => o.label), at, score: 0, signals: [], votes: [], status: 'scoring' as const, result: '', kind: 'next' as const }].slice(-50) }))
   const risky = RISKY.test([ask, ...acts.map(a => `${a.label ?? ''} ${a.message ?? ''}`)].join(' ')) || acts.some(a => a.action === 'merge' || a.action === 'create_pr')
-  const canAct = s.mode === 'auto' && !risky && judgedInARow < 3
+  const canAct = s.mode === 'auto' && !risky && s.judgedRun < 3
   const win = await judge($, id, ask, opts, canAct)
   const choice = acts[opts.findIndex(o => o.label === win)]
   const d = (await read($, S)).decisions.find(x => x.id === id)
   if (!canAct || !win || !choice || choice.action) {
-    const why = risky ? ': it is hard to undo, so it is yours to decide' : judgedInARow >= 3 && s.mode === 'auto' ? ': three were answered in a row, so this one is yours' : choice?.action ? ': it is a button only you can press' : ''
+    const why = risky ? ': it is hard to undo, so it is yours to decide' : s.judgedRun >= 3 && s.mode === 'auto' ? ': three were answered in a row, so this one is yours' : choice?.action ? ': it is a button only you can press' : ''
     const text = d?.advice ?? (win ? `Judges recommend "${win}"` : d?.result ?? '')
     if (text) await note($, `⚖ ${text}${why}`)
     if (canAct && win && choice?.action) await set($, st => ({ decisions: st.decisions.map(x => (x.id === id ? { ...x, status: 'advised', advice: `Judges recommend "${win}"` } : x)) }))
     return
   }
-  // The person answered while the judges voted: theirs stands
-  if (personAt > at) return
-  judgedInARow++
+  // Late: you sent a prompt of your own, or Claude asked a newer question, while the judges voted. Not sent
+  const now = await read($, S)
+  const mine = now.decisions.findIndex(x => x.id === id)
+  if (now.personAt > at || now.decisions.some((x, i) => i > mine && x.kind === 'next')) {
+    await set($, st => ({ decisions: st.decisions.map(x => (x.id === id ? { ...x, status: 'advised', advice: `Judges recommended "${choice.label}" (not sent: a newer question or your prompt came first)` } : x)) }))
+    return
+  }
+  await set($, st => ({ judgedRun: st.judgedRun + 1 }))
   await note($, `⚖ Judges chose "${choice.label}" · ${d?.result ?? ''}`)
   await $.prompt.submit({ text: choice.message || choice.label || '' })
 }
@@ -555,7 +562,7 @@ export async function registerExperts($: $) {
   for (const f of await $.fs.list(dir).catch(() => [])) {
     if (!f.name.endsWith('.md')) continue
     const text = await $.fs.read(`${dir}/${f.name}`).catch(() => '')
-    const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+    const m = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
     if (!m) continue
     const head: Record<string, string> = Object.fromEntries((m[1] ?? '').split('\n').map(l => [l.slice(0, l.indexOf(':')).trim(), l.slice(l.indexOf(':') + 1).trim()]).filter(([k]) => k))
     const name = head.name || f.name.slice(0, -3)

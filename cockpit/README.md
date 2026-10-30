@@ -96,6 +96,7 @@ Where the surface draws SVG (the desktop app, the editor extension, mobile), the
 Claude asks you things two ways: its question box in the middle of a turn, and the **next-step box** with reply buttons at the end of one. The judges take both. A quick model rates each decision from 0 to 10 for complexity: 0–3 gets 3 judges, 4–6 gets 6, 7–10 gets 9, each with its own point of view, and one option needs two thirds of the votes.
 
 - **Auto · judge** (the default): a clear winner answers for you. A question gets that answer; a next step gets its winning reply sent as your next prompt, marked as the judges' choice in the chat. A decision that publishes, pushes, deletes, merges, sends or is otherwise hard to undo, a split, a button only you can press (an app action), and a fourth answer in a row with no prompt of yours in between all come to you, with what the judges recommend.
+  Settings, permissions, rules and credentials count as hard to undo too. A question only you can answer (what you saw, did or want, such as "did ▶ start the agent?") is never judged, and an answer that arrives after a newer question or a prompt of yours is dropped, not sent.
 - **Ask me**: every decision is yours. The judges still vote and say what they recommend: above the prompt (⚖), in the chat for a next step, and in the Overview beside what you chose.
 - **Off**: no judges and no model calls for them.
 
@@ -109,7 +110,7 @@ Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; th
 | `/cockpit focus [on\|off]` | hide or show Claude's tool activity |
 | `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch theme (or click the dots in the pane header) |
 | `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
-| `/cockpit tab <overview\|files\|tests\|agents\|git>` | open a tab (`git` reads the repo again) |
+| `/cockpit tab <overview\|files\|agents\|git>` | open a tab (`git` reads the repo again) |
 | `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current prompt on that flow (or pick it under the step chips) |
 | `/cockpit run <agents> [-- task]` | run those agents at once, each with that task |
 | `/cockpit test` | run the Verify pipeline now |
