@@ -7,7 +7,7 @@ import { AGENT_TYPES, EXPERTS, PIPELINES, parseSteps, base, branchName, commitMs
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-17' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-18' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -612,25 +612,35 @@ let handoffSeq = 0
 // waiting pipeline step. The brief rides in a file the line names (in .cockpit/, kept out of git), so it arrives even
 // where another plugin's hook keeps Cockpit's own prompt hooks from running; inline where no file can be written.
 // It never waits for that turn: a press, a command and a turn's end all return at once
-export async function handOff($: $, type: string, brief: string) {
-  const name = expertName(type)
+export async function handOff($: $, items: { type: string; brief: string }[]) {
+  if (!items.length) return false
   const dir = await cockpitDir($)
   // ponytail: one small file a hand-off, never pruned; .cockpit/ is git-ignored
-  const file = dir ? `${dir}/handoffs/${type.replace(/[^a-z0-9]+/gi, '-')}-${await $.clock.now()}-${++handoffSeq}.md` : ''
-  const wrote = !!file && (await $.fs.write(file, brief).then(() => true).catch(() => false))
-  const text = wrote
-    ? `▶ Start the ${name}: run the ${type} agent in the background; its brief is in ${file}`
-    : `▶ Start the ${name}: run the ${type} agent in the background with this brief:\n\n${brief}`
+  const parts = await Promise.all(
+    items.map(async ({ type, brief }) => {
+      const file = dir ? `${dir}/handoffs/${type.replace(/[^a-z0-9]+/gi, '-')}-${await $.clock.now()}-${++handoffSeq}.md` : ''
+      const wrote = !!file && (await $.fs.write(file, brief).then(() => true).catch(() => false))
+      return { type, brief, file: wrote ? file : '' }
+    }),
+  )
+  const name = parts.length === 1 ? expertName(parts[0]!.type) : `${parts.length} agents`
+  const one = parts[0]!
+  const text =
+    parts.length === 1
+      ? one.file
+        ? `▶ Start the ${name}: run the ${one.type} agent in the background; its brief is in ${one.file}`
+        : `▶ Start the ${name}: run the ${one.type} agent in the background with this brief:\n\n${one.brief}`
+      : `▶ Start ${name}: run each in the background, all at once, each with its own brief:\n${parts.map(p => (p.file ? `- ${p.type}: brief in ${p.file}` : `- ${p.type}, with this brief:\n${p.brief}`)).join('\n')}`
   handoffs.add(text)
   const failed = async () => {
     handoffs.delete(text)
-    await note($, `⧉ ${name} could not start: it could not be handed to Claude`)
+    await note($, `⧉ ${name} could not start: ${parts.length === 1 ? 'it' : 'they'} could not be handed to Claude`)
   }
   const send = async () => {
     const r = await $.prompt.submit({ text })
     if ('drop' in r && r.drop) await failed()
   }
-  await toast($, `Starting the ${name.toLowerCase()}…`)
+  await toast($, `Starting ${parts.length === 1 ? `the ${name.toLowerCase()}` : name}…`)
   // Where the engine refuses the prompt from here (inside a command's hook, which holds the turn it would wait on), it
   // goes from a timer once that hook has returned
   void send().catch(() => {
@@ -645,15 +655,19 @@ export async function handOff($: $, type: string, brief: string) {
   return true
 }
 
-export async function runExpert($: $, type: string, prior: string[] = []) {
-  const s = await read($, S)
+export async function runExpert($: $, type: string, prior: string[] = [], opts: { task?: string; batch?: { type: string; brief: string }[] } = {}) {
+  const s0 = await read($, S)
+  const s = opts.task ? { ...s0, task: opts.task } : s0
   const name = expertName(type)
   await set($, { starting: { name, type, task: s.task || name } })
   const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type })
   await set($, { starting: null })
   if ('deny' in r) {
     // Refused for want of a request: Claude starts it instead; '' keeps a pipeline waiting on this step
-    if (/no verdict/i.test(r.deny ?? '') && (await handOff($, type, expertPrompt(s, prior)))) return ''
+    if (/no verdict/i.test(r.deny ?? '')) {
+      if (opts.batch) return (opts.batch.push({ type, brief: expertPrompt(s, prior) }), '')
+      if (await handOff($, [{ type, brief: expertPrompt(s, prior) }])) return ''
+    }
     // In the chat too: a toast is gone in seconds and never reaches the transcript
     await note($, `⧉ ${name} could not start: ${r.deny}`)
     await toast($, `${name} could not start: ${r.deny}`)
@@ -786,7 +800,7 @@ export async function spawnAgent($: $, task: string, type: string) {
   const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
   await set($, { starting: null })
   if ('deny' in r) {
-    if (/no verdict/i.test(r.deny ?? '') && (await handOff($, type, task))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
+    if (/no verdict/i.test(r.deny ?? '') && (await handOff($, [{ type, brief: task }]))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
     return toast($, `Could not start the agent: ${r.deny}`)
   }
@@ -795,12 +809,35 @@ export async function spawnAgent($: $, task: string, type: string) {
   await toast($, `Started ${type}`)
 }
 
-export async function stopAgent($: $, id: string) {
+// Several agents at once, each a run of its own with the same task (the current one where none is given); where auto
+// mode refuses them for want of a request, they go to Claude together, in one line
+export async function runMany($: $, types: string[], task = '') {
+  if (!types.length) return toast($, 'Tick the agents to run first')
+  const batch: { type: string; brief: string }[] = []
+  for (const type of types) await runExpert($, type, [], { ...(task ? { task } : {}), batch })
+  await handOff($, batch)
+  await set($, s => ({ ui: { ...s.ui, selected: {}, runTask: '' } }))
+}
+
+// Every running agent, stopped
+export async function stopAll($: $) {
+  const live = (await read($, S)).agents.filter(a => a.status === 'running')
+  for (const a of live) await stopAgent($, a.id, true)
+  await toast($, live.length ? `Stopped ${live.length} agent${live.length === 1 ? '' : 's'}` : 'Nothing running')
+}
+
+// The finished runs off the list; they stay in .cockpit/history.json
+export async function clearFinished($: $) {
+  await saveHistory($)
+  await set($, s => ({ agents: s.agents.filter(a => a.status === 'running'), ui: { ...s.ui, openAgent: '' } }))
+}
+
+export async function stopAgent($: $, id: string, quiet = false) {
   const r = await $.tool.call({ tool: 'TaskStop', task_id: id, consent: 'The user pressed "Stop" on an agent in the Cockpit pane' }).catch(e => ({ deny: String(e) }))
   const ok = !('deny' in r && r.deny)
   const at = await $.clock.now()
   if (ok) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, status: 'stopped', endedAt: at, log: [...a.log, { at, t: 'Stopped by you' }] } : a)), pipeline: s.pipeline?.agentId === id ? null : s.pipeline }))
-  await toast($, ok ? 'Stopped the agent' : `Could not stop it: ${'deny' in r ? r.deny : ''}`)
+  if (!quiet || !ok) await toast($, ok ? 'Stopped the agent' : `Could not stop it: ${'deny' in r ? r.deny : ''}`)
 }
 
 // Refresh context fill, its breakdown and cost

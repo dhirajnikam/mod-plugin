@@ -74,6 +74,8 @@ export const INITIAL: Ph = {
     spawnTask: '',
     spawnType: 'general-purpose',
     describe: '',
+    selected: {},
+    runTask: '',
     acctOpen: false,
     acct: { id: '', label: '', name: '', email: '', gh: '' },
     gitStep: 0,
@@ -83,5 +85,5 @@ export const INITIAL: Ph = {
 }
 
 // The state atom is declared in each file that reads it (the engine scans for it there).
-// Bump its 'ph-17' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
+// Bump its 'ph-18' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
 export const PANE = 'cockpit'

@@ -184,6 +184,61 @@ test('a start auto mode refuses for want of a request goes to Claude, and the ag
   expect(log.spawned.filter(x => x === 'Breaker').length).toBe(1)
 })
 
+const run = ($: any, args: string) => $.command.run({ command: 'cockpit', args: `run ${args}` } as never)
+
+test('several agents run at once with one task, and Stop all and Clear finished manage them', async ($, on) => {
+  const log = stand($, on)
+  await run($, 'planner reviewer -- review the login flow')
+  expect(log.spawned).toEqual(['Planner', 'Reviewer'])
+  expect(log.prompts.every(p => p.startsWith('Task: review the login flow'))).toBe(true)
+  // Two copies of one agent run side by side
+  await run($, 'planner')
+  const ui = await $.ui.mount(agentsPane as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('3 running · 0 done · 3 total')
+  expect(d).toContain('2 running · ')
+  await ui.press({ key: 'stop-all' })
+  expect(log.stopped.sort()).toEqual(['ag1', 'ag2', 'ag3'])
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('0 running · 0 done · 3 total')
+  await ui.press({ key: 'clear-finished' })
+  expect(JSON.stringify(await ui.drawn())).not.toContain('3 total')
+  await ui.unmount()
+})
+
+test('ticked agents run together from the run bar', async ($, on) => {
+  const log = stand($, on)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('run-selected')
+  await ui.press({ key: 'pick-cockpit:planner' })
+  await ui.press({ key: 'pick-cockpit:scribe' })
+  expect(JSON.stringify(await ui.drawn())).toContain('2 selected · run them at once')
+  await (ui as any).input({ key: 'run-task', text: 'tidy the docs', kind: 'change' })
+  await ui.press({ key: 'run-selected' })
+  expect(log.spawned).toEqual(['Planner', 'Scribe'])
+  expect(log.prompts.every(p => p.startsWith('Task: tidy the docs'))).toBe(true)
+  // The ticks clear once they have started
+  expect(JSON.stringify(await ui.drawn())).not.toContain('selected · run them at once')
+  await ui.unmount()
+})
+
+test('a batch auto mode refuses goes to Claude in one line', async ($, on) => {
+  const log = stand($, on, { noVerdict: 2 })
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await ui.press({ key: 'pick-cockpit:planner' })
+  await ui.press({ key: 'pick-cockpit:reviewer' })
+  await ui.press({ key: 'run-selected' })
+  await ui.unmount()
+  await new Promise(res => (globalThis as any).setTimeout(res, 80))
+  expect(log.submitted.length).toBe(1)
+  expect(log.submitted[0]).toContain('▶ Start 2 agents: run each in the background, all at once')
+  expect(log.submitted[0]).toContain('- cockpit:planner: brief in /repo/.cockpit/handoffs/')
+  expect(log.submitted[0]).toContain('- cockpit:reviewer: brief in /repo/.cockpit/handoffs/')
+  expect(log.toasts).toContain('◆ Starting 2 agents…')
+})
+
 test('a pipeline started before any prompt leaves progress at 0%, Ready', async ($, on) => {
   stand($, on)
   await verify($)

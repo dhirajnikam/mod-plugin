@@ -27,6 +27,9 @@ import {
   setTheme,
   spawnAgent,
   stopAgent,
+  runMany,
+  stopAll,
+  clearFinished,
   testAgent,
   TESTERS,
 } from './actions'
@@ -819,6 +822,25 @@ export function Agents($: $, v: V) {
           </Box>
         </Box>
       )}
+      {Object.values(s.ui.selected).some(Boolean) && (
+        <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
+          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            <Text color={t.text} bold>{`${Object.values(s.ui.selected).filter(Boolean).length} selected · run them at once`}</Text>
+            <Box columnGap={sp(v, 1)}>
+              {pill('run-selected', '▶ Run selected', true, () => runMany($, Object.keys(s.ui.selected).filter(k => s.ui.selected[k]), s.ui.runTask.trim()))}
+              {pill('pick-none', 'Clear', false, () => set($, st => ({ ui: { ...st.ui, selected: {} } })))}
+            </Box>
+          </Box>
+          <Input
+            key="run-task"
+            label="Task for them"
+            placeholder={s.task ? `the current task: ${s.task.slice(0, 60)}` : 'what they should work on'}
+            value={s.ui.runTask}
+            onInput={val => set($, st => ({ ui: { ...st.ui, runTask: val } }))}
+            onSubmit={val => runMany($, Object.keys(s.ui.selected).filter(k => s.ui.selected[k]), val.trim())}
+          />
+        </Box>
+      )}
       <Box flexDirection="column" gap={sp(v, 1)}>
         {section('Team', `${team.length} agents`)}
         {team.map(x => {
@@ -827,9 +849,14 @@ export function Agents($: $, v: V) {
           const live = st === 'running'
           const fails = a?.cases.filter(c => c.st === 'fail').length ?? 0
           const sub = live ? `${a?.log[a.log.length - 1]?.t ?? 'starting'}` : reportOf(a) || x.what
-          const right = !a ? '' : live ? fmt(v.now - a.startedAt) : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
+          const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
+          const right = !a ? '' : live ? `${copies.length > 1 ? `${copies.length} running · ` : ''}${fmt(v.now - a.startedAt)}` : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
+          const ticked = !!s.ui.selected[x.type]
           return (
             <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
+              <Button key={`pick-${x.type}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, selected: { ...st.ui.selected, [x.type]: !st.ui.selected[x.type] } } }))}>
+                <Text color={ticked ? t.accent : t.faint}>{ticked ? '▣' : '□'}</Text>
+              </Button>
               <Box flexShrink={0}>{icon(x.type, st, 30)}</Box>
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
@@ -837,14 +864,21 @@ export function Agents($: $, v: V) {
                 {a && testLine(a.id, `tl-${x.type}`)}
               </Box>
               {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
-              {live && a ? <Button key={`halt-${x.type}`} label="■" plain onPress={() => stopAgent($, a.id)} /> : <Button key={`run-${x.type}`} label="▶" plain onPress={() => runExpert($, x.type)} />}
+              {copies.length > 0 && <Button key={`halt-${x.type}`} label="■" plain onPress={() => Promise.all(copies.map(r => stopAgent($, r.id, copies.length > 1)))} />}
+              <Button key={`run-${x.type}`} label="▶" plain onPress={() => runExpert($, x.type)} />
             </Box>
           )
         })}
       </Box>
       {s.agents.length > 0 && (
         <Box flexDirection="column" gap={sp(v, 1)}>
-          {section('Runs', `${running} running · ${finished} done · ${s.agents.length} total`)}
+          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            {section('Runs', `${running} running · ${finished} done · ${s.agents.length} total`)}
+            <Box columnGap={sp(v, 1)}>
+              {running > 0 && <Button key="stop-all" label="■ Stop all" plain onPress={() => stopAll($)} />}
+              {s.agents.length > running && <Button key="clear-finished" label="Clear finished" plain onPress={() => clearFinished($)} />}
+            </Box>
+          </Box>
           {s.agents
             .slice()
             .reverse()

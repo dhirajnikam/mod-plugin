@@ -187,6 +187,9 @@ export type Ph = {
     spawnTask: string
     spawnType: string
     describe: string
+    // Agents ticked on the team list, and the task to run them with ('' is the current one)
+    selected: Record<string, boolean>
+    runTask: string
     acctOpen: boolean
     acct: Account
     // The setup wizard's step, the token being typed, and the gh web login's note

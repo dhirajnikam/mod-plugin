@@ -13,6 +13,7 @@ import {
   TESTERS,
   changedFiles,
   isOwnStart,
+  runMany,
   handoffs,
   judgeNext,
   personSpoke,
@@ -39,7 +40,7 @@ import {
   setTheme,
   trackAgent,
 } from './actions'
-import { FLOWS, PIPELINES, activityOf, applyPlan, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
+import { EXPERTS, FLOWS, PIPELINES, activityOf, applyPlan, base, expertName, flowOf, fmt, kTok, progress, selfCheck, stepOf, tally, toOp, verifyState } from './logic'
 import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS, chatThemeOf, ctxShades, themeOf } from './theme'
@@ -47,7 +48,7 @@ import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './vi
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-17' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-18' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
 
@@ -74,8 +75,8 @@ export const register: Register = on => {
     if (bad.length) $.ui.log(`cockpit self-check failed: ${JSON.stringify(bad)}`)
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <name>, flow <plan|task|build|docs|check|answer>, test',
-      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | test]',
+      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <name>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     await refreshRepo($)
     await loadGitPrefs($)
@@ -140,6 +141,18 @@ export const register: Register = on => {
       await pickFlow($, f.name)
       await openPane($)
       return { text: `${f.label} flow: ${f.steps.join(' › ')}` }
+    }
+    // /cockpit run planner reviewer -- review the login: those agents at once, each with that task (the current one without)
+    if (verb === 'run') {
+      const [names = '', task = ''] = e.args.trim().replace(/^run\s*/, '').split(/\s+--\s*/)
+      const s = await read($, S)
+      const known = [...EXPERTS.map(x => x.type), ...s.custom.map(c => c.type)]
+      const types = names.split(/[\s,]+/).filter(Boolean).map(n => known.find(k => k === n || k === `cockpit:${n}` || expertName(k).toLowerCase() === n.toLowerCase()) ?? n)
+      if (!types.length) return { text: `Name the agents: /cockpit run ${EXPERTS.slice(0, 2).map(x => x.name.toLowerCase()).join(' ')} -- the task` }
+      await runMany($, types, task.trim())
+      await set($, { tab: 'agents' })
+      await openPane($)
+      return { text: `Running ${types.map(expertName).join(', ')}${task.trim() ? ` on: ${task.trim()}` : ''}` }
     }
     if (verb === 'test') await startPipeline($, 'verify')
     await openPane($)
