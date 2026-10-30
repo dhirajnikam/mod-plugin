@@ -28,7 +28,8 @@ const rows = (n: unknown): string[] => {
 
 const wide = (tree: unknown, w: number) => rows(tree).filter(r => r.length > w).map(r => r.length)
 
-test('the band, the pane and the chat cards fit every width', async ($, on) => {
+// Every surface, tab and width: 4 to 5 s on a slow machine, past the 5 s default
+test('the band, the pane and the chat cards fit every width', { timeoutMs: 20_000 }, async ($, on) => {
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
