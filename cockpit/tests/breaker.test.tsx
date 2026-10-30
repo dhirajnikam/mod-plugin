@@ -6,6 +6,8 @@ const scroll = { offset: 0, bodyRows: 60 }
 const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } })
 const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+// The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
+const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean; noVerdict?: number }
 function stand($: unknown, on: any, st: Stubs = {}) {
@@ -43,7 +45,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('model.fork', async () => ({ value: { isAnswered: true, text: 'The task is small.', usage: { inputTokens: 1, outputTokens: 1 } } }))
   let spawns = 0
   let refused = 0
-  on('fs.write', async (_: unknown, e: any) => ((log.files[e.path] = e.text), { value: undefined }))
+  on('fs.write', async (_: unknown, e: any) => ((log.files[posix(e.path)] = e.text), { value: undefined }))
   // The engine's own list of the session's agents
   on('agent.list', async () => ({ value: log.list }) as never)
   // The engine's own permission verdict for an Agent call; the spawn asks it as the Agent tool would
@@ -428,8 +430,8 @@ test('answer without REPORT/HANDOFF still hands something on; odd CASE lines par
 const boot = async ($: any, on: any, files: Record<string, string>, regDeny = false) => {
   const log = stand($, on, { regDeny })
   const specs = log.specs
-  on('fs.list', async (_: unknown, e: any) => ({ value: String(e.path).endsWith('/agents') ? Object.keys(files).map(n => ({ name: n, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) : [] }))
-  on('fs.read', async (_: unknown, e: any) => { const f = files[String(e.path).split('/').pop()!]; if (f === undefined) throw new Error('EACCES'); return { value: f } })
+  on('fs.list', async (_: unknown, e: any) => ({ value: posix(e.path).endsWith('/agents') ? Object.keys(files).map(n => ({ name: n, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) : [] }))
+  on('fs.read', async (_: unknown, e: any) => { const f = files[posix(e.path).split('/').pop()!]; if (f === undefined) throw new Error('EACCES'); return { value: f } })
   on('command.register', async () => ({ value: {} }) as never)
   on('clock.every', async () => ({ value: {} }) as never)
   on('session.start', async () => ({ cwd: '/repo' }))

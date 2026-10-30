@@ -65,13 +65,15 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   on('store.get', async (_: unknown, e: any) => ({ value: store[e.key] }))
   on('store.set', async (_: unknown, e: any) => ((store[e.key] = e.value), { value: undefined }))
   on('fs.list', async () => ({ value: [] }))
-  on('fs.exists', async (_: unknown, e: any) => ({ value: e.path in disk }))
+  // The engine hands fs hooks native paths (C:\repo\a on Windows); the disk is keyed POSIX
+  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+  on('fs.exists', async (_: unknown, e: any) => ({ value: posix(e.path) in disk }))
   on('fs.read', async (_: unknown, e: any) => {
-    if (!(e.path in disk)) throw new Error('ENOENT')
-    return { value: disk[e.path] } as never
+    if (!(posix(e.path) in disk)) throw new Error('ENOENT')
+    return { value: disk[posix(e.path)] } as never
   })
   on('ui.panes', async () => ({ value: [] }) as never)
-  on('fs.write', async (_: unknown, e: any) => ((disk[e.path] = e.text), { value: undefined }))
+  on('fs.write', async (_: unknown, e: any) => ((disk[posix(e.path)] = e.text), { value: undefined }))
   on('agent.register', async (_: unknown, e: any) => ({ value: { agent: `cockpit:${e.name}` } }))
   on('command.register', async () => ({ value: {} }) as never)
   on('clock.every', async () => ({ value: {} }) as never)

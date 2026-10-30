@@ -5,6 +5,8 @@ const scroll = { offset: 0, bodyRows: 60 }
 const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } })
 const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+// The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
+const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
@@ -205,8 +207,8 @@ test('the Verify pipeline runs the Prover then the Breaker, handing the report a
 test('the six experts register from the agents folder at session start', async ($, on) => {
   const log = stand($, on)
   const names = ['planner', 'builder', 'reviewer', 'prover', 'breaker', 'scribe']
-  on('fs.list', async (_: unknown, e: any) => ({ value: String(e.path).endsWith('/agents') ? names.map(n => ({ name: `${n}.md`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) : [] }))
-  on('fs.read', async (_: unknown, e: any) => ({ value: `---\nname: ${String(e.path).split('/').pop()?.slice(0, -3)}\ndescription: an expert\nmodel: sonnet\ntools: Read, Bash\n---\nYou are an expert.` }))
+  on('fs.list', async (_: unknown, e: any) => ({ value: posix(e.path).endsWith('/agents') ? names.map(n => ({ name: `${n}.md`, kind: 'file', size: 1, mtimeMs: 0, isLink: false })) : [] }))
+  on('fs.read', async (_: unknown, e: any) => ({ value: `---\nname: ${posix(e.path).split('/').pop()?.slice(0, -3)}\ndescription: an expert\nmodel: sonnet\ntools: Read, Bash\n---\nYou are an expert.` }))
   on('command.register', async () => ({ value: {} }) as never)
   on('clock.every', async () => ({ value: {} }) as never)
   on('session.start', async () => ({ cwd: '/repo' }))
