@@ -7,7 +7,7 @@ import { AGENT_TYPES, EXPERTS, PIPELINES, parseSteps, base, branchName, commitMs
 import { INITIAL, PANE } from './state'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-21' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-22' })
 
 type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -859,6 +859,8 @@ export async function syncAgents($: $) {
   await set($, s => {
     let agents = s.agents
     for (const a of list) {
+      // Cleared from the list by you: the engine still lists it, and it stays cleared
+      if (s.cleared.includes(a.id)) continue
       const st = a.status === 'completed' ? 'done' : a.status === 'failed' ? 'failed' : a.status === 'killed' ? 'stopped' : 'running'
       const was = agents.find(x => x.id === a.id)
       const name = expertName(a.type) !== a.type ? expertName(a.type) : a.description || a.type
@@ -892,7 +894,13 @@ export async function stopAll($: $) {
 // The finished runs off the list; they stay in .cockpit/history.json
 export async function clearFinished($: $) {
   await saveHistory($)
-  await set($, s => ({ agents: s.agents.filter(a => a.status === 'running'), ui: { ...s.ui, openAgent: '' } }))
+  const at = await $.clock.now()
+  await set($, s => ({
+    cleared: [...s.cleared, ...s.agents.filter(a => a.status !== 'running').map(a => a.id)].slice(-300),
+    clearedAt: at,
+    agents: s.agents.filter(a => a.status === 'running'),
+    ui: { ...s.ui, openAgent: '' },
+  }))
 }
 
 export async function stopAgent($: $, id: string, quiet = false) {

@@ -280,6 +280,27 @@ test('an agent runs again with your instructions, from its team row or from a fi
   await ui2.unmount()
 })
 
+test('Clear finished stays cleared though the engine still lists the runs, and the team rows go back to idle', async ($, on) => {
+  const log = stand($, on)
+  await run($, 'reviewer -- review the login')
+  await done($, 'ag1', 'REPORT: all fine')
+  // The engine still lists it, and one Claude started that also ended
+  log.list.push({ id: 'ag1', description: 'Reviewer', type: 'cockpit:reviewer', status: 'completed' }, { id: 'x9', description: 'scan', type: 'Explore', status: 'completed' })
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('0 running · 2 done · 2 total')
+  expect(d).toContain('all fine')
+  await ui.press({ key: 'clear-finished' })
+  // A sync at the turn's end must not bring them back
+  await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 'm', isAborted: false, durationMs: 1 } as never)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).not.toContain('total')
+  expect(d).not.toContain('all fine')
+  expect(d).toContain('reviews the change for bugs, edge cases and bloat')
+  await ui.unmount()
+})
+
 test('a pipeline started before any prompt leaves progress at 0%, Ready', async ($, on) => {
   stand($, on)
   await verify($)

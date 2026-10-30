@@ -138,6 +138,10 @@ export type Ph = {
   // Earlier sessions' flows and agent runs, read from the repository's .cockpit/history.json
   past: Flow[]
   pastAgents: Agent[]
+  // Runs you cleared from the list (the engine still lists them, so a sync must not bring them back), and when: a team
+  // row shows no run older than that
+  cleared: string[]
+  clearedAt: number
   // The codebase memory: each source file (from the repository root) and the files it imports; at: when it was built
   memory: {
     at: number

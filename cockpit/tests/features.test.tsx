@@ -6,7 +6,7 @@ const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', compone
 const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
@@ -55,7 +55,10 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     return { result: 'ok' }
   })
   on('turn.complete', async () => ({ text: '' }))
-  on('command.run', async (_: unknown, e: any) => (log.commands.push(String(e.command)), { text: '' }))
+  on('command.run', async (_: unknown, e: any) => {
+    if (st.clearFails && e.command === 'clear') throw new Error('a turn is running')
+    return (log.commands.push(String(e.command)), { text: '' })
+  })
   on('session.compact', async () => (log.compacted++, { skip: 'the stand keeps the conversation' }) as never)
   on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push(String(e.text)), { text: e.text }))
   on('session.append', async (_: unknown, e: any, next: any) => (log.notes.push(JSON.stringify(e.message?.content ?? '')), next(e)))
@@ -414,6 +417,32 @@ test('the context window compacts, or clears after you confirm', async ($, on) =
   await ui.press({ key: 'ctx-clear' })
   await ui.press({ key: 'ctx-clear-yes' })
   expect(log.commands).toContain('clear')
+  await ui.unmount()
+})
+
+test('Clear runs /clear once, closes the confirm and says so', async ($, on) => {
+  const log = stand($, on)
+  const ui = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  await ui.press({ key: 'ctx-clear' })
+  await ui.press({ key: 'ctx-clear-yes' })
+  expect(log.commands.filter(c => c === 'clear')).toHaveLength(1)
+  expect(log.toasts.join('|')).toContain('Context cleared')
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).not.toContain('Clear the conversation?')
+  expect(drawn).toContain('ctx-clear')
+  await ui.unmount()
+})
+
+test('Clear that the engine refuses says why and does not claim success', async ($, on) => {
+  const log = stand($, on, { clearFails: true })
+  const ui = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never).catch(() => {})
+  await ui.press({ key: 'ctx-clear' })
+  await ui.press({ key: 'ctx-clear-yes' })
+  expect(log.toasts.join('|')).toContain('Could not clear')
+  expect(log.toasts.join('|')).not.toContain('Context cleared')
+  expect(JSON.stringify(await ui.drawn())).not.toContain('Clear the conversation?')
   await ui.unmount()
 })
 

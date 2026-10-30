@@ -751,7 +751,9 @@ export function Agents($: $, v: V) {
   const { Box, Button, Input, Select, Svg, Text } = v.ui
   const { s, t } = v
   const types = s.agentTypes.length ? s.agentTypes : AGENT_TYPES
-  const latestOf = (type: string) => [...s.pastAgents, ...s.agents].filter(a => a.type === type).pop()
+  // An agent's last run, since you last cleared the list (a cleared one, or an earlier session's from before, is not shown)
+  const shown = (a: Agent) => !s.cleared.includes(a.id) && (a.status === 'running' || (a.endedAt ?? a.startedAt) > s.clearedAt)
+  const latestOf = (type: string) => [...s.pastAgents, ...s.agents].filter(a => a.type === type && shown(a)).pop()
   const pipe = s.pipeline
   const running = s.agents.filter(a => a.status === 'running').length
   const finished = s.agents.filter(a => a.status === 'done').length
@@ -771,7 +773,7 @@ export function Agents($: $, v: V) {
   const reportOf = (a?: Agent) => a?.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice(7).trim() ?? ''
   // The two testers on a run: the positive (Prover) and the negative (Breaker), each its latest
   const testsOf = (id: string) => {
-    const mine = [...s.pastAgents, ...s.agents].filter(x => x.for === id)
+    const mine = [...s.pastAgents, ...s.agents].filter(x => x.for === id && shown(x))
     return { pos: mine.filter(x => x.type === TESTERS[0]).pop(), neg: mine.filter(x => x.type === TESTERS[1]).pop() }
   }
   const verdict = (x: Agent | undefined, label: string, sign: string, waiting: boolean) => {
