@@ -7,9 +7,9 @@ const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', compone
 const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean; noVerdict?: number }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), log.specs.push(e), st.regDeny ? { deny: 'x' } : { value: { agent: `cockpit:${e.name}` } }))
@@ -42,6 +42,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   })
   on('model.fork', async () => ({ value: { isAnswered: true, text: 'The task is small.', usage: { inputTokens: 1, outputTokens: 1 } } }))
   let spawns = 0
+  let refused = 0
   // The engine's own permission verdict for an Agent call; the spawn asks it as the Agent tool would
   on('tool.check', async (_: unknown, e: any) => ({ decision: e.tool === 'Agent' ? st.core ?? 'ask' : 'allow' }))
   // hold: the spawn waits, as the engine's does while it decides, until the test opens it
@@ -54,6 +55,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     flying()
     if (st.hold) await gate
     if (st.noId) return { model: 'haiku' } as never
+    // Auto mode's refusal of a start no request asked for, the first n times
+    if (st.noVerdict && /^(Planner|Builder|Reviewer|Prover|Breaker|Scribe)$/.test(String(e.description)) && refused++ < st.noVerdict) return { deny: 'The server-side auto mode classifier gave no verdict for Agent: the request that produced this action did not ask for one.' }
     if (st.denyAfter !== undefined && spawns >= st.denyAfter) return { deny: 'nope' }
     return st.spawnFails ? { deny: 'no agents here' } : { model: 'haiku', agentId: `ag${++spawns}` }
   })
@@ -65,7 +68,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   })
   on('turn.complete', async () => ({ text: '' }))
   on('command.run', async () => ({ text: '' }))
-  on('prompt.submit', async (_: unknown, e: any) => ({ text: e.text }))
+  on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push(String(e.text)), { text: e.text }))
   return log
 }
 
@@ -150,6 +153,29 @@ test('a run that only read files is tested when you press Test; the setting turn
   await $.tool.call({ tool: 'Write', file_path: '/repo/b.ts', content: 'x', agentId: 'ag3' } as never)
   await done($, 'ag3', 'REPORT: wrote b')
   expect(log.spawned).toEqual(['review the diff', 'Prover', 'write b'])
+})
+
+test('a start auto mode refuses for want of a request goes to Claude, and the agent Claude starts carries the pipeline on', async ($, on) => {
+  // An agent's edit starts the testers at the turn's end; auto mode refuses the Prover's start from Cockpit
+  const log = stand($, on, { noVerdict: 1 })
+  await modelSpawn($, 'cockpit:builder', 'add a limiter')
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b', agentId: 'ag1' } as never)
+  await done($, 'ag1', 'REPORT: added it')
+  // Handed to Claude with the expert's brief; no error, and the pipeline waits on the Prover
+  expect(log.submitted.length).toBe(1)
+  expect(log.submitted[0]).toContain('subagent_type "cockpit:prover"')
+  expect(log.submitted[0]).toContain('PRIOR REPORTS')
+  expect(log.toasts.join('|')).not.toContain('could not start')
+  expect(log.toasts.join('|')).toContain('goes to Claude to start')
+  // The hand-off is no task of the person's: no flow opened
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  expect(JSON.stringify(await ui.drawn())).toContain('No task yet')
+  await ui.unmount()
+  // Claude starts it: the waiting step takes it, and its answer hands on to the Breaker
+  await modelSpawn($, 'cockpit:prover', 'the brief')
+  await done($, 'ag2', 'CASE PASS works\nREPORT: fine')
+  expect(log.spawned.filter(x => x === 'Breaker').length).toBe(1)
 })
 
 test('a pipeline started before any prompt leaves progress at 0%, Ready', async ($, on) => {

@@ -117,7 +117,12 @@ Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; th
 
 ## Agents in auto mode
 
-In auto permission mode the engine's classifier judges each subagent by the request to the model that asked for it, and a press in the pane is no such request, so it cannot judge one. A start from the pane (▶, Start, Restart, `/cockpit test`, Verify after each turn) is put to you in the permission dialog instead: approve it and the agent runs as a real subagent. A start that is still refused writes its reason into the chat. A start your settings or mode already allow runs with no dialog, one they deny stays denied, and Agent calls Claude makes are left to the engine.
+In auto permission mode the engine's classifier judges each subagent by the request to the model that asked for it. A press in the pane is no such request, so a start from the pane (▶, Start, Restart, a pipeline, `/cockpit test`, the testers after an agent's edit) can be refused with "no verdict". Cockpit handles that in two ways:
+
+- Where it can, it puts the start to you in the permission dialog: approve it and the agent runs.
+- Where that is refused anyway (a managed plugin that runs before Cockpit can stop the dialog), Cockpit **hands the start to Claude**: a short request in the conversation ("start the cockpit:prover agent with this brief"), so Claude starts the agent in that turn and auto mode judges it like any agent Claude starts. The agent shows in the Agents tab as usual, a waiting pipeline step takes it, and the hand-off opens no flow of its own.
+
+A start your settings or permission mode already allow runs straight from the pane.
 
 ## Defaults that cost or publish
 

@@ -601,6 +601,40 @@ function expertPrompt(s: Ph, prior: string[]) {
 }
 
 // Starts one expert; returns its agent id ('' when the start handed none back: the agent.spawn hook records it), or null when refused
+// Prompts Cockpit sends to hand a refused start to Claude: they open no flow and write no steps of their own
+export const handoffs = new Set<string>()
+
+// Auto mode judges a subagent by the request to the model that asked for it, and a press in the pane is none, so it
+// refuses with "no verdict". The start then goes to Claude as a request in the conversation: Claude starts the agent
+// in that turn (auto mode judges it like any agent Claude starts), and the agent.spawn hook tracks it and binds it to a
+// waiting pipeline step. False where the prompt did not enter
+export async function handOff($: $, type: string, brief: string) {
+  const name = expertName(type)
+  const text = `⧉ Cockpit: start the ${type} agent now with the Agent tool (subagent_type "${type}", in the background), passing exactly the brief below as its prompt. Do nothing else, and answer in one line.\n\n${brief}`
+  handoffs.add(text)
+  const failed = async () => {
+    handoffs.delete(text)
+    await note($, `⧉ ${name} could not start: auto mode refused it from the pane, and Claude could not be asked`)
+  }
+  const send = async () => {
+    const r = await $.prompt.submit({ text })
+    if ('drop' in r && r.drop) await failed()
+  }
+  await toast($, `Auto mode lets Claude start agents, not buttons: the ${name.toLowerCase()} goes to Claude to start`)
+  // From a turn's end it goes at once; where the engine refuses it there (inside a command's hook, which holds the turn
+  // the prompt would wait on), it goes from a timer once that hook has returned
+  await send().catch(async () => {
+    try {
+      $.clock.after(20, () => {
+        void send().catch(() => failed())
+      })
+    } catch {
+      await failed()
+    }
+  })
+  return true
+}
+
 export async function runExpert($: $, type: string, prior: string[] = []) {
   const s = await read($, S)
   const name = expertName(type)
@@ -608,6 +642,8 @@ export async function runExpert($: $, type: string, prior: string[] = []) {
   const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type })
   await set($, { starting: null })
   if ('deny' in r) {
+    // Refused for want of a request: Claude starts it instead; '' keeps a pipeline waiting on this step
+    if (/no verdict/i.test(r.deny ?? '') && (await handOff($, type, expertPrompt(s, prior)))) return ''
     // In the chat too: a toast is gone in seconds and never reaches the transcript
     await note($, `⧉ ${name} could not start: ${r.deny}`)
     await toast($, `${name} could not start: ${r.deny}`)
@@ -740,6 +776,7 @@ export async function spawnAgent($: $, task: string, type: string) {
   const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
   await set($, { starting: null })
   if ('deny' in r) {
+    if (/no verdict/i.test(r.deny ?? '') && (await handOff($, type, task))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
     return toast($, `Could not start the agent: ${r.deny}`)
   }
