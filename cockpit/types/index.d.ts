@@ -180,6 +180,8 @@ export type Ph = {
   repo: { isRepo: boolean; current: string; ahead: number; behind: number; changed: Changed[]; branches: string[]; log: LogCommit[]; unpushed: string[] }
   staged: Record<string, boolean>
   pending: Pending | null
+  // The commit a model wrote from the diff of the ticked files (sig names them and their counts); busy while it writes
+  suggest?: { sig: string; type: string; subject: string; busy?: boolean }
   commits: Commit[]
   accounts: Account[]
   accountId: string
@@ -215,6 +217,8 @@ export type Ph = {
     rerunText: string
     acctOpen: boolean
     acct: Account
+    // The account whose Remove was pressed, waiting for its confirmation
+    acctRemove?: string
     // The setup wizard's step, the token being typed, and the gh web login's note
     gitStep: number
     ghToken: string
