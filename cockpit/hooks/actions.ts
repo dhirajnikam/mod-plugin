@@ -602,23 +602,28 @@ function expertPrompt(s: Ph, prior: string[]) {
 
 // Starts one expert; returns its agent id ('' when the start handed none back: the agent.spawn hook records it), or null when refused
 // Prompts Cockpit sends to hand a refused start to Claude: they open no flow and write no steps of their own
-// Starts Cockpit hands to Claude: the short line the chat shows, and for each one waiting the request Claude reads with
-// it as context, never shown. Cockpit's prompt.submit hook attaches it, and opens no flow for it
-export const handoffs = new Map<string, string[]>()
+// The lines Cockpit sends to hand an agent start to Claude: they open no flow
+export const handoffs = new Set<string>()
+let handoffSeq = 0
 
 // Auto mode judges a subagent by the request to the model that asked for it, and a press in the pane is none, so it
-// refuses with "no verdict". The start then goes to Claude as a short request in the conversation: Claude starts the
-// agent in that turn (auto mode judges it like any agent Claude starts), and the agent.spawn hook tracks it and binds it
-// to a waiting pipeline step. It never waits for that turn: a press, a command and a turn's end all return at once
+// refuses with "no verdict". The start then goes to Claude as one short line in the conversation, and Claude starts the
+// agent in that turn (auto mode judges it like any agent Claude starts); the agent.spawn hook tracks it and binds it to a
+// waiting pipeline step. The brief rides in a file the line names (in .cockpit/, kept out of git), so it arrives even
+// where another plugin's hook keeps Cockpit's own prompt hooks from running; inline where no file can be written.
+// It never waits for that turn: a press, a command and a turn's end all return at once
 export async function handOff($: $, type: string, brief: string) {
   const name = expertName(type)
-  const text = `▶ Start the ${name}`
-  const ask = `Cockpit asks for an agent (from its ▶ button, a pipeline, or its testers; auto mode lets Claude start agents, not a button). Start the ${type} agent now with the Agent tool (subagent_type "${type}", in the background), passing exactly the brief below as its prompt. Do nothing else, and answer in one line.\n\nBrief:\n${brief}`
-  handoffs.set(text, [...(handoffs.get(text) ?? []), ask])
+  const dir = await cockpitDir($)
+  // ponytail: one small file a hand-off, never pruned; .cockpit/ is git-ignored
+  const file = dir ? `${dir}/handoffs/${type.replace(/[^a-z0-9]+/gi, '-')}-${await $.clock.now()}-${++handoffSeq}.md` : ''
+  const wrote = !!file && (await $.fs.write(file, brief).then(() => true).catch(() => false))
+  const text = wrote
+    ? `▶ Start the ${name}: run the ${type} agent in the background; its brief is in ${file}`
+    : `▶ Start the ${name}: run the ${type} agent in the background with this brief:\n\n${brief}`
+  handoffs.add(text)
   const failed = async () => {
-    const q = handoffs.get(text) ?? []
-    q.splice(q.indexOf(ask), 1)
-    if (!q.length) handoffs.delete(text)
+    handoffs.delete(text)
     await note($, `⧉ ${name} could not start: it could not be handed to Claude`)
   }
   const send = async () => {

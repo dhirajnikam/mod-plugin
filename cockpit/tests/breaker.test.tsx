@@ -9,7 +9,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean; noVerdict?: number }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], files: {} as Record<string, string>, open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), log.specs.push(e), st.regDeny ? { deny: 'x' } : { value: { agent: `cockpit:${e.name}` } }))
@@ -43,6 +43,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('model.fork', async () => ({ value: { isAnswered: true, text: 'The task is small.', usage: { inputTokens: 1, outputTokens: 1 } } }))
   let spawns = 0
   let refused = 0
+  on('fs.write', async (_: unknown, e: any) => ((log.files[e.path] = e.text), { value: undefined }))
   // The engine's own permission verdict for an Agent call; the spawn asks it as the Agent tool would
   on('tool.check', async (_: unknown, e: any) => ({ decision: e.tool === 'Agent' ? st.core ?? 'ask' : 'allow' }))
   // hold: the spawn waits, as the engine's does while it decides, until the test opens it
@@ -164,9 +165,11 @@ test('a start auto mode refuses for want of a request goes to Claude, and the ag
   await new Promise(res => (globalThis as any).setTimeout(res, 60))
   // Handed to Claude: a short line in the chat, the expert's brief as context; no error, the pipeline waits on the Prover
   expect(log.submitted.length).toBe(1)
-  expect(log.submitted[0]!.split('\n')[0]).toBe('▶ Start the Prover')
-  expect(log.submitted[0]).toContain('subagent_type "cockpit:prover"')
-  expect(log.submitted[0]).toContain('PRIOR REPORTS')
+  expect(log.submitted[0]).toMatch(/^▶ Start the Prover: run the cockpit:prover agent in the background; its brief is in \/repo\/\.cockpit\/handoffs\/cockpit-prover-\d+-\d+\.md$/)
+  // The brief is in that file, whatever runs before Cockpit's own prompt hooks
+  const brief = Object.entries(log.files).find(([p]) => p.includes('/handoffs/'))?.[1] ?? ''
+  expect(brief).toContain('PRIOR REPORTS')
+  expect(brief).toContain('added it')
   expect(log.toasts.join('|')).not.toContain('could not start')
   expect(log.toasts.join('|')).toContain('Starting the prover…')
   expect(log.toasts.join('|')).not.toContain('Auto mode')
