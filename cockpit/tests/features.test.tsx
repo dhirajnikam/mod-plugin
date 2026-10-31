@@ -8,7 +8,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
@@ -22,6 +22,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     log.ran.push(a)
     const cmd = a.join(' ')
     if (cmd.startsWith('git status')) return ok('## master\0 M a.txt\0')
+    if (cmd.startsWith('git diff --numstat') && st.numstat) return ok(st.numstat())
     if (cmd.startsWith('git config --global user.name')) return ok('Dev\n')
     if (cmd.startsWith('git config --global user.email')) return ok('dev@x.io\n')
     if (cmd.startsWith('gh auth status')) return ok('github.com\n  ✓ Logged in to github.com account one (keyring)\n  - Active account: false\n\n  ✓ Logged in to github.com account two (keyring)\n  - Active account: true\n')
@@ -582,5 +583,20 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   expect(od).toContain('Flows (2)')
   expect(od).toContain('fix the login page')
   expect(od).not.toContain('◎ Goal ')
+  await ov.unmount()
+})
+
+test("a shell command's edits count in the flow's +/−", async ($, on) => {
+  let numstat = '1\t0\ta.txt\0'
+  stand($, on, { tick: true, numstat: () => numstat })
+  await $.prompt.submit({ text: 'append to a.txt', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  numstat = '4\t2\ta.txt\0'
+  await $.tool.call({ tool: 'Bash', command: "sed -i '' s/x/y/ a.txt", tool_use_id: 'b1' } as never)
+  await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
+  const ov = await $.ui.mount(pane('overview') as never)
+  const od = JSON.stringify(await ov.drawn())
+  // 3 lines added and 2 deleted since the turn started, not the file's whole diff
+  expect(od).toContain('"+3"')
+  expect(od).toContain('" −2"')
   await ov.unmount()
 })

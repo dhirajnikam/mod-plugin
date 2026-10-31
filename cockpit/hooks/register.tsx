@@ -1,7 +1,7 @@
 import { atom, read } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Decision, Tab, ThemeId } from '../types'
+import type { Changed, Decision, Tab, ThemeId } from '../types'
 import {
   advancePipeline,
   commit,
@@ -64,6 +64,9 @@ export const register: Register = on => {
   // null until a prompt records it (a reload starts over), so a reload never commits what no turn of its changed
   let changesAtStart: string | null = null
   const changesOf = (c: { path: string; meta: string }[]) => c.map(x => `${x.path} ${x.meta}`).join('\n')
+  // Each changed file's lines when the turn started, so changes a shell command made count in the flow's +/−
+  let linesAtStart: Changed[] = []
+  const atStartOf = (c: Changed[]) => ((linesAtStart = c), changesOf(c))
   // Prompts typed over a running turn: each opens its flow when a turn of its own starts with it
   const queued = new Set<string>()
   // The last prompt was a command or the engine's own: the turn it starts carries on the last flow
@@ -199,7 +202,7 @@ export const register: Register = on => {
     queued.clear()
     const was = await read($, S)
     changedThisTurn = false
-    changesAtStart = await openFlow($, e.text, now)
+    changesAtStart = atStartOf(await openFlow($, e.text, now))
     const r = await next(e)
     // Refused beneath (a settings hook's block, the engine's limit): no turn runs, so no flow either
     if ('drop' in r && r.drop) {
@@ -228,7 +231,7 @@ export const register: Register = on => {
     const fresh = (task: string) => {
       changedThisTurn = false
       return openFlow($, task, now).then(c => {
-        changesAtStart = c
+        changesAtStart = atStartOf(c)
         void writeSteps($, `f${now}`, task).catch(() => null)
       })
     }
@@ -239,7 +242,7 @@ export const register: Register = on => {
       else if (!carried) await fresh(text)
       else if (last) {
         changedThisTurn = false
-        changesAtStart = await resumeFlow($, now)
+        changesAtStart = atStartOf(await resumeFlow($, now))
       }
     }
     return next(e)
@@ -400,6 +403,7 @@ export const register: Register = on => {
     // failure below must not carry them into it
     const changed = changedThisTurn
     const atStart = changesAtStart
+    const linesWere = linesAtStart
     if (!e.agentId) {
       changedThisTurn = false
       changesAtStart = null
@@ -422,6 +426,7 @@ export const register: Register = on => {
       await saveHistory($)
       return r
     }
+    const flowId = (await read($, S)).flows.at(-1)?.id ?? ''
     await set($, st => {
       // A flow that ends in an answer reaches it when the turn completes
       const reached = !e.isAborted && st.reached.length && flowOf(st.task, st.reached, st.flows[st.flows.length - 1]?.kind).steps.includes('Answer') && !st.reached.includes('Answer') ? [...st.reached, 'Answer'] : st.reached
@@ -443,6 +448,15 @@ export const register: Register = on => {
     const didChange = changed || (atStart !== null && s.repo.changed.length > 0 && changesOf(s.repo.changed) !== atStart)
     // Files a shell command or script changed reach the memory here
     if (didChange) for (const c of s.repo.changed.slice(0, 40)) await updateMemory($, `${await repoRootOf($)}/${c.path}`)
+    // The flow's +/− counts what changed in the repository this turn, a shell command's edits too: the lines each file
+    // gained since the turn started, or the edits' own count where that is more
+    // ponytail: git's numstat leaves untracked files out, so a new file a shell command wrote counts no lines
+    if (didChange && atStart !== null) {
+      const was = new Map(linesWere.map(c => [c.path, c]))
+      const add = s.repo.changed.reduce((n, c) => n + Math.max(0, c.add - (was.get(c.path)?.add ?? 0)), 0)
+      const del = s.repo.changed.reduce((n, c) => n + Math.max(0, c.del - (was.get(c.path)?.del ?? 0)), 0)
+      await set($, st => ({ flows: st.flows.map(f => (f.id === flowId ? { ...f, add: Math.max(f.add, add), del: Math.max(f.del, del) } : f)) }))
+    }
     const commitAfterTests = s.git.commitMode !== 'manual' && s.git.autoWhen === 'tests'
     if (didChange && (s.autoVerify || commitAfterTests)) await startPipeline($, 'verify')
     if (didChange && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
@@ -811,7 +825,7 @@ async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknow
 // The flow-opening half of a prompt: a new flow, the repo read first; returns its changes as they stood, to compare at the turn's end
 async function openFlow($: EngineInterface, text: string, now: number) {
   await refreshRepo($)
-  const changes = (await read($, S)).repo.changed.map(x => `${x.path} ${x.meta}`).join('\n')
+  const changes = (await read($, S)).repo.changed
   const task = text.trim().split('\n')[0] ?? ''
   await set($, s => ({
     task,
@@ -828,7 +842,7 @@ async function openFlow($: EngineInterface, text: string, now: number) {
 // A turn that carries on the last flow: it runs again, one turn more, its plan and steps kept
 async function resumeFlow($: EngineInterface, now: number) {
   await refreshRepo($)
-  const changes = (await read($, S)).repo.changed.map(x => `${x.path} ${x.meta}`).join('\n')
+  const changes = (await read($, S)).repo.changed
   await set($, s => {
     const f = s.flows[s.flows.length - 1]!
     const { endedAt: _, ...open } = f
