@@ -8,7 +8,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
@@ -57,6 +57,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   // The person answering a question: the second option
   on('tool.call', async (_: unknown, e: any) => {
     if (e.tool === 'TaskStop') log.stopped.push(String(e.task_id))
+    if (st.failTests && e.tool === 'Bash' && e.command === 'npm test') return { result: 'Error: 2 tests failed\nat x', isError: true }
     if (e.tool === 'AskUserQuestion') return (log.asked++, { result: { questions: e.questions, answers: Object.fromEntries(e.questions.map((q: any) => [q.question, q.options[1]?.label ?? ''])) } })
     return { result: 'ok' }
   })
@@ -200,6 +201,14 @@ test('the Verify pipeline runs the Prover then the Breaker, handing the report a
   expect(drawn).toContain('2/2 passed')
   expect(drawn).toContain('   ✗ ')
   await ag.unmount()
+  // The Overview carries the testers' count and the first failing case
+  const ovt = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const od = JSON.stringify(await ovt.drawn())
+  expect(od).toContain('"✓2 "')
+  expect(od).toContain('"✗1 "')
+  expect(od).toContain('· empty password')
+  await ovt.unmount()
   await $.command.run({ command: 'cockpit', args: 'focus on' } as never)
   const b = await $.ui.mount(band as never)
   expect(JSON.stringify(await b.drawn())).toContain('tests 2/3')
@@ -610,4 +619,22 @@ test("a shell command's edits count in the flow's +/−", async ($, on) => {
   expect(od).toContain('"+3"')
   expect(od).toContain('" −2"')
   await ov.unmount()
+})
+
+test("the Overview shows the current flow's last failed tool call, and the testers' cases", async ($, on) => {
+  // The engine answers npm test with an error
+  stand($, on, { tick: true, failTests: true })
+  await $.prompt.submit({ text: 'fix the tests', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'b1' } as never)
+  const ui = await $.ui.mount(pane('overview') as never)
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('✕ Bash ')
+  expect(d).toContain('Error: 2 tests failed · ')
+  expect(d).not.toContain('at x')
+  // A new flow starts clean
+  await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1 } as never)
+  await $.prompt.submit({ text: 'something else', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).not.toContain('✕ Bash ')
+  await ui.unmount()
 })

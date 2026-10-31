@@ -285,7 +285,11 @@ export const register: Register = on => {
     }))
     const r = await next(e)
     // A refused or failed edit changed nothing: no tests, no commit, no re-read for it
-    if (r.deny || r.isError) return r
+    if (r.deny || r.isError) {
+      const out = r.deny ? `refused: ${r.deny}` : typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? '')
+      await set($, { lastError: { tool: e.tool, text: out.trim().split('\n')[0]?.slice(0, 160) ?? '', at: now } })
+      return r
+    }
     if (op && (op.op === 'Write' || op.op === 'Edit' || op.op === 'Delete')) changedThisTurn = true
     if (op && (op.op === 'Write' || op.op === 'Edit')) await updateMemory($, op.path)
     return r

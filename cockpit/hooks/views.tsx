@@ -245,6 +245,9 @@ export function Overview($: $, v: V) {
   const { s, t, w } = v
   const p = progress(s)
   const cur = s.flows[s.flows.length - 1]
+  // The testers' latest cases, and the current flow's last failed tool call
+  const vs = verifyState(s.agents)
+  const err = s.lastError && cur && s.lastError.at >= cur.startedAt ? s.lastError : undefined
   const changed = s.repo.changed.length
   const needs = s.waiting ? 'Claude is waiting for your answer in the chat.' : s.pending ? `Commit "${s.pending.msg}" → ${s.pending.branch}?` : ''
   const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
@@ -342,6 +345,24 @@ export function Overview($: $, v: V) {
           <Button key="flow-pick" plain onPress={() => toggle('flowpick')}>
             <Text color={t.faint} size="footnote">{isOpen('flowpick') ? '⌄ flow' : '› flow'}</Text>
           </Button>
+        </Box>
+      )}
+      {(vs.cases.length > 0 || vs.running || err) && (
+        <Box flexDirection="column">
+          {(vs.cases.length > 0 || vs.running) && (
+            <Text size="footnote" wrap="truncate-end">
+              <Text color={t.dim}>Tests </Text>
+              {vs.pass > 0 && <Text color={t.ok}>{`✓${vs.pass} `}</Text>}
+              {vs.fail > 0 && <Text color={t.bad}>{`✗${vs.fail} `}</Text>}
+              {vs.running ? <Text color={t.busy}>running</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
+            </Text>
+          )}
+          {err && (
+            <Text size="footnote" wrap="truncate-end">
+              <Text color={t.bad}>{`✕ ${err.tool} `}</Text>
+              <Text color={t.dim}>{`${err.text} · ${fmt(v.now - err.at)} ago`}</Text>
+            </Text>
+          )}
         </Box>
       )}
       {s.flows.length > 0 && isOpen('flowpick') && (

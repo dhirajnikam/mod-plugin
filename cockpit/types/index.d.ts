@@ -132,6 +132,8 @@ export type Ph = {
   task: string
   // The completion condition set by /goal or Claude's ProposeGoal, while one stands
   goal?: { text: string; at: number }
+  // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current
+  lastError?: { tool: string; text: string; at: number }
   turnStart: number
   isWorking: boolean
   activity: string
