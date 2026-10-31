@@ -253,13 +253,16 @@ export type FeatureMark = 'now' | 'touched' | 'reached'
 // The feature map as SVG for surfaces that draw it: a box per feature in its layer, an arrow from each feature to every
 // feature it uses. The feature being worked on is filled and breathes, the ones changed this flow are outlined in the
 // accent, the ones a change reaches are dashed; the arrows between marked features carry the accent too
-export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>, c: { accent: string; busy: string; text: string; dim: string; track: string; bg: string }, width = 520) {
+export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>, c: { accent: string; busy: string; text: string; dim: string; track: string; bg: string }, width = 640) {
   const esc = (x: string) => x.replace(/[<>&"]/g, ch => `&#${ch.charCodeAt(0)};`)
   const real = (x: string, tone: string) => (/^(#|rgb|hsl)/.test(x) ? x : tone)
   c = { accent: real(c.accent, '#b4833a'), busy: real(c.busy, '#d9a441'), text: real(c.text, '#d6d3ce'), dim: real(c.dim, '#8a8a8a'), track: real(c.track, 'rgba(128,128,128,0.35)'), bg: real(c.bg, 'rgba(0,0,0,0)') }
-  const H = 26
-  const GAP = 8
-  const ROW = 58
+  // Sized to be read at a glance: 15px names in 36px boxes, a row of air between layers for the arrows
+  const H = 36
+  const GAP = 12
+  const ROW = 84
+  const FONT = 15
+  const boxW = (n: string) => Math.min(width / 2, cut(n, 30).length * FONT * 0.58 + 30)
   const cut = (n: string, max: number) => (n.length > max ? `${n.slice(0, max - 1).trimEnd()}…` : n)
   // A layer wider than the canvas wraps onto rows of its own
   const rows: string[][] = []
@@ -267,7 +270,7 @@ export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>,
     let row: string[] = []
     let used = 0
     for (const n of layer) {
-      const wN = Math.min(width / 2, cut(n, 30).length * 6.6 + 22)
+      const wN = boxW(n)
       if (row.length && used + wN > width) {
         rows.push(row)
         row = []
@@ -280,15 +283,15 @@ export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>,
   }
   const box = new Map<string, { x: number; y: number; w: number }>()
   rows.forEach((row, r) => {
-    const ws = row.map(n => Math.min(width / 2, cut(n, 30).length * 6.6 + 22))
+    const ws = row.map(boxW)
     const total = ws.reduce((a, b) => a + b, 0) + GAP * (row.length - 1)
     let x = (width - total) / 2
     row.forEach((n, i) => {
-      box.set(n, { x, y: 8 + r * ROW, w: ws[i]! })
+      box.set(n, { x, y: 10 + r * ROW, w: ws[i]! })
       x += ws[i]! + GAP
     })
   })
-  const height = 8 + rows.length * ROW - (ROW - H) + 8
+  const height = 10 + rows.length * ROW - (ROW - H) + 10
   const hot = (n: string) => marks[n] === 'now' || marks[n] === 'touched'
   const uses = new Map(fs.map(f => [f.name, f.uses.filter(u => box.has(u) && u !== f.name)]))
   // a → c is implied when a reaches c through another feature it uses: that arrow is left out unless it is lit
@@ -306,10 +309,10 @@ export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>,
       const y1 = down ? a.y + H : a.y
       const x2 = b.x + b.w / 2
       const y2 = down ? b.y - 3 : b.y + H + 3
-      const bend = Math.max(18, Math.abs(y2 - y1) / 2)
+      const bend = Math.max(24, Math.abs(y2 - y1) / 2)
       const lit = (hot(f.name) || marks[f.name] === 'reached') && (hot(u) || marks[u] === 'reached')
       if (!lit && via(f.name, u)) return ''
-      return `<path d="M${x1.toFixed(1)} ${y1} C${x1.toFixed(1)} ${y1 + (down ? bend : -bend)} ${x2.toFixed(1)} ${y2 + (down ? -bend : bend)} ${x2.toFixed(1)} ${y2}" fill="none" stroke="${lit ? c.accent : c.track}" stroke-width="${lit ? 1.6 : 1}" stroke-opacity="${lit ? 1 : 0.55}" marker-end="url(#${lit ? 'ah' : 'a'})"/>`
+      return `<path d="M${x1.toFixed(1)} ${y1} C${x1.toFixed(1)} ${y1 + (down ? bend : -bend)} ${x2.toFixed(1)} ${y2 + (down ? -bend : bend)} ${x2.toFixed(1)} ${y2}" fill="none" stroke="${lit ? c.accent : c.track}" stroke-width="${lit ? 2.2 : 1.3}" stroke-opacity="${lit ? 1 : 0.55}" marker-end="url(#${lit ? 'ah' : 'a'})"/>`
     }),
   )
   const nodes = [...box].map(([n, b]) => {
@@ -321,9 +324,9 @@ export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>,
     const f = fs.find(x => x.name === n)
     // Hovering a box tells what the feature does and what it uses (the frame draws <title> as a tooltip)
     const tip = `<title>${esc([n, f?.what ?? '', f?.uses.length ? `uses ${f.uses.join(', ')}` : '', f?.files.length ? `${f.files.length} file${f.files.length === 1 ? '' : 's'}` : ''].filter(Boolean).join('\n'))}</title>`
-    return `<g>${tip}<rect x="${b.x.toFixed(1)}" y="${b.y}" width="${b.w.toFixed(1)}" height="${H}" rx="7" fill="${fill}" fill-opacity="${m === 'now' ? 0.9 : 1}" stroke="${stroke}" stroke-width="${m ? 1.6 : 1}"${m === 'reached' ? ' stroke-dasharray="4 3"' : ''}>${pulse}</rect>` +
-      `<text x="${(b.x + b.w / 2).toFixed(1)}" y="${b.y + 17}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11.5" font-weight="${m ? 600 : 400}" fill="${ink}">${esc(cut(n, 30))}</text></g>`
+    return `<g>${tip}<rect x="${b.x.toFixed(1)}" y="${b.y}" width="${b.w.toFixed(1)}" height="${H}" rx="10" fill="${fill}" fill-opacity="${m === 'now' ? 0.9 : 1}" stroke="${stroke}" stroke-width="${m ? 2.2 : 1.3}"${m === 'reached' ? ' stroke-dasharray="5 4"' : ''}>${pulse}</rect>` +
+      `<text x="${(b.x + b.w / 2).toFixed(1)}" y="${b.y + H / 2 + FONT * 0.35}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="${FONT}" font-weight="${m ? 600 : 400}" fill="${ink}">${esc(cut(n, 30))}</text></g>`
   })
-  const arrow = (id: string, col: string) => `<marker id="${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="${col}"/></marker>`
+  const arrow = (id: string, col: string) => `<marker id="${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="${col}"/></marker>`
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><defs>${arrow('a', c.track)}${arrow('ah', c.accent)}</defs>${edges.join('')}${nodes.join('')}</svg>`
 }

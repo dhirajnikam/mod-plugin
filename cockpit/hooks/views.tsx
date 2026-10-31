@@ -620,7 +620,8 @@ function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
       {Object.values(marks).includes('reached') && <Text color={t.faint}>{' reached'}</Text>}
     </Text>
   )
-  const width = Math.min(560, Math.max(280, w * 7))
+  // The pane's own width, so the map is drawn at full size instead of shrunk to fit
+  const width = Math.max(320, w * 8)
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>

@@ -55,7 +55,7 @@ test('the feature map layers what uses above what it uses, survives a cycle, and
   expect(svg.startsWith('<svg')).toBe(true)
   // Now is filled and breathes, touched outlined in the accent, reached dashed, the arrow between marked features lit
   expect(svg).toContain('<animate')
-  expect(svg).toContain('stroke-dasharray="4 3"')
+  expect(svg).toContain('stroke-dasharray="5 4"')
   expect(svg).toContain('url(#ah)')
   expect(svg).toContain('<title>ui')
   expect(svg).not.toContain('<script')
