@@ -144,7 +144,7 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ov = await $.ui.mount(PANE as never)
   const od = JSON.stringify(await ov.drawn())
-  expect(od).toContain('Earlier sessions (1)')
+  expect(od).toContain('EARLIER SESSIONS')
   await ov.press({ key: 'fold-past' })
   expect(JSON.stringify(await ov.drawn())).toContain('an older task')
   await ov.unmount()

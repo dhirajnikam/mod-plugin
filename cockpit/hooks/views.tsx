@@ -256,24 +256,34 @@ export function Overview($: $, v: V) {
   const used = s.ctx.used
   const win = s.ctx.window || 200000
   const decs = s.decisions.slice().reverse()
-  const flows = s.flows.slice().reverse()
+  // The flows before the current one: the current one is the hero above
+  const flows = s.flows.slice(0, -1).reverse()
   // Folded sections, kept with the tree's folds: true opens one
   const isOpen = (k: string) => !!s.ui.collapsed[`ov-${k}`]
   const toggle = (k: string) => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [`ov-${k}`]: !st.ui.collapsed[`ov-${k}`] } } }))
-  // A fold with nothing to hide is a plain title: an arrow that changes nothing reads as broken
-  const Fold = ({ k, label, can = true }: { k: string; label: string; can?: boolean }) => !can ? (
-    <Text color={t.text} weight="semibold">{label}</Text>
+  // Every section opens with the same small heading; a fold has an arrow, and one with nothing to hide is a plain
+  // heading, as an arrow that changes nothing reads as broken
+  const Label = ({ label, n, color }: { label: string; n?: number; color?: string }) => (
+    <Text size="footnote" bold>
+      <Text color={color ?? t.dim}>{label.toUpperCase()}</Text>
+      {n !== undefined && <Text color={t.faint}>{` ${n}`}</Text>}
+    </Text>
+  )
+  const Fold = ({ k, label, n, can = true }: { k: string; label: string; n?: number; can?: boolean }) => !can ? (
+    <Label label={label} {...(n !== undefined ? { n } : {})} />
   ) : (
     <Button key={`fold-${k}`} plain onPress={() => toggle(k)}>
-      <Text>
+      <Text size="footnote" bold>
         <Text color={t.faint}>{isOpen(k) ? '⌄ ' : '› '}</Text>
-        <Text color={t.text} weight="semibold">{label}</Text>
+        <Text color={t.dim}>{label.toUpperCase()}</Text>
+        {n !== undefined && <Text color={t.faint}>{` ${n}`}</Text>}
       </Text>
     </Button>
   )
+  const ctxCol = s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.dim
   const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
-    <Box flexDirection="column" gap={sp(v, 1)}>
+    <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
       {needs !== '' && (
         <Box borderStyle="round" borderColor={t.accent} paddingX={1} justifyContent="space-between">
           <Box flexDirection="column">
@@ -290,7 +300,7 @@ export function Overview($: $, v: V) {
       )}
       <Box columnGap={sp(v, 2)} flexWrap="wrap">
         {Svg ? (
-          <Svg source={ringSvg(p.pct, p.stepName, { accent: t.accent, track: t.track, text: t.text, dim: t.dim })} alt={`${p.pct}% · ${p.stepName}`} width={120} height={120} />
+          <Svg source={ringSvg(p.pct, '', { accent: t.accent, track: t.track, text: t.text, dim: t.dim })} alt={`${p.pct}% · ${p.stepName}`} width={96} height={96} />
         ) : (
           <Box flexDirection="column" flexShrink={0}>
             {ringRuns(p.pct, t.accent, t.track, t.text).map((runs, i) => (
@@ -303,64 +313,60 @@ export function Overview($: $, v: V) {
           </Box>
         )}
         <Box flexDirection="column" gap={sp(v, 1)} flexGrow={1} flexShrink={1}>
-          <Text color={t.text} bold size="heading" wrap="wrap">{s.task || 'No task yet: send a prompt.'}</Text>
+          <Text color={s.task ? t.text : t.dim} bold size="heading" wrap="wrap">{s.task || 'No task yet: send a prompt.'}</Text>
           {s.goal && (
             <Box columnGap={sp(v, 1)} alignItems="center">
               <Box flexShrink={1}>
-                <Text wrap="wrap">
-                  <Text color={t.accent}>◎ Goal </Text>
-                  <Text color={t.text}>{s.goal.text}</Text>
-                  {(cur?.turns ?? 1) > 1 && <Text color={t.dim}>{` · turn ${cur!.turns}`}</Text>}
+                <Text size="footnote" wrap="wrap">
+                  <Text color={t.accent}>{'◎ '}</Text>
+                  <Text color={t.dim}>{s.goal.text}</Text>
+                  {(cur?.turns ?? 1) > 1 && <Text color={t.faint}>{` · turn ${cur!.turns}`}</Text>}
                 </Text>
               </Box>
-              <Button key="goal-hide" label="Hide" plain onPress={() => set($, { goal: undefined })} />
+              <Button key="goal-hide" plain onPress={() => set($, { goal: undefined })}>
+                <Text color={t.faint}>×</Text>
+              </Button>
             </Box>
           )}
-          <Text wrap="wrap">
-            <Text color={s.isWorking ? t.accent : t.dim}>{p.stepName}</Text>
-            {s.flows.length > 0 && <Text color={t.dim}>{` · ${p.flow.label} flow`}</Text>}
-            {s.isWorking && s.activity && <Text color={t.dim}>{` · ${s.activity}`}</Text>}
-          </Text>
           <Box columnGap={sp(v, 3)} flexWrap="wrap">
-            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
+            {([['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Cost', `$${s.cost.toFixed(2)}`, t.text]] as const).map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
-                <Text color={t.dim} size="footnote">{label}</Text>
+                <Text color={t.faint} size="footnote">{label}</Text>
                 <Text color={c} bold>{val}</Text>
               </Box>
             ))}
           </Box>
         </Box>
       </Box>
-      <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+      <Box flexWrap="wrap" columnGap={sp(v, 1)} alignItems="center">
         {p.steps.map((x, i) => (
           <Text key={`step-${i}-${x.name}`} backgroundColor={x.st === 'active' ? t.wash || undefined : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
             <Text color={x.st === 'done' ? t.ok : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
         ))}
-      </Box>
-      {s.flows.length > 0 && (
-        <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
-          <Text color={t.dim} size="footnote">{`${p.done} of ${p.total} steps done${p.active ? ` · ${p.active} in progress` : ''}${p.skipped ? ` · ${p.skipped} skipped` : ''}`}</Text>
+        {s.flows.length > 0 && (
           <Button key="flow-pick" plain onPress={() => toggle('flowpick')}>
-            <Text color={t.faint} size="footnote">{isOpen('flowpick') ? '⌄ flow' : '› flow'}</Text>
+            <Text color={t.faint} size="footnote">{`${p.flow.label} flow ${isOpen('flowpick') ? '⌄' : '›'}`}</Text>
           </Button>
-        </Box>
-      )}
+        )}
+      </Box>
       {(vs.cases.length > 0 || vs.running || err) && (
         <Box flexDirection="column">
+          <Label label={err || vs.fail ? 'Checks · failing' : 'Checks'} {...(err || vs.fail ? { color: t.bad } : {})} />
+          {err && (
+            <Text wrap="wrap">
+              <Text color={t.bad}>{`✕ ${err.tool} `}</Text>
+              <Text color={t.text}>{err.text}</Text>
+              <Text color={t.faint}>{` · ${fmt(v.now - err.at)} ago`}</Text>
+            </Text>
+          )}
           {(vs.cases.length > 0 || vs.running) && (
-            <Text size="footnote" wrap="truncate-end">
+            <Text wrap="truncate-end">
               <Text color={t.dim}>Tests </Text>
               {vs.pass > 0 && <Text color={t.ok}>{`✓${vs.pass} `}</Text>}
               {vs.fail > 0 && <Text color={t.bad}>{`✗${vs.fail} `}</Text>}
               {vs.running ? <Text color={t.busy}>running</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
-            </Text>
-          )}
-          {err && (
-            <Text size="footnote" wrap="truncate-end">
-              <Text color={t.bad}>{`✕ ${err.tool} `}</Text>
-              <Text color={t.dim}>{`${err.text} · ${fmt(v.now - err.at)} ago`}</Text>
             </Text>
           )}
         </Box>
@@ -374,17 +380,26 @@ export function Overview($: $, v: V) {
       {changed > 0 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-            <Text>
-              <Text color={t.text} weight="semibold">{`Changed files (${changed}) `}</Text>
-              <Text color={t.ok} size="footnote">{`+${adds}`}</Text>
-              <Text color={t.bad} size="footnote">{` −${dels}`}</Text>
-            </Text>
-            <Button key="changed-git" label="Open Git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />
+            <Box columnGap={sp(v, 1)}>
+              <Label label="Changed files" n={changed} />
+              {(adds || dels) > 0 && (
+                <Text size="footnote">
+                  <Text color={t.ok}>{`+${adds}`}</Text>
+                  <Text color={t.bad}>{` −${dels}`}</Text>
+                </Text>
+              )}
+            </Box>
+            <Button key="changed-git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])}>
+              <Text color={t.accent} size="footnote">Open Git ›</Text>
+            </Button>
           </Box>
           {s.repo.changed.slice(0, 5).map(c => (
-            <Box key={`ovc-${c.path}`} columnGap={sp(v, 1)}>
+            <Box key={`ovc-${c.path}`} columnGap={sp(v, 1)} alignItems="center">
               <Box flexGrow={1} flexShrink={1}>
-                <Text color={t.text} wrap="truncate-start">{c.path}</Text>
+                <Text wrap="truncate-start">
+                  <Text color={t.text}>{c.path}</Text>
+                  <Text color={kindColor(t, c.meta)} size="footnote">{`  ${c.meta.startsWith('+') ? 'edited' : c.meta.split(' · ')[0]}`}</Text>
+                </Text>
               </Box>
               {(c.add || c.del) > 0 && (
                 <Text size="footnote">
@@ -392,21 +407,20 @@ export function Overview($: $, v: V) {
                   <Text color={t.bad}>{` −${c.del}`}</Text>
                 </Text>
               )}
-              <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
             </Box>
           ))}
           {changed > 5 && <Text color={t.dim} size="footnote">{`+ ${changed - 5} more in Git`}</Text>}
         </Box>
       )}
-      {flows.length > 1 && (
+      {flows.length > 0 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-            <Fold k="flows" label={`Flows (${flows.length})`} can={flows.length > 3} />
+            <Fold k="flows" label="Earlier flows" n={flows.length} can={flows.length > 3} />
             <Text size="footnote">
-              <Text color={t.dim}>{`${fmt(totals.ms)} · `}</Text>
+              <Text color={t.faint}>{`total ${fmt(totals.ms)} · `}</Text>
               <Text color={t.ok}>{`+${totals.add}`}</Text>
               <Text color={t.bad}>{` −${totals.del}`}</Text>
-              <Text color={t.dim}>{` · ${totals.commits} commit${totals.commits === 1 ? '' : 's'}`}</Text>
+              {totals.commits > 0 && <Text color={t.dim}>{` · ${totals.commits} commit${totals.commits === 1 ? '' : 's'}`}</Text>}
             </Text>
           </Box>
           {(isOpen('flows') ? flows : flows.slice(0, 3)).map(f => {
@@ -417,32 +431,20 @@ export function Overview($: $, v: V) {
             const fp = progressOf(f.task, f.reached, live, f.kind, f.plan, f.steps)
             return (
               <Box key={`fl-${f.id}`} flexDirection="column">
-                <Box columnGap={sp(v, 1)}>
-                  <Text color={col}>{live ? '●' : f.status === 'done' ? '✓' : '✕'}</Text>
-                  <Text color={live ? t.busy : t.dim} size="footnote" mono>{fmt(took)}</Text>
+                <Box columnGap={sp(v, 1)} alignItems="center">
+                  <Text color={f.status === 'done' ? t.faint : col}>{live ? '●' : f.status === 'done' ? '✓' : '✕'}</Text>
                   <Box flexGrow={1} flexShrink={1}>
                     <Button key={`flb-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFlow: open ? '' : f.id } }))}>
                       <Text color={live ? t.text : t.text} bold={live} wrap="truncate-end">{f.task}</Text>
                     </Button>
                   </Box>
-                  {w >= 40 && <Text mono>
-                    {fp.steps.map((x, i) => (
-                      <Text key={`fs-${f.id}-${i}`} color={x.st === 'active' ? t.busy : x.st === 'done' ? t.ok : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
-                    ))}
-                  </Text>}
                   {(f.turns ?? 1) > 1 && <Text color={t.dim} size="footnote">{`×${f.turns}`}</Text>}
-                  <Text color={t.dim} size="footnote">{`${fp.pct}%`}</Text>
-                  {(f.add || f.del) > 0 && (
-                    <Text size="footnote">
-                      <Text color={t.ok}>{`+${f.add}`}</Text>
-                      <Text color={t.bad}>{` −${f.del}`}</Text>
-                    </Text>
-                  )}
+                  {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
                   {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
                 </Box>
                 {open && (
                   <Box flexDirection="column" paddingLeft={2}>
-                    <Text color={t.dim} size="footnote" wrap="wrap">{`${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
+                    <Text color={t.dim} size="footnote" wrap="wrap">{`${fmt(took)} · ${fp.pct}% · ${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
                     <Text color={t.dim} size="footnote">{`${(f.turns ?? 1) > 1 ? `${f.turns} turns · ` : ''}${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
                   </Box>
                 )}
@@ -455,7 +457,7 @@ export function Overview($: $, v: V) {
       {s.past.length > 0 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-            <Fold k="past" label={`Earlier sessions (${s.past.length})`} />
+            <Fold k="past" label="Earlier sessions" n={s.past.length} />
           </Box>
           {isOpen('past') && s.past.slice(-8).reverse().map(f => (
             <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
@@ -474,15 +476,16 @@ export function Overview($: $, v: V) {
         <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
           <Box columnGap={sp(v, 1)}>
             <Fold k="ctx" label="Context" />
-            <Text>
-              <Text color={s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.ok}>{kTok(used)}</Text>
-              <Text color={t.dim}>{` / ${kTok(win)} · ${s.ctx.pct}%`}</Text>
-            </Text>
+            <Text color={ctxCol} size="footnote" bold>{`${s.ctx.pct}%`}</Text>
           </Box>
           {!s.ui.confirmClear && (
             <Box columnGap={sp(v, 1)}>
-              <Button key="ctx-compact" label="Compact" plain onPress={() => compactNow($)} />
-              <Button key="ctx-clear" label="Clear" plain onPress={() => set($, st => ({ ui: { ...st.ui, confirmClear: true } }))} />
+              <Button key="ctx-compact" plain onPress={() => compactNow($)}>
+                <Text color={t.dim} size="footnote">Compact</Text>
+              </Button>
+              <Button key="ctx-clear" plain onPress={() => set($, st => ({ ui: { ...st.ui, confirmClear: true } }))}>
+                <Text color={t.dim} size="footnote">Clear</Text>
+              </Button>
             </Box>
           )}
         </Box>
@@ -490,6 +493,7 @@ export function Overview($: $, v: V) {
         {s.ctx.pct >= 80 && <Text color={t.bad} size="footnote">Auto-compact is about to run.</Text>}
         {isOpen('ctx') && (
           <Box flexWrap="wrap" columnGap={sp(v, 3)}>
+            <Text color={t.dim}>{`${kTok(used)} of ${kTok(win)}`}</Text>
             {s.ctx.segs.map(([name, n], i) => (
               <Text key={`lg-${name}`}>
                 <Text color={shades[i] ?? t.faint}>■ </Text>
@@ -511,27 +515,25 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
-          <Fold k="dec" label={`Decisions${decs.length ? ` (${decs.length})` : ''}`} />
-          <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me'], ['off', 'Off']]} onPick={k => set($, { mode: k })} />
+          <Fold k="dec" label="Decisions" {...(decs.length ? { n: decs.length } : {})} />
+          {!isOpen('dec') && <Text color={t.faint} size="footnote">{s.mode === 'auto' ? 'Judges decide' : s.mode === 'ask' ? 'Judges advise' : 'Judges off'}</Text>}
         </Box>
+        {isOpen('dec') && <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me'], ['off', 'Off']]} onPick={k => set($, { mode: k })} />}
         {isOpen('dec') && <Text color={t.dim} size="footnote" wrap="wrap">{s.mode === 'off' ? 'Judges off: every question and next step is yours, with no advice.' : `${s.mode === 'auto' ? 'The judges answer questions and next steps; anything hard to undo, a split, or a fourth in a row comes to you with their advice.' : 'Every question and next step is yours; the judges say what they recommend.'} Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass.`}</Text>}
         {(isOpen('dec') ? decs : decs.slice(0, 3)).map(d => {
           const tl = tally(d)
           const open = s.ui.openDec === d.id
           return (
             <Box key={`dec-${d.id}`} flexDirection="column">
-              <Box justifyContent="space-between" columnGap={sp(v, 2)}>
+              <Box justifyContent="space-between" columnGap={sp(v, 2)} alignItems="center">
                 <Box flexGrow={1} flexShrink={1}>
                   <Button key={`decb-${d.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openDec: open ? '' : d.id } }))}>
                     <Text color={t.text} wrap="truncate-end">{d.q}</Text>
                   </Button>
                 </Box>
-                <Text color={d.status === 'you' ? t.dim : t.deep}>{`${d.kind === 'next' ? 'next step · ' : ''}${d.status === 'you' ? 'you' : `${d.votes.length || '…'} judges`}`}</Text>
+                <Text color={d.status === 'decided' ? t.ok : d.status === 'split' ? t.busy : d.status === 'you' ? t.dim : d.status === 'advised' ? t.accent : t.deep} size="footnote">{d.result || (d.status === 'you' ? 'yours' : d.status === 'scoring' ? 'scoring…' : `voting ${tl.revealed}/${tl.n}`)}</Text>
               </Box>
-              <Box justifyContent="space-between">
-                <Text color={d.status === 'decided' ? t.ok : d.status === 'split' ? t.busy : d.status === 'you' ? t.text : d.status === 'advised' ? t.accent : t.deep} wrap="truncate-end">{[d.result, d.advice && d.status !== 'advised' ? `· ${d.advice}` : d.advice].filter(Boolean).join(' ') || (d.status === 'scoring' ? 'Scoring complexity…' : `Voting ${tl.revealed}/${tl.n}`)}</Text>
-                <Text color={t.dim}>{fmt(d.at - (s.decisions[0]?.at ?? d.at))}</Text>
-              </Box>
+              {open && d.advice && <Text color={t.dim} size="footnote" wrap="wrap">{d.advice}</Text>}
               {open && (
                 <Box flexDirection="column" paddingLeft={2}>
                   <Box gap={sp(v, 1)}>

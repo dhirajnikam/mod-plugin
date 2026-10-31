@@ -110,7 +110,10 @@ test('Ask me sends every question to you with the judges\' advice; Off runs no j
   expect(log.toasts).toContain('◆ Judges recommend "a" · 3/3')
   const ui = await $.ui.mount(pane('overview') as never)
   const d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('You chose · b · Judges recommend')
+  // One line a decision: what you chose; the judges' advice opens with it
+  expect(d).toContain('You chose · b')
+  await ui.press({ key: (JSON.stringify(d).match(/decb-[^"\\]+/) ?? [''])[0] })
+  expect(JSON.stringify(await ui.drawn())).toContain('Judges recommend')
   await ui.unmount()
   await $.command.run({ command: 'cockpit', args: 'mode off' } as never)
   const scored = log.scored
@@ -311,7 +314,8 @@ test('file operations build the Files tab, the chat cards and the progress steps
   const ov = await $.ui.mount(pane('overview') as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const od = JSON.stringify(await ov.drawn())
-  expect(od).toContain('Flows (2)')
+  // The current flow is the hero; the list holds the ones before it
+  expect(od).toContain('EARLIER FLOWS')
   expect(od).toContain('add rate limiting')
   expect(od).toContain('second task')
   expect(od).toContain('"✓"')
@@ -349,7 +353,7 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   expect(d).toContain(' Commit ')
   // Explore was skipped (the edit came first): left out of the count, 2 of 4 steps
   expect(d).toContain('"50%"')
-  expect(d).toContain(' · 1 skipped')
+  expect(d).toContain('"strikethrough":true')
   await ui.unmount()
   // Verify run between turns reaches the closed flow too
   await $.command.run({ command: 'cockpit', args: 'test' } as never)
@@ -380,10 +384,10 @@ test('each prompt gets steps written for its task, moved by the kind of work don
   await ui.press({ key: 'flow-pick' })
   d = JSON.stringify(await ui.drawn())
   expect(d).toContain('steps written for this task')
-  expect(d).toContain('0 of 3 steps done')
+  expect(d).toContain('"0%"')
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/limit.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
   d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('1 of 3 steps done')
+  expect(d).toMatch(/"[1-9]\d?%"/)
   // A template picked by hand stands over them
   await ui.press({ key: 'flow-build' })
   expect(JSON.stringify(await ui.drawn())).toContain('steps from the Build flow, your pick')
@@ -402,14 +406,14 @@ test("while Claude keeps a task list, the flow's steps are its tasks and progres
   const ui = await $.ui.mount(pane('overview') as never)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain(' Add the limiter ')
-  expect(d).toContain('1 of 3 steps done · 1 in progress')
+  expect(d).toContain('"50%"')
   await ui.press({ key: 'flow-pick' })
   expect(JSON.stringify(await ui.drawn())).toContain("steps from Claude's task list")
   // One task at a time: a new task joins, and an update moves it
   await $.tool.call({ tool: 'TaskCreate', tool_use_id: 'tc1', subject: 'Update the docs', description: 'x' } as never)
   await $.tool.call({ tool: 'TaskUpdate', tool_use_id: 'tu1', taskId: 'c3', status: 'completed' } as never)
   d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('2 of 4 steps done')
+  expect(d).toContain('"63%"')
   // A template picked by hand stands over the plan; Plan takes it back
   await ui.press({ key: 'flow-build' })
   d = JSON.stringify(await ui.drawn())
@@ -555,12 +559,14 @@ test('the context and cost come from the session usage', async ($, on) => {
   await $.session.measure({} as never)
   const ui = await $.ui.mount(pane('overview') as never)
   const drawn = JSON.stringify(await ui.drawn())
-  expect(drawn).toContain('50k')
+  expect(drawn).toContain('"25%"')
   expect(drawn).toContain('$1.50')
-  // The breakdown folds under the bar
+  // The tokens and their breakdown fold under the bar
   expect(drawn).not.toContain('Messages')
   await ui.press({ key: 'fold-ctx' })
-  expect(JSON.stringify(await ui.drawn())).toContain('Messages')
+  const open = JSON.stringify(await ui.drawn())
+  expect(open).toContain('Messages')
+  expect(open).toContain('50k of 200k')
   await ui.unmount()
 })
 
@@ -582,13 +588,13 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   await b.unmount()
   let ov = await $.ui.mount(pane('overview') as never)
   let od = JSON.stringify(await ov.drawn())
-  expect(od).toContain('◎ Goal ')
+  expect(od).toContain('◎ ')
   expect(od).toContain('all tests pass')
   // One flow is the current one: no list of flows yet, its turns on the goal line
-  expect(od).not.toContain('Flows (')
+  expect(od).not.toContain('EARLIER FLOWS')
   expect(od).toContain(' · turn 2')
   // The repository's changes, in a card of their own
-  expect(od).toContain('Changed files (1) ')
+  expect(od).toContain('CHANGED FILES')
   expect(od).toContain('a.txt')
   await ov.press({ key: 'changed-git' })
   expect(JSON.stringify(await ov.drawn())).toContain('Branch pattern')
@@ -601,11 +607,11 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   await end()
   ov = await $.ui.mount(pane('overview') as never)
   od = JSON.stringify(await ov.drawn())
-  expect(od).toContain('Flows (2)')
+  expect(od).toContain('EARLIER FLOWS')
   expect(od).toContain('fix the login page')
-  // Two flows fit in the list: its title is no fold, as pressing it would change nothing
+  // One earlier flow fits in the list: its title is no fold, as pressing it would change nothing
   expect(od).not.toContain('fold-flows')
-  expect(od).not.toContain('◎ Goal ')
+  expect(od).not.toContain('◎ ')
   await ov.unmount()
 })
 
@@ -633,7 +639,8 @@ test("the Overview shows the current flow's last failed tool call, and the teste
   const ui = await $.ui.mount(pane('overview') as never)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('✕ Bash ')
-  expect(d).toContain('Error: 2 tests failed · ')
+  expect(d).toContain('CHECKS · FAILING')
+  expect(d).toContain('Error: 2 tests failed')
   expect(d).not.toContain('at x')
   // A new flow starts clean
   await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1 } as never)
