@@ -313,9 +313,9 @@ test('file operations build the Files tab, the chat cards and the progress steps
 test('each prompt picks a flow; a question reaches Answer at turn end, a build waits for its commit', async ($, on) => {
   // No steps written for the task: the templates stand
   stand($, on, { noSteps: true })
-  // Before the first prompt the Overview lists the predefined flows
+  // Before the first prompt the Overview asks for one
   let ui = await $.ui.mount(pane('overview') as never)
-  expect(JSON.stringify(await ui.drawn())).toContain('Understand › Explore › Answer')
+  expect(JSON.stringify(await ui.drawn())).toContain('No task yet: send a prompt.')
   await ui.unmount()
   await $.prompt.submit({ text: 'what does the band draw?', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   await $.tool.call({ tool: 'Read', file_path: '/repo/src/app.ts', tool_use_id: 'r1' } as never)
@@ -336,7 +336,7 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   expect(d).toContain(' Commit ')
   // Explore was skipped (the edit came first): left out of the count, 2 of 4 steps
   expect(d).toContain('"50%"')
-  expect(d).toContain('1 skipped, not counted')
+  expect(d).toContain(' · 1 skipped')
   await ui.unmount()
   // Verify run between turns reaches the closed flow too
   await $.command.run({ command: 'cockpit', args: 'test' } as never)
@@ -346,6 +346,7 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   const r = await $.command.run({ command: 'cockpit', args: 'flow answer' } as never)
   expect(JSON.stringify(r)).toContain('Answer flow')
   expect(JSON.stringify(await ui.drawn())).toContain('Answer flow')
+  await ui.press({ key: 'flow-pick' })
   await ui.press({ key: 'flow-docs' })
   expect(JSON.stringify(await ui.drawn())).toContain('Docs flow')
   expect(JSON.stringify(await $.command.run({ command: 'cockpit', args: 'flow nope' } as never))).toContain('Flows: build')
@@ -361,6 +362,10 @@ test('each prompt gets steps written for its task, moved by the kind of work don
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain(' Read the limiter code ')
   expect(d).toContain(' Add the rate limit ')
+  // Where the steps come from, and the picker, fold away under the progress line
+  expect(d).not.toContain('steps written for this task')
+  await ui.press({ key: 'flow-pick' })
+  d = JSON.stringify(await ui.drawn())
   expect(d).toContain('steps written for this task')
   expect(d).toContain('0 of 3 steps done')
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/limit.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
@@ -384,10 +389,9 @@ test("while Claude keeps a task list, the flow's steps are its tasks and progres
   const ui = await $.ui.mount(pane('overview') as never)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain(' Add the limiter ')
-  expect(d).toContain('1 of 3 steps done')
-  expect(d).toContain(' + 1 in progress at ½')
-  expect(d).toContain(' = 50%')
-  expect(d).toContain("steps from Claude's task list")
+  expect(d).toContain('1 of 3 steps done · 1 in progress')
+  await ui.press({ key: 'flow-pick' })
+  expect(JSON.stringify(await ui.drawn())).toContain("steps from Claude's task list")
   // One task at a time: a new task joins, and an update moves it
   await $.tool.call({ tool: 'TaskCreate', tool_use_id: 'tc1', subject: 'Update the docs', description: 'x' } as never)
   await $.tool.call({ tool: 'TaskUpdate', tool_use_id: 'tu1', taskId: 'c3', status: 'completed' } as never)
@@ -540,7 +544,10 @@ test('the context and cost come from the session usage', async ($, on) => {
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('50k')
   expect(drawn).toContain('$1.50')
-  expect(drawn).toContain('Messages')
+  // The breakdown folds under the bar
+  expect(drawn).not.toContain('Messages')
+  await ui.press({ key: 'fold-ctx' })
+  expect(JSON.stringify(await ui.drawn())).toContain('Messages')
   await ui.unmount()
 })
 
@@ -564,8 +571,9 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   let od = JSON.stringify(await ov.drawn())
   expect(od).toContain('◎ Goal ')
   expect(od).toContain('all tests pass')
-  expect(od).toContain('Flows (1)')
-  expect(od).toContain('×2')
+  // One flow is the current one: no list of flows yet, its turns on the goal line
+  expect(od).not.toContain('Flows (')
+  expect(od).toContain(' · turn 2')
   // The repository's changes, in a card of their own
   expect(od).toContain('Changed files (1) ')
   expect(od).toContain('a.txt')
@@ -593,6 +601,7 @@ test("a shell command's edits count in the flow's +/−", async ($, on) => {
   numstat = '4\t2\ta.txt\0'
   await $.tool.call({ tool: 'Bash', command: "sed -i '' s/x/y/ a.txt", tool_use_id: 'b1' } as never)
   await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
+  await $.prompt.submit({ text: 'next thing', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   const ov = await $.ui.mount(pane('overview') as never)
   const od = JSON.stringify(await ov.drawn())
   // 3 lines added and 2 deleted since the turn started, not the file's whole diff

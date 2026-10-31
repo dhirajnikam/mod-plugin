@@ -145,7 +145,8 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   const ov = await $.ui.mount(PANE as never)
   const od = JSON.stringify(await ov.drawn())
   expect(od).toContain('Earlier sessions (1)')
-  expect(od).toContain('an older task')
+  await ov.press({ key: 'fold-past' })
+  expect(JSON.stringify(await ov.drawn())).toContain('an older task')
   await ov.unmount()
   // Focus switched on is kept for the next session
   await $.command.run({ command: 'cockpit', args: 'focus on' } as never)

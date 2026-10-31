@@ -246,15 +246,25 @@ export function Overview($: $, v: V) {
   const p = progress(s)
   const cur = s.flows[s.flows.length - 1]
   const changed = s.repo.changed.length
-  const needs = s.waiting ? 'Claude is waiting for your answer in the chat.' : s.pending ? `Commit "${s.pending.msg}" → ${s.pending.branch}?` : !s.isWorking && changed ? `${changed} files ready to commit.` : ''
+  const needs = s.waiting ? 'Claude is waiting for your answer in the chat.' : s.pending ? `Commit "${s.pending.msg}" → ${s.pending.branch}?` : ''
   const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
   const dels = s.repo.changed.reduce((a, c) => a + c.del, 0)
-  const diff = adds || dels ? `+${adds} −${dels}` : '—'
   const shades = ctxShades(t)
   const used = s.ctx.used
   const win = s.ctx.window || 200000
   const decs = s.decisions.slice().reverse()
   const flows = s.flows.slice().reverse()
+  // Folded sections, kept with the tree's folds: true opens one
+  const isOpen = (k: string) => !!s.ui.collapsed[`ov-${k}`]
+  const toggle = (k: string) => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [`ov-${k}`]: !st.ui.collapsed[`ov-${k}`] } } }))
+  const Fold = ({ k, label }: { k: string; label: string }) => (
+    <Button key={`fold-${k}`} plain onPress={() => toggle(k)}>
+      <Text>
+        <Text color={t.faint}>{isOpen(k) ? '⌄ ' : '› '}</Text>
+        <Text color={t.text} weight="semibold">{label}</Text>
+      </Text>
+    </Button>
+  )
   const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
@@ -264,13 +274,11 @@ export function Overview($: $, v: V) {
             <Text color={t.busy} bold>NEEDS YOU</Text>
             <Text color={t.text}>{needs}</Text>
           </Box>
-          {s.pending ? (
+          {s.pending && (
             <Box gap={sp(v, 1)}>
               <Button key="needs-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
               <Button key="needs-skip" label="Skip" onPress={() => skipPending($)} />
             </Box>
-          ) : (
-            !s.waiting && <Button key="needs" label="Open Git" variant="primary" onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />
           )}
         </Box>
       )}
@@ -308,7 +316,7 @@ export function Overview($: $, v: V) {
             {s.isWorking && s.activity && <Text color={t.dim}>{` · ${s.activity}`}</Text>}
           </Text>
           <Box columnGap={sp(v, 3)} flexWrap="wrap">
-            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Changes', diff, adds || dels ? t.ok : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
+            {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
                 <Text color={t.dim} size="footnote">{label}</Text>
                 <Text color={c} bold>{val}</Text>
@@ -327,17 +335,17 @@ export function Overview($: $, v: V) {
       </Box>
       {s.flows.length > 0 && (
         <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
-          <Text color={t.dim} size="footnote">Flow</Text>
-          <Seg v={v} id="flow" value={p.flow.name} items={[...(s.flows[s.flows.length - 1]?.plan?.length ? [['plan', 'Plan'] as [string, string]] : []), ...(s.flows[s.flows.length - 1]?.steps?.length ? [['task', 'Task'] as [string, string]] : []), ...FLOWS.map(f => [f.name, f.label] as [string, string])]} onPick={k => pickFlow($, k)} />
+          <Text color={t.dim} size="footnote">{`${p.done} of ${p.total} steps done${p.active ? ` · ${p.active} in progress` : ''}${p.skipped ? ` · ${p.skipped} skipped` : ''}`}</Text>
+          <Button key="flow-pick" plain onPress={() => toggle('flowpick')}>
+            <Text color={t.faint} size="footnote">{isOpen('flowpick') ? '⌄ flow' : '› flow'}</Text>
+          </Button>
         </Box>
       )}
-      {s.flows.length > 0 && (
-        <Text size="footnote" wrap="wrap">
-          <Text color={t.dim}>{`${p.done} of ${p.total} steps done${p.skipped ? ` (${p.skipped} skipped, not counted)` : ''}`}</Text>
-          {p.active > 0 && <Text color={t.busy}>{` + ${p.active} in progress at ½`}</Text>}
-          <Text color={t.dim}>{` = ${p.pct}%  ·  `}</Text>
-          <Text color={t.faint}>{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${s.flows[s.flows.length - 1]?.kind ? ', your pick' : ''}`}</Text>
-        </Text>
+      {s.flows.length > 0 && isOpen('flowpick') && (
+        <Box flexDirection="column">
+          <Seg v={v} id="flow" value={p.flow.name} items={[...(cur?.plan?.length ? [['plan', 'Plan'] as [string, string]] : []), ...(cur?.steps?.length ? [['task', 'Task'] as [string, string]] : []), ...FLOWS.map(f => [f.name, f.label] as [string, string])]} onPick={k => pickFlow($, k)} />
+          <Text color={t.faint} size="footnote">{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${cur?.kind ? ', your pick' : ''}`}</Text>
+        </Box>
       )}
       {changed > 0 && (
         <Box flexDirection="column">
@@ -349,7 +357,7 @@ export function Overview($: $, v: V) {
             </Text>
             <Button key="changed-git" label="Open Git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />
           </Box>
-          {s.repo.changed.slice(0, 8).map(c => (
+          {s.repo.changed.slice(0, 5).map(c => (
             <Box key={`ovc-${c.path}`} columnGap={sp(v, 1)}>
               <Box flexGrow={1} flexShrink={1}>
                 <Text color={t.text} wrap="truncate-start">{c.path}</Text>
@@ -363,25 +371,13 @@ export function Overview($: $, v: V) {
               <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
             </Box>
           ))}
-          {changed > 8 && <Text color={t.dim} size="footnote">{`+ ${changed - 8} more in Git`}</Text>}
+          {changed > 5 && <Text color={t.dim} size="footnote">{`+ ${changed - 5} more in Git`}</Text>}
         </Box>
       )}
-      {flows.length === 0 && (
-        <Box flexDirection="column">
-          <Text color={t.text} weight="semibold">Flows</Text>
-          {FLOWS.map(f => (
-            <Text key={`fd-${f.name}`} wrap="wrap">
-              <Text color={t.accent}>{f.label}</Text>
-              <Text color={t.dim}>{` · ${f.steps.join(' › ')} · ${f.what}`}</Text>
-            </Text>
-          ))}
-          <Text color={t.dim} size="footnote" wrap="wrap">Each prompt picks a flow from its words; a step reached beyond it is added, and a question that edits files becomes a Build. Once Claude writes a task list, its tasks become the steps, live.</Text>
-        </Box>
-      )}
-      {flows.length > 0 && (
+      {flows.length > 1 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-            <Text color={t.text} weight="semibold">{`Flows (${flows.length})`}</Text>
+            <Fold k="flows" label={`Flows (${flows.length})`} />
             <Text size="footnote">
               <Text color={t.dim}>{`${fmt(totals.ms)} · `}</Text>
               <Text color={t.ok}>{`+${totals.add}`}</Text>
@@ -389,7 +385,7 @@ export function Overview($: $, v: V) {
               <Text color={t.dim}>{` · ${totals.commits} commit${totals.commits === 1 ? '' : 's'}`}</Text>
             </Text>
           </Box>
-          {flows.map(f => {
+          {(isOpen('flows') ? flows : flows.slice(0, 3)).map(f => {
             const open = s.ui.openFlow === f.id
             const live = f.status === 'running'
             const col = live ? t.busy : f.status === 'done' ? t.ok : t.bad
@@ -429,15 +425,15 @@ export function Overview($: $, v: V) {
               </Box>
             )
           })}
+          {!isOpen('flows') && flows.length > 3 && <Text color={t.faint} size="footnote">{`+ ${flows.length - 3} earlier`}</Text>}
         </Box>
       )}
       {s.past.length > 0 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-            <Text color={t.text} weight="semibold">{`Earlier sessions (${s.past.length})`}</Text>
-            <Text color={t.faint} size="footnote">kept in .cockpit/history.json</Text>
+            <Fold k="past" label={`Earlier sessions (${s.past.length})`} />
           </Box>
-          {s.past.slice(-8).reverse().map(f => (
+          {isOpen('past') && s.past.slice(-8).reverse().map(f => (
             <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
               <Text color={f.status === 'done' ? t.ok : t.bad}>{f.status === 'done' ? '✓' : '✕'}</Text>
               <Text color={t.faint} size="footnote" mono>{fmt((f.endedAt ?? f.startedAt) - f.startedAt)}</Text>
@@ -450,26 +446,15 @@ export function Overview($: $, v: V) {
           ))}
         </Box>
       )}
-      <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
-        <Box justifyContent="space-between">
-          <Text color={t.text} weight="semibold">Context window</Text>
-          <Text>
-            <Text color={s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.ok}>{kTok(used)}</Text>
-            <Text color={t.dim}>{` / ${kTok(win)}`}</Text>
-          </Text>
-        </Box>
-        <Segs ui={v.ui} w={Math.max(10, w - 4)} track={t.track} parts={s.ctx.segs.map(([, n], i) => [n / win, shades[i] ?? t.faint])} />
-        <Box flexWrap="wrap" columnGap={sp(v, 3)}>
-          {s.ctx.segs.map(([name, n], i) => (
-            <Text key={`lg-${name}`}>
-              <Text color={shades[i] ?? t.faint}>■ </Text>
-              <Text color={t.dim}>{`${name} `}</Text>
-              <Text color={t.text}>{kTok(n)}</Text>
-            </Text>
-          ))}
-        </Box>
+      <Box flexDirection="column">
         <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
-          <Text color={s.ctx.pct >= 80 ? t.bad : t.dim} size="footnote">{s.ctx.pct >= 80 ? 'Auto-compact is about to run.' : `${kTok(Math.max(0, win - used))} free · ${s.ctx.pct}% used`}</Text>
+          <Box columnGap={sp(v, 1)}>
+            <Fold k="ctx" label="Context" />
+            <Text>
+              <Text color={s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.ok}>{kTok(used)}</Text>
+              <Text color={t.dim}>{` / ${kTok(win)} · ${s.ctx.pct}%`}</Text>
+            </Text>
+          </Box>
           {!s.ui.confirmClear && (
             <Box columnGap={sp(v, 1)}>
               <Button key="ctx-compact" label="Compact" plain onPress={() => compactNow($)} />
@@ -477,6 +462,19 @@ export function Overview($: $, v: V) {
             </Box>
           )}
         </Box>
+        <Segs ui={v.ui} w={Math.max(10, w)} track={t.track} parts={s.ctx.segs.map(([, n], i) => [n / win, shades[i] ?? t.faint])} />
+        {s.ctx.pct >= 80 && <Text color={t.bad} size="footnote">Auto-compact is about to run.</Text>}
+        {isOpen('ctx') && (
+          <Box flexWrap="wrap" columnGap={sp(v, 3)}>
+            {s.ctx.segs.map(([name, n], i) => (
+              <Text key={`lg-${name}`}>
+                <Text color={shades[i] ?? t.faint}>■ </Text>
+                <Text color={t.dim}>{`${name} `}</Text>
+                <Text color={t.text}>{kTok(n)}</Text>
+              </Text>
+            ))}
+          </Box>
+        )}
         {s.ui.confirmClear && (
           <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
             <Text color={t.busy} size="footnote" wrap="wrap">Clear the conversation? Claude starts afresh; the transcript stays in your history.</Text>
@@ -489,13 +487,11 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
-          <Text color={t.text} bold weight="semibold">Decisions</Text>
+          <Fold k="dec" label={`Decisions${decs.length ? ` (${decs.length})` : ''}`} />
           <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me'], ['off', 'Off']]} onPick={k => set($, { mode: k })} />
         </Box>
-        <Text color={t.dim} size="footnote" wrap="wrap">{s.mode === 'off' ? 'Judges off: every question and next step is yours, with no advice.' : `${s.mode === 'auto' ? 'The judges answer questions and next steps; anything hard to undo, a split, or a fourth in a row comes to you with their advice.' : 'Every question and next step is yours; the judges say what they recommend.'} Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass.`}</Text>
-        {decs.length === 0 && <Text color={t.dim}>None yet.</Text>}
-        <Rule v={v} />
-        {decs.map(d => {
+        {isOpen('dec') && <Text color={t.dim} size="footnote" wrap="wrap">{s.mode === 'off' ? 'Judges off: every question and next step is yours, with no advice.' : `${s.mode === 'auto' ? 'The judges answer questions and next steps; anything hard to undo, a split, or a fourth in a row comes to you with their advice.' : 'Every question and next step is yours; the judges say what they recommend.'} Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass.`}</Text>}
+        {(isOpen('dec') ? decs : decs.slice(0, 3)).map(d => {
           const tl = tally(d)
           const open = s.ui.openDec === d.id
           return (
@@ -537,10 +533,10 @@ export function Overview($: $, v: V) {
                   <Text color={t.dim}>{d.opts.map((o, i) => `${i + 1}. ${o} (${tl.counts[i] ?? 0})`).join('   ')}</Text>
                 </Box>
               )}
-              <Rule v={v} />
             </Box>
           )
         })}
+        {!isOpen('dec') && decs.length > 3 && <Text color={t.faint} size="footnote">{`+ ${decs.length - 3} earlier`}</Text>}
       </Box>
     </Box>
   )
