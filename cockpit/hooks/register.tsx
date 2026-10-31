@@ -272,8 +272,12 @@ export const register: Register = on => {
       const what = String(input.file_path ?? input.pattern ?? input.command ?? input.description ?? '').split('\n')[0]?.slice(0, 80) ?? ''
       await set($, s => ({ agents: s.agents.map(a => (a.id === e.agentId ? { ...a, tools: a.tools + 1, log: [...a.log, { at: now, t: `${e.tool} ${what}` }].slice(-40) } : a)) }))
       const r = await next(e)
-      // The codebase memory follows every edit, an agent's too
-      if (/^(Edit|Write|NotebookEdit|MultiEdit)$/.test(e.tool)) await updateMemory($, String(input.file_path ?? input.notebook_path ?? ''))
+      // The codebase memory follows every edit, an agent's too, and the running flow counts its lines
+      if (!r.deny && !r.isError && /^(Edit|Write|NotebookEdit|MultiEdit)$/.test(e.tool)) {
+        await updateMemory($, String(input.file_path ?? input.notebook_path ?? ''))
+        const op = toOp(e.tool, input, e.tool_use_id ?? `op${now}`, now)
+        if (op) await set($, s => ({ flows: s.flows.map((f, i) => (i === s.flows.length - 1 && f.status === 'running' ? { ...f, add: f.add + op.add, del: f.del + op.del } : f)) }))
+      }
       return r
     }
     const op = toOp(e.tool, input, e.tool_use_id ?? `op${now}`, now)
@@ -307,28 +311,28 @@ export const register: Register = on => {
   // Claude's own task list: while it keeps one, the current flow's steps are its tasks, live
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
     const r = await next(e)
-    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    await trackPlan($, e.tool, e, r, e.agentId)
     return r
   }).catch(($, e, next) => next(e))
   on('tool.call', { tool: 'TaskCreate' }, async ($, e, next) => {
     const r = await next(e)
-    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    await trackPlan($, e.tool, e, r, e.agentId)
     return r
   }).catch(($, e, next) => next(e))
   on('tool.call', { tool: 'TaskUpdate' }, async ($, e, next) => {
     const r = await next(e)
-    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    await trackPlan($, e.tool, e, r, e.agentId)
     return r
   }).catch(($, e, next) => next(e))
   // This app's own task list, and the wrap-up that ticks it off
   on('tool.call', { tool: 'mcp__ccd_turn__update_plan' }, async ($, e, next) => {
     const r = await next(e)
-    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    await trackPlan($, e.tool, e, r, e.agentId)
     return r
   }).catch(($, e, next) => next(e))
   on('tool.call', { tool: 'mcp__ccd_turn__wrap_up' }, async ($, e, next) => {
     const r = await next(e)
-    if (!e.agentId) await trackPlan($, e.tool, e, r)
+    await trackPlan($, e.tool, e, r, e.agentId)
     // Its question goes to the judges, in the background: the turn ends as it would
     if (!e.agentId) void judgeNext($, e as unknown as Record<string, unknown>).catch(() => null)
     return r
@@ -819,9 +823,11 @@ export const register: Register = on => {
 }
 
 // The current flow's plan after one of Claude's plan tools ran (a refused call changes nothing)
-async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknown) {
+// A task list kept by the main loop is the current flow's; one a subagent keeps is that agent's own, its progress
+async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknown, agentId?: string) {
   if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny)) return
   const result = 'result' in r ? (r as { result?: unknown }).result : undefined
+  if (agentId) return set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, plan: applyPlan(a.plan ?? [], tool, e as Record<string, unknown>, result) } : a)) }))
   await set($, s => ({
     flows: s.flows.map((f, i) => (i === s.flows.length - 1 ? { ...f, plan: applyPlan(f.plan ?? [], tool, e as Record<string, unknown>, result, s.flows.slice(0, -1).map(x => x.plan ?? [])) } : f)),
   }))

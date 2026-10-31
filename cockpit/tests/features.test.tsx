@@ -668,3 +668,38 @@ test('a judge whose reply names no option abstains; it never counts for the firs
   expect(d).toContain('"–"')
   await ui.unmount()
 })
+
+test("a subagent's task list is its tracker, in the Overview and the Agents tab, and its edits count in the flow", async ($, on) => {
+  stand($, on, { tick: true })
+  await $.prompt.submit({ text: 'tidy the auth module', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.command.run({ command: 'cockpit', args: 'run builder -- tidy auth' } as never)
+  await $.tool.call({ tool: 'TodoWrite', agentId: 'ag1', tool_use_id: 'td1', todos: [
+    { content: 'Read auth.ts', status: 'completed', activeForm: 'Reading' },
+    { content: 'Split the login handler', status: 'in_progress', activeForm: 'Splitting' },
+    { content: 'Run the tests', status: 'pending', activeForm: 'Running' },
+  ] } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/auth.ts', old_string: 'a', new_string: 'b\nc', agentId: 'ag1', tool_use_id: 'e1' } as never)
+  // The flow's own plan is left alone: the agent's list is the agent's
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ov = await $.ui.mount(pane('overview') as never)
+  let d = JSON.stringify(await ov.drawn())
+  expect(d).toContain('AGENTS')
+  expect(d).toContain('Builder')
+  expect(d).toContain('1/3  ')
+  expect(d).toContain('Split the login handler')
+  expect(d).not.toContain(' Read auth.ts ')
+  await ov.unmount()
+  const ag = await $.ui.mount(pane('agents') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  d = JSON.stringify(await ag.drawn())
+  expect(d).toContain('RUNNING')
+  expect(d).toContain('Split the login handler')
+  await ag.unmount()
+  // Its edit counted in the running flow
+  await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1 } as never)
+  await $.prompt.submit({ text: 'next', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  const ov2 = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  expect(JSON.stringify(await ov2.drawn())).toContain('+2 −1')
+  await ov2.unmount()
+})

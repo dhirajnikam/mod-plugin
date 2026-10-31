@@ -51,6 +51,8 @@ export type Agent = {
   report: string
   // A tester's run: the id of the agent whose work it tests
   for?: string
+  // The agent's own task list (TodoWrite, or TaskCreate and TaskUpdate), as its run keeps it: its progress
+  plan?: PlanItem[]
 }
 
 // A chain of experts on one task; each gets the reports of the ones before it

@@ -40,6 +40,7 @@ import {
 import {
   AGENT_TYPES,
   stepWords,
+  planProgress,
   graphRows,
   graphSvg,
   graphText,
@@ -93,6 +94,24 @@ function Bar({ ui, w, frac, fill, track }: { ui: UI; w: number; frac: number; fi
       <Text color={fill}>{'━'.repeat(n)}</Text>
       <Text color={track}>{'━'.repeat(w - n)}</Text>
     </Text>
+  )
+}
+
+// One agent's tracker: its task list as a bar with done of all and the task it is on; without a list, its current step
+function Tracker({ v, a }: { v: V; a: Agent }) {
+  const { Box, Text } = v.ui
+  const { t } = v
+  const pp = planProgress(a.plan)
+  const step = stepWords(a.log[a.log.length - 1]?.t)
+  if (!pp.total) return <Text color={t.busy} size="footnote" wrap="truncate-end">{step}</Text>
+  return (
+    <Box columnGap={v.desk ? 'sm' : 1} alignItems="center">
+      <Bar ui={v.ui} w={10} frac={pp.done / pp.total} fill={t.ok} track={t.track} />
+      <Text size="footnote" wrap="truncate-end">
+        <Text color={t.dim}>{`${pp.done}/${pp.total}  `}</Text>
+        <Text color={t.busy}>{pp.now || step}</Text>
+      </Text>
+    </Box>
   )
 }
 
@@ -378,6 +397,34 @@ export function Overview($: $, v: V) {
           <Text color={t.faint} size="footnote">{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${cur?.kind ? ', your pick' : ''}`}</Text>
         </Box>
       )}
+      {(() => {
+        const busy = s.agents.filter(a => a.status === 'running')
+        const ran = cur ? s.agents.filter(a => a.status !== 'running' && a.startedAt >= cur.startedAt) : []
+        if (!busy.length && !ran.length) return null
+        return (
+          <Box flexDirection="column">
+            <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+              <Label label="Agents" n={busy.length} />
+              <Button key="ov-agents" plain onPress={() => set($, { tab: 'agents' })}>
+                <Text color={t.accent} size="footnote">{`${ran.length ? `${ran.length} finished · ` : ''}Open Agents ›`}</Text>
+              </Button>
+            </Box>
+            {busy.slice(0, 4).map(a => (
+              <Box key={`ova-${a.id}`} columnGap={sp(v, 1)} alignItems="center">
+                <Text color={t.busy}>{expertGlyph(a.type)}</Text>
+                <Box flexShrink={0}>
+                  <Text color={t.text}>{a.name}</Text>
+                </Box>
+                <Box flexGrow={1} flexShrink={1}>
+                  <Tracker v={v} a={a} />
+                </Box>
+                <Text color={t.faint} size="footnote">{fmt(v.now - a.startedAt)}</Text>
+              </Box>
+            ))}
+            {busy.length > 4 && <Text color={t.faint} size="footnote">{`+ ${busy.length - 4} more running`}</Text>}
+          </Box>
+        )
+      })()}
       {changed > 0 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
@@ -1021,9 +1068,8 @@ export function Agents($: $, v: V) {
                       <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
                         <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
                       </Button>
-                      <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">
-                        {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${stepWords(a.log[a.log.length - 1]?.t)}` : ''}` : live ? stepWords(a.log[a.log.length - 1]?.t) : a.task}
-                      </Text>
+                      {a.for !== undefined && <Text color={t.dim} size="footnote" wrap="truncate-end">{`testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work`}</Text>}
+                      {live ? <Tracker v={v} a={a} /> : !a.for && <Text color={t.dim} size="footnote" wrap="truncate-end">{a.task}</Text>}
                       {testLine(a.id, `rl-${a.id}`)}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
@@ -1115,6 +1161,10 @@ export function Agents($: $, v: V) {
               )
             })}
           </Box>
+          {(() => {
+            const step = s.agents.find(x => x.id === pipe.agentId && x.status === 'running')
+            return step ? <Tracker v={v} a={step} /> : null
+          })()}
           {pipe.reports.length > 0 && (
             <Text size="footnote" wrap="truncate-end">
               <Text color={t.accent}>{'↳ '}</Text>

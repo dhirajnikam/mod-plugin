@@ -344,7 +344,10 @@ test('an agent made from a description joins the team, runs from its card, and i
   // Typed and sent with Enter: the form makes the agent and closes
   await (ui as any).input({ key: 'describe', text: 'check API changes for breaking changes' })
   const spec = log.specs.find(x => x.name === 'api-guard')
-  expect(spec.tools).toEqual(['Read', 'Grep'])
+  // Its own tools, plus the task list Cockpit tracks; and the rules every agent gets: a task list, git left to Cockpit
+  expect(spec.tools).toEqual(['Read', 'Grep', 'TodoWrite', 'TaskCreate', 'TaskUpdate'])
+  expect(spec.prompt).toContain('Keep a short task list')
+  expect(spec.prompt).toContain('Never commit, push')
   expect(log.store.agents).toEqual([spec])
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('Api Guard')

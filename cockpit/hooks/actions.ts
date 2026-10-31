@@ -659,6 +659,9 @@ export async function registerExperts($: $) {
   await set($, { custom })
 }
 
+// What every agent Cockpit makes is told, as the experts' own files say it
+const PLAN_TOOLS = ['TodoWrite', 'TaskCreate', 'TaskUpdate']
+const AGENT_RULES = 'Keep a short task list with your todo tool (TodoWrite, or TaskCreate and TaskUpdate): three to six steps, each marked in progress when you start it and completed when it is done. Cockpit shows it as your progress.\n\nNever commit, push, switch branches or stash: Cockpit handles git. Never touch .cockpit/.'
 type MadeAgent = { name: string; description: string; prompt: string; tools?: string[] }
 const TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch']
 
@@ -680,7 +683,8 @@ export async function createAgent($: $, describe: string) {
     if (!name || !raw.description || !raw.prompt) return toast($, r.isAnswered ? 'Could not make the agent: the definition came back incomplete' : `Could not make the agent: ${r.reason}`)
     if (EXPERTS.some(x => x.type === `cockpit:${name}`)) return toast($, `"${name}" is one of Cockpit's own experts: describe it differently`)
     const tools = (Array.isArray(raw.tools) ? raw.tools : []).filter(t => TOOLS.includes(t))
-    const spec: MadeAgent = { name, description: String(raw.description), prompt: String(raw.prompt), ...(tools.length ? { tools } : {}) }
+    // Every agent keeps a task list Cockpit can track, and leaves git to Cockpit, as the experts do
+    const spec: MadeAgent = { name, description: String(raw.description), prompt: `${String(raw.prompt).trim()}\n\n${AGENT_RULES}`, ...(tools.length ? { tools: [...new Set([...tools, ...PLAN_TOOLS])] } : {}) }
     const reg = await $.agent.register(spec).catch(e => ({ deny: String(e) }))
     if ('deny' in reg) return toast($, `Could not register the agent: ${reg.deny}`)
     const made = ((await $.store.get('agents').catch(() => undefined)) ?? []) as MadeAgent[]

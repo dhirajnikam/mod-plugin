@@ -659,6 +659,13 @@ export function graphCheck() {
 }
 
 // An agent's last step, as its log line says it ("Bash cd /x && npm test", "Edit /a/b.ts"), in plain words
+// An agent's progress from its own task list: done of all, and the task it is on (the next one when none is started)
+export function planProgress(plan: PlanItem[] = []) {
+  const done = plan.filter(p => p.st === 'completed').length
+  const now = plan.find(p => p.st === 'in_progress') ?? plan.find(p => p.st === 'pending')
+  return { done, total: plan.length, now: now?.text ?? '' }
+}
+
 export function stepWords(line?: string) {
   if (!line) return 'starting'
   const sp = line.indexOf(' ')
