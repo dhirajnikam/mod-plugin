@@ -1006,6 +1006,71 @@ export function Agents($: $, v: V) {
         <Text backgroundColor={on ? t.accent : t.track} color={on ? t.bg || 'inverseText' : t.text} bold={on}>{` ${label} `}</Text>
       </Button>
     )
+  // One run: its icon, name (a press opens its cases, report, steps and transcript), what it is doing or was asked,
+  // its state, tool calls and time, and stop or restart and ✎
+  const runRow = (a: Agent) => {
+              const open = s.ui.openAgent === a.id
+              const st = stateOf(a)
+              const live = st === 'running'
+              const failing = a.cases.filter(c => c.st === 'fail')
+              return (
+                <Box key={`ag-${a.id}`} flexDirection="column">
+                  <Box alignItems="center" columnGap={sp(v, 1)}>
+                    <Box flexShrink={0}>{icon(a.type, st, 26)}</Box>
+                    <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                      <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
+                        <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
+                      </Button>
+                      <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">
+                        {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${stepWords(a.log[a.log.length - 1]?.t)}` : ''}` : live ? stepWords(a.log[a.log.length - 1]?.t) : a.task}
+                      </Text>
+                      {testLine(a.id, `rl-${a.id}`)}
+                    </Box>
+                    <Text size="footnote" wrap="truncate-end">
+                      {!live && <Text color={colorOf(st)}>{`${word(a)} · `}</Text>}
+                      <Text color={live ? t.busy : t.dim}>{`${a.tools} tool call${a.tools === 1 ? '' : 's'} · ${took(a)}`}</Text>
+                    </Text>
+                    {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}
+                    {live ? (
+                      <Button key={`stop-${a.id}`} plain onPress={() => stopAgent($, a.id)}>
+                        <Text color={t.bad}>■</Text>
+                      </Button>
+                    ) : (
+                      <Button key={`restart-${a.id}`} plain onPress={() => rerun($, a.id, '')}>
+                        <Text color={t.dim}>↻</Text>
+                      </Button>
+                    )}
+                    <Button key={`redo-${a.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === a.id ? '' : a.id, rerunText: '' } }))}>
+                      <Text color={t.faint}>✎</Text>
+                    </Button>
+                  </Box>
+                  {s.ui.rerunFor === a.id && instructions(a.id, `Run the ${a.name.toLowerCase()} again, and…`)}
+                  {(open ? a.cases : failing).map((c, i) => (
+                    <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
+                      <Text color={c.st === 'fail' ? t.bad : c.st === 'fixed' ? t.busy : t.ok}>{`   ${c.st === 'fail' ? '✗' : c.st === 'fixed' ? '↻' : '✓'} `}</Text>
+                      <Text color={t.text}>{c.n}</Text>
+                      {c.err && <Text color={t.dim}>{` · ${c.err}`}</Text>}
+                    </Text>
+                  ))}
+                  {open && (
+                    <Box flexDirection="column" paddingLeft={2}>
+                      <Text color={t.faint} size="footnote">{a.type}</Text>
+                      {a.report !== '' && <Text color={t.dim} size="footnote" wrap="wrap">{a.report}</Text>}
+                      {a.log.slice(-8).map((l, i) => (
+                        <Text key={`log-${a.id}-${i}`} size="footnote" wrap="truncate-end">
+                          <Text color={t.faint}>{`${fmt(l.at - a.startedAt)}  `}</Text>
+                          <Text color={t.text}>{l.t}</Text>
+                        </Text>
+                      ))}
+                      <Button key={`view-${a.id}`} label="Open transcript" plain onPress={() => $.ui.view({ agentId: a.id })} />
+                    </Box>
+                  )}
+                </Box>
+              )
+  }
+  const live_ = s.agents.filter(a => a.status === 'running' && a.id !== pipe?.agentId).slice().reverse()
+  const done_ = s.agents.filter(a => a.status !== 'running').slice().reverse()
+  const allDone = !!s.ui.collapsed['ag-finished']
   const section = (label: string, extra = '') => (
     <Text size="footnote">
       <Text color={t.dim} bold>{label.toUpperCase()}</Text>
@@ -1016,18 +1081,22 @@ export function Agents($: $, v: V) {
     <Box flexDirection="column" gap={sp(v, 2)}>
       <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'sm' : 0}>
         <Box flexWrap="wrap" columnGap={sp(v, 1)}>
-          {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, pipe?.name === p.name, () => startPipeline($, p.name)))}
+          {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, false, () => startPipeline($, p.name)))}
         </Box>
-        {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', !s.ui.spawnOpen, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
+        {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', false, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
       </Box>
       {pipe && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
           <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
             <Text wrap="truncate-end">
               <Text color={t.busy} bold>{`${PIPELINES.find(p => p.name === pipe.name)?.label ?? pipe.name} pipeline`}</Text>
-              <Text color={t.dim}>{` · ${expertName(pipe.steps[pipe.index] ?? '')} · ${fmt(v.now - pipe.at)}`}</Text>
+              <Text color={t.dim}>{` · ${fmt(v.now - pipe.at)}`}</Text>
             </Text>
-            {pipe.agentId !== '' && <Button key="pipe-stop" label="■ Stop" plain onPress={() => stopAgent($, pipe.agentId)} />}
+            {pipe.agentId !== '' && (
+              <Button key="pipe-stop" plain onPress={() => stopAgent($, pipe.agentId)}>
+                <Text color={t.bad} size="footnote">■ Stop</Text>
+              </Button>
+            )}
           </Box>
           <Box alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
             {pipe.steps.map((st, i) => {
@@ -1099,6 +1168,17 @@ export function Agents($: $, v: V) {
           />
         </Box>
       )}
+      {live_.length > 0 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            {section('Running', String(live_.length))}
+            <Button key="stop-all" plain onPress={() => stopAll($)}>
+              <Text color={t.dim} size="footnote">■ Stop all</Text>
+            </Button>
+          </Box>
+          {live_.map(runRow)}
+        </Box>
+      )}
       <Box flexDirection="column" gap={sp(v, 1)}>
         {section('Team', `${team.length} agents`)}
         {team.map(x => {
@@ -1106,9 +1186,9 @@ export function Agents($: $, v: V) {
           const st = stateOf(a)
           const live = st === 'running'
           const fails = a?.cases.filter(c => c.st === 'fail').length ?? 0
-          const sub = live ? stepWords(a?.log[a.log.length - 1]?.t) : reportOf(a) || x.what
+          const sub = reportOf(a) || x.what
           const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
-          const right = !a ? '' : live ? `${copies.length > 1 ? `${copies.length} running · ` : ''}${fmt(v.now - a.startedAt)}` : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
+          const right = !a || live ? '' : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
           const ticked = !!s.ui.selected[x.type]
           const rowEl = (
             <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
@@ -1118,13 +1198,17 @@ export function Agents($: $, v: V) {
               <Box flexShrink={0}>{icon(x.type, st, 30)}</Box>
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
-                <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
-                {a && testLine(a.id, `tl-${x.type}`)}
+                <Text color={t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
+                {a && !live && testLine(a.id, `tl-${x.type}`)}
               </Box>
               {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
-              {copies.length > 0 && <Button key={`halt-${x.type}`} label="■" plain onPress={() => Promise.all(copies.map(r => stopAgent($, r.id, copies.length > 1)))} />}
-              <Button key={`edit-${x.type}`} label="✎" plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === `type:${x.type}` ? '' : `type:${x.type}`, rerunText: '' } }))} />
-              <Button key={`run-${x.type}`} label="▶" plain onPress={() => runExpert($, x.type)} />
+              {live && <Text color={t.faint} size="footnote">{`running${copies.length > 1 ? ` ×${copies.length}` : ''} ↑`}</Text>}
+              <Button key={`edit-${x.type}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === `type:${x.type}` ? '' : `type:${x.type}`, rerunText: '' } }))}>
+                <Text color={t.faint}>✎</Text>
+              </Button>
+              <Button key={`run-${x.type}`} plain onPress={() => runExpert($, x.type)}>
+                <Text color={t.dim}>▶</Text>
+              </Button>
             </Box>
           )
           return s.ui.rerunFor === `type:${x.type}` ? (
@@ -1137,73 +1221,34 @@ export function Agents($: $, v: V) {
           )
         })}
       </Box>
-      {s.agents.length > 0 && (
+      {done_.length > 0 && (
         <Box flexDirection="column" gap={sp(v, 1)}>
           <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
-            {section('Runs', `${running} running · ${finished} done · ${s.agents.length} total`)}
-            <Box columnGap={sp(v, 1)}>
-              {running > 0 && <Button key="stop-all" label="■ Stop all" plain onPress={() => stopAll($)} />}
-              {s.agents.length > running && <Button key="clear-finished" label="Clear finished" plain onPress={() => clearFinished($)} />}
-            </Box>
+            <Button key="fold-finished" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-finished': !allDone } } }))}>
+              <Text size="footnote" bold>
+                <Text color={t.faint}>{allDone || done_.length <= 3 ? '⌄ ' : '› '}</Text>
+                <Text color={t.dim}>FINISHED</Text>
+                <Text color={t.faint}>{` ${done_.length}`}</Text>
+              </Text>
+            </Button>
+            <Button key="clear-finished" plain onPress={() => clearFinished($)}>
+              <Text color={t.dim} size="footnote">Clear</Text>
+            </Button>
           </Box>
-          {s.agents
-            .slice()
-            .reverse()
-            .map(a => {
-              const open = s.ui.openAgent === a.id
-              const st = stateOf(a)
-              const live = st === 'running'
-              const failing = a.cases.filter(c => c.st === 'fail')
-              return (
-                <Box key={`ag-${a.id}`} flexDirection="column">
-                  <Box alignItems="center" columnGap={sp(v, 1)}>
-                    <Box flexShrink={0}>{icon(a.type, st, 26)}</Box>
-                    <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-                      <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
-                        <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
-                      </Button>
-                      <Text color={live ? t.busy : t.dim} size="footnote" wrap="truncate-end">
-                        {a.for ? `testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work${live ? ` · ${stepWords(a.log[a.log.length - 1]?.t)}` : ''}` : live ? stepWords(a.log[a.log.length - 1]?.t) : a.task}
-                      </Text>
-                      {testLine(a.id, `rl-${a.id}`)}
-                    </Box>
-                    <Text size="footnote" wrap="truncate-end">
-                      <Text color={colorOf(st)}>{word(a)}</Text>
-                      <Text color={t.dim}>{` · ${a.tools} tool calls · ${took(a)}`}</Text>
-                    </Text>
-                    {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}
-                    {live ? <Button key={`stop-${a.id}`} label="■" plain onPress={() => stopAgent($, a.id)} /> : <Button key={`restart-${a.id}`} label="↻" plain onPress={() => rerun($, a.id, '')} />}
-                    <Button key={`redo-${a.id}`} label="✎" plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === a.id ? '' : a.id, rerunText: '' } }))} />
-                  </Box>
-                  {s.ui.rerunFor === a.id && instructions(a.id, `Run the ${a.name.toLowerCase()} again, and…`)}
-                  {(open ? a.cases : failing).map((c, i) => (
-                    <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
-                      <Text color={c.st === 'fail' ? t.bad : c.st === 'fixed' ? t.busy : t.ok}>{`   ${c.st === 'fail' ? '✗' : c.st === 'fixed' ? '↻' : '✓'} `}</Text>
-                      <Text color={t.text}>{c.n}</Text>
-                      {c.err && <Text color={t.dim}>{` · ${c.err}`}</Text>}
-                    </Text>
-                  ))}
-                  {open && (
-                    <Box flexDirection="column" paddingLeft={2}>
-                      <Text color={t.faint} size="footnote">{a.type}</Text>
-                      {a.report !== '' && <Text color={t.dim} size="footnote" wrap="wrap">{a.report}</Text>}
-                      {a.log.slice(-8).map((l, i) => (
-                        <Text key={`log-${a.id}-${i}`} size="footnote" wrap="truncate-end">
-                          <Text color={t.faint}>{`${fmt(l.at - a.startedAt)}  `}</Text>
-                          <Text color={t.text}>{l.t}</Text>
-                        </Text>
-                      ))}
-                      <Button key={`view-${a.id}`} label="Open transcript" plain onPress={() => $.ui.view({ agentId: a.id })} />
-                    </Box>
-                  )}
-                </Box>
-              )
-            })}
+          {(allDone ? done_ : done_.slice(0, 3)).map(runRow)}
+          {!allDone && done_.length > 3 && <Text color={t.faint} size="footnote">{`+ ${done_.length - 3} earlier`}</Text>}
         </Box>
       )}
       <Box flexDirection="column">
-        <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />
-        <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />
+        <Button key="fold-settings" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-settings': !st.ui.collapsed['ag-settings'] } } }))}>
+          <Text size="footnote" bold>
+            <Text color={t.faint}>{s.ui.collapsed['ag-settings'] ? '⌄ ' : '› '}</Text>
+            <Text color={t.dim}>SETTINGS</Text>
+            <Text color={t.faint} bold={false}>{`  testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'}`}</Text>
+          </Text>
+        </Button>
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />}
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />}
       </Box>
     </Box>
   )

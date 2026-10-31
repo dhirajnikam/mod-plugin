@@ -152,6 +152,7 @@ test('a run that only read files is tested when you press Test; the setting turn
   expect(log.spawned).toEqual(['review the diff', 'Prover'])
   expect(log.prompts[1]).toContain('Reviewer (the agent whose work you are testing)')
   // Off: a run that changes files is left alone
+  await ui.press({ key: 'fold-settings' })
   await ui.press({ key: 'testagents' })
   await ui.unmount()
   await modelSpawn($, 'Explore', 'write b')
@@ -199,14 +200,18 @@ test('several agents run at once with one task, and Stop all and Clear finished 
   await run($, 'planner')
   const ui = await $.ui.mount(agentsPane as never)
   let d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('3 running · 0 done · 3 total')
-  expect(d).toContain('2 running · ')
+  // Running lists the live runs, with their count
+  expect(d).toContain('RUNNING')
+  expect(d).toContain('"  3"')
+  // Two copies of the planner: its roster row points up to them
+  expect(d).toContain('running ×2 ↑')
   await ui.press({ key: 'stop-all' })
   expect(log.stopped.sort()).toEqual(['ag1', 'ag2', 'ag3'])
   d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('0 running · 0 done · 3 total')
+  expect(d).not.toContain('RUNNING')
+  expect(d).toContain('FINISHED')
   await ui.press({ key: 'clear-finished' })
-  expect(JSON.stringify(await ui.drawn())).not.toContain('3 total')
+  expect(JSON.stringify(await ui.drawn())).not.toContain('FINISHED')
   await ui.unmount()
 })
 
@@ -249,14 +254,16 @@ test('subagents Claude starts show in the Agents tab from the engine\'s list, an
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
   let d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('2 running · 0 done · 2 total')
+  expect(d).toContain('RUNNING')
+  expect(d).toContain('"  2"')
   expect(d).toContain('scan the repo')
   expect(d).toContain('write the docs')
   // One ends without Cockpit hearing it: the list settles it at the turn's end
   log.list[0].status = 'completed'
   await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 'm', isAborted: false, durationMs: 1 } as never)
   d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('1 running · 1 done · 2 total')
+  expect(d).toContain('"  1"')
+  expect(d).toContain('FINISHED')
   await ui.unmount()
 })
 
@@ -291,7 +298,8 @@ test('Clear finished stays cleared though the engine still lists the runs, and t
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
   let d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('0 running · 2 done · 2 total')
+  expect(d).not.toContain('RUNNING')
+  expect(d).toContain('FINISHED')
   expect(d).toContain('all fine')
   await ui.press({ key: 'clear-finished' })
   // A sync at the turn's end must not bring them back
@@ -321,7 +329,7 @@ test('an agent whose run ends on an error shows as failed', async ($, on) => {
   await $.turn.complete({ agentId: 'ag1', answer: '', reason: 'error', turnId: 'ag1', isAborted: false, durationMs: 1 } as never)
   const ui = await $.ui.mount(agentsPane as never)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
-  expect(JSON.stringify(await ui.drawn())).toContain('"Failed"')
+  expect(JSON.stringify(await ui.drawn())).toContain('Failed · ')
   await ui.unmount()
 })
 
@@ -384,7 +392,8 @@ test('Stop on the pipeline agent ends the pipeline; late turn.complete does not 
   await verify($)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane('agents') as never)
-  await ui.press({ key: 'stop-ag1' })
+  // The pipeline's own step is stopped from the pipeline card
+  await ui.press({ key: 'pipe-stop' })
   await done($, 'ag1', 'REPORT: late')
   expect(log.stopped).toEqual(['ag1'])
   expect(log.spawned).toEqual(['Prover'])
