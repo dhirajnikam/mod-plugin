@@ -8,7 +8,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
@@ -58,6 +58,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('tool.call', async (_: unknown, e: any) => {
     if (e.tool === 'TaskStop') log.stopped.push(String(e.task_id))
     if (st.failTests && e.tool === 'Bash' && e.command === 'npm test') return { result: 'Error: 2 tests failed\nat x', isError: true }
+    if (st.failPlan && e.tool === 'TaskCreate') return { result: 'Error: boom', isError: true }
     if (e.tool === 'AskUserQuestion') return (log.asked++, { result: { questions: e.questions, answers: Object.fromEntries(e.questions.map((q: any) => [q.question, q.options[1]?.label ?? ''])) } })
     return { result: 'ok' }
   })
@@ -702,4 +703,19 @@ test("a subagent's task list is its tracker, in the Overview and the Agents tab,
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   expect(JSON.stringify(await ov2.drawn())).toContain('+2 −1')
   await ov2.unmount()
+})
+
+test('a plan call that errors adds no task, to a subagent or to the flow', async ($, on) => {
+  // Found by the Breaker: a failed TaskCreate has no id, and once left a ghost task under a made-up one
+  stand($, on, { tick: true, failPlan: true })
+  await $.prompt.submit({ text: 'tidy the auth module', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.command.run({ command: 'cockpit', args: 'run builder -- tidy auth' } as never)
+  await $.tool.call({ tool: 'TaskCreate', agentId: 'ag1', tool_use_id: 'tc1', subject: 'Ghost from the agent', description: 'x' } as never)
+  await $.tool.call({ tool: 'TaskCreate', tool_use_id: 'tc2', subject: 'Ghost from the flow', description: 'x' } as never)
+  const ov = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const d = JSON.stringify(await ov.drawn())
+  expect(d).not.toContain('Ghost from the agent')
+  expect(d).not.toContain('Ghost from the flow')
+  await ov.unmount()
 })

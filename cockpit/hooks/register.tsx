@@ -825,7 +825,8 @@ export const register: Register = on => {
 // The current flow's plan after one of Claude's plan tools ran (a refused call changes nothing)
 // A task list kept by the main loop is the current flow's; one a subagent keeps is that agent's own, its progress
 async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknown, agentId?: string) {
-  if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny)) return
+  // A refused or failed plan call changed no list: a failed TaskCreate has no id, and would leave a ghost task
+  if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny) || ('isError' in r && (r as { isError?: unknown }).isError)) return
   const result = 'result' in r ? (r as { result?: unknown }).result : undefined
   if (agentId) return set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, plan: applyPlan(a.plan ?? [], tool, e as Record<string, unknown>, result) } : a)) }))
   await set($, s => ({
