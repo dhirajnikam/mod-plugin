@@ -68,7 +68,8 @@ test('the feature map layers what uses above what it uses, survives a cycle, and
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const PANE = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 80 }, view: {} } }
 
-test('each session maps the codebase into .cockpit, shows an edit\'s impact, tells Claude, and keeps history and Focus', async ($, on) => {
+// A whole session on an in-memory disk, with a 300 ms wait for the background mapping: 3 to 5 s, past the 5 s default
+test('each session maps the codebase into .cockpit, shows an edit\'s impact, tells Claude, and keeps history and Focus', { timeoutMs: 20_000 }, async ($, on) => {
   const disk: Record<string, string> = {
     '/repo/src/a.ts': "import { b } from './b'\nimport c from '../lib/c'\n",
     '/repo/src/b.ts': "import c from '../lib/c'\n",
