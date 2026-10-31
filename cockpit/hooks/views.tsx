@@ -257,7 +257,10 @@ export function Overview($: $, v: V) {
   // Folded sections, kept with the tree's folds: true opens one
   const isOpen = (k: string) => !!s.ui.collapsed[`ov-${k}`]
   const toggle = (k: string) => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [`ov-${k}`]: !st.ui.collapsed[`ov-${k}`] } } }))
-  const Fold = ({ k, label }: { k: string; label: string }) => (
+  // A fold with nothing to hide is a plain title: an arrow that changes nothing reads as broken
+  const Fold = ({ k, label, can = true }: { k: string; label: string; can?: boolean }) => !can ? (
+    <Text color={t.text} weight="semibold">{label}</Text>
+  ) : (
     <Button key={`fold-${k}`} plain onPress={() => toggle(k)}>
       <Text>
         <Text color={t.faint}>{isOpen(k) ? '⌄ ' : '› '}</Text>
@@ -377,7 +380,7 @@ export function Overview($: $, v: V) {
       {flows.length > 1 && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-            <Fold k="flows" label={`Flows (${flows.length})`} />
+            <Fold k="flows" label={`Flows (${flows.length})`} can={flows.length > 3} />
             <Text size="footnote">
               <Text color={t.dim}>{`${fmt(totals.ms)} · `}</Text>
               <Text color={t.ok}>{`+${totals.add}`}</Text>

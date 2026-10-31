@@ -590,6 +590,8 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   od = JSON.stringify(await ov.drawn())
   expect(od).toContain('Flows (2)')
   expect(od).toContain('fix the login page')
+  // Two flows fit in the list: its title is no fold, as pressing it would change nothing
+  expect(od).not.toContain('fold-flows')
   expect(od).not.toContain('◎ Goal ')
   await ov.unmount()
 })
