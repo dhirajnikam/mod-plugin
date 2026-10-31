@@ -20,6 +20,7 @@ import {
   personSpoke,
   RISKY,
   PERSONAL,
+  OPEN,
   loadPrefs,
   loadHistory,
   writeSteps,
@@ -354,7 +355,7 @@ export const register: Register = on => {
       return r
     }
 
-    const judgeable = qs.every(q => !q.multiSelect && q.options.length >= 2 && !PERSONAL.test(q.question))
+    const judgeable = qs.every(q => !q.multiSelect && q.options.length >= 2 && !PERSONAL.test(q.question) && !q.options.some(o => OPEN.test(o.label)))
     if (s.mode === 'off' || !judgeable) return askPerson()
     // Ask me, or a decision that is hard to undo: the judges advise while the question waits for you
     const risky = qs.some(q => RISKY.test(`${q.question} ${q.options.map(o => `${o.label} ${o.description ?? ''}`).join(' ')}`))

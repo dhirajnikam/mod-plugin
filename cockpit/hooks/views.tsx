@@ -548,7 +548,7 @@ export function Overview($: $, v: V) {
                     <Box gap={sp(v, 1)}>
                       {d.votes.map((vote, i) => (
                         <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>
-                          {vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
+                          {vote === -2 ? '–' : vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
                         </Text>
                       ))}
                       <Text color={t.dim}>{` ${tl.yes} for · ${tl.revealed - tl.yes} against · needs ${thrOf(tl.n)}`}</Text>

@@ -150,6 +150,10 @@ test('the judges leave settings, questions only you can answer, and late answers
   const scored = log.scored
   await nextStep($, 'After updating the plugin there, did ▶ start the agent?', [{ label: 'It started', message: 'It started.' }, { label: 'Still refused', message: 'Still refused.' }])
   await nextStep($, 'Does the new Agents tab look right in your pane?', [{ label: 'Looks good', message: 'Good.' }, { label: 'Needs changes', message: 'Change it.' }])
+  // Which of the things you asked for comes first, the judges' own rules, and a reply that needs your words: yours too
+  await nextStep($, 'Which Overview improvement should I build first?', [{ label: 'Name judges on votes' }, { label: 'Tests and errors line' }])
+  await nextStep($, 'Should the judges stop picking between options you asked to choose?', [{ label: 'Yes, fix the judges' }, { label: 'Leave them' }])
+  await nextStep($, 'Commit the decluttered Overview?', [{ label: 'Commit it' }, { label: 'Tweak it first' }])
   await settle()
   expect(log.scored).toBe(scored)
   expect(log.submitted).toEqual([])
@@ -636,5 +640,19 @@ test("the Overview shows the current flow's last failed tool call, and the teste
   await $.prompt.submit({ text: 'something else', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   d = JSON.stringify(await ui.drawn())
   expect(d).not.toContain('✕ Bash ')
+  await ui.unmount()
+})
+
+test('a judge whose reply names no option abstains; it never counts for the first option', async ($, on) => {
+  // Two judges answer with no option number, one picks the first: one vote of three is no two-thirds win
+  const log = stand($, on, { votes: [-1, -1, 0], score: 2 })
+  const q = { question: 'Which lib?', options: [{ label: 'date-fns' }, { label: 'dayjs' }], multiSelect: false, header: 'lib' }
+  await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 'a1', questions: [q] } as never)
+  // Split: the question went to you (the stand's person picks the second option)
+  expect(log.asked).toBe(1)
+  const ui = await $.ui.mount(pane('overview') as never)
+  await ui.press({ key: `decb-${'a1-0'}` })
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('"–"')
   await ui.unmount()
 })

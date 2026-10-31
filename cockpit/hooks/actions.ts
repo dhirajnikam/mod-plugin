@@ -509,8 +509,12 @@ async function recentContext($: $, s: Ph, q: string) {
 // Decisions that publish, push, delete, merge, send or are otherwise hard to undo: the judges only advise on these
 export const RISKY = /\b(public|publish|push|pushed|delete|remove|merge|deploy|release|send|post|email|force|drop|reset|overwrite|revoke|pay|purchase|production|prod|permissions?|settings?|config|rules?|allow|credentials?|tokens?|secrets?|passwords?|keys?|auth|login)\b/i
 
-// Questions only the person can answer, about what they saw, did or want: the judges never take these
-export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call))\b/i
+// Questions only the person can answer, about what they saw, did or want: the judges never take these. What to do
+// next among things the person asked for ("Which … should I build first?"), and anything about the judges themselves,
+// are theirs too
+export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you|should i|shall i|would you like|want me to)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call)|do you want|judges?)\b|\bwhich\b[^?]*\b(should i|first|next)\b/i
+// A reply that needs the person's own words ("Tweak it first", "Something else"): no judge can say what they would
+export const OPEN = /^other\b|\b(tweak|something else|adjust|change (it|something)|let me|my own|explain)\b/i
 
 // Score a question's complexity, seat 3/6/9 judges and let them vote; returns the winning label, or '' on a split.
 // act false: the judges only advise (their pick is kept as advice, the decision stays the person's)
@@ -547,8 +551,9 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
           prompt: `Context: ${brief}\n\nQuestion: ${q}\n${menu}`,
         })
         .catch(() => null)
-      const pick = Number((r?.isAnswered ? r.text : '').match(/\d+/)?.[0] ?? 1) - 1
-      const vote = pick >= 0 && pick < opts.length ? pick : 0
+      // No option number in the reply is an abstention (-2), never a vote for the first option
+      const pick = Number((r?.isAnswered ? r.text : '').match(/\d+/)?.[0] ?? 0) - 1
+      const vote = pick >= 0 && pick < opts.length ? pick : -2
       await set($, s => ({ decisions: s.decisions.map(d => (d.id === id ? { ...d, votes: d.votes.map((v, i) => (i === seat ? vote : v)) } : d)) }))
     }),
   )
@@ -581,7 +586,7 @@ export async function judgeNext($: $, input: Record<string, unknown>) {
   const ask = typeof input.ask === 'string' ? input.ask.trim() : ''
   const acts = (Array.isArray(input.actions) ? input.actions : []) as { action?: string; label?: string; message?: string }[]
   // Off, no question, one button, or a question only you can answer (what you saw, did or want): left to you
-  if (s.mode === 'off' || !ask || acts.length < 2 || PERSONAL.test(ask)) return
+  if (s.mode === 'off' || !ask || acts.length < 2 || PERSONAL.test(ask) || acts.some(a => OPEN.test(a.label ?? ''))) return
   const opts = acts.map(a => ({ label: a.label || a.action || 'Option', ...(a.message ? { description: a.message } : {}) }))
   const at = await $.clock.now()
   // The tool call's own id keeps two next steps apart
