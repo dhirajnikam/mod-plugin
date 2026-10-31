@@ -289,6 +289,10 @@ test('file operations build the Files tab, the chat cards and the progress steps
   await ui.press({ key: 'opb-e1' })
   expect(JSON.stringify(await ui.drawn())).toContain('+ c')
   // The tree is the project's: an untouched folder shows folded, and opens on a press
+  // Folded, the project shows the files touched; open, the whole tree
+  expect(drawn).not.toContain('README.md')
+  await ui.press({ key: 'fold-tree' })
+  drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('README.md')
   expect(drawn).toContain('docs/')
   expect(drawn).not.toContain('guide.md')
@@ -298,7 +302,8 @@ test('file operations build the Files tab, the chat cards and the progress steps
   expect(drawn).toContain('src/')
   await ui.press({ key: 'treeb-repo/src/limit.ts' })
   drawn = JSON.stringify(await ui.drawn())
-  expect(drawn).toContain('Feed · repo/src/limit.ts')
+  expect(drawn).toContain('FEED')
+  expect(drawn).toContain('repo/src/limit.ts')
   expect(drawn).not.toContain('opb-e1')
   await ui.unmount()
   await $.command.run({ command: 'cockpit', args: 'focus off' } as never)

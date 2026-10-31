@@ -69,7 +69,8 @@ import {
   tree,
 } from './logic'
 import type { IconState } from './logic'
-import { features as featureList, impactOf, memoryKey } from './memory'
+import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from './memory'
+import type { FeatureMark } from './memory'
 import { pickFlow, setGit as setGitPref } from './actions'
 import { THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
@@ -568,14 +569,111 @@ export function Overview($: $, v: V) {
   )
 }
 
+// A section's heading, as every tab draws it: small capitals, a dim count, a colour of its own when it warns
+function Head({ v, label, n, color, note }: { v: V; label: string; n?: number; color?: string; note?: string }) {
+  const { Text } = v.ui
+  return (
+    <Text size="footnote" bold wrap="truncate-end">
+      <Text color={color ?? v.t.dim}>{label.toUpperCase()}</Text>
+      {n !== undefined && <Text color={v.t.faint}>{` ${n}`}</Text>}
+      {note !== undefined && <Text color={v.t.faint}>{`  ${note}`}</Text>}
+    </Text>
+  )
+}
+
+// The features and how they connect, as a diagram: what uses what, with the feature being worked on now lit, the ones
+// changed this flow outlined, and the ones the last change reaches dashed. SVG where the surface draws it, else layers
+// of text, each feature with the features it uses
+export function workMarks(s: Ph, now: string) {
+  const files = s.memory.files
+  const named = s.memory.features ?? []
+  const of = (p: string) => {
+    const k = memoryKey(files, p)
+    return k ? memberOf(files, named, k) : ''
+  }
+  const cur = s.flows[s.flows.length - 1]
+  const marks: Record<string, FeatureMark> = {}
+  const lastEdit = [...s.ops].reverse().find(o => o.op === 'Write' || o.op === 'Edit')
+  const key = memoryKey(files, s.ui.treeSel || lastEdit?.path || '')
+  if (key) for (const f of impactOf(files, key, 3, named).features) marks[f] = 'reached'
+  for (const o of s.ops) if ((o.op === 'Write' || o.op === 'Edit' || o.op === 'Delete') && (!cur || o.at >= cur.startedAt) && of(o.path)) marks[of(o.path)] = 'touched'
+  if (now && of(now)) marks[of(now)] = 'now'
+  return { marks, nowFeature: now ? of(now) : '' }
+}
+
+function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
+  const { Box, Button, Text, Svg } = v.ui
+  const { s, t, w } = v
+  const fs = featureList(s.memory.files, s.memory.features ?? [])
+  if (fs.length < 2) return null
+  // The biggest features and every marked one: a map past about twenty boxes stops being one
+  const tests = fs.filter(f => isTestFeature(f))
+  const shown = fs.filter(f => !isTestFeature(f)).filter((f, i) => i < 16 || marks[f.name])
+  const open = !s.ui.collapsed['act-map']
+  const legend = (
+    <Text size="footnote">
+      <Text color={t.busy}>■</Text>
+      <Text color={t.faint}>{' now  '}</Text>
+      <Text color={t.accent}>□</Text>
+      <Text color={t.faint}>{' changed  '}</Text>
+      {Object.values(marks).includes('reached') && <Text color={t.busy}>┅</Text>}
+      {Object.values(marks).includes('reached') && <Text color={t.faint}>{' reached'}</Text>}
+    </Text>
+  )
+  const width = Math.min(560, Math.max(280, w * 7))
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+        <Button key="act-map" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'act-map': open } } }))}>
+          <Text size="footnote" bold>
+            <Text color={t.faint}>{open ? '⌄ ' : '› '}</Text>
+            <Text color={t.dim}>FEATURE MAP</Text>
+            <Text color={t.faint}>{` ${shown.length}`}</Text>
+          </Text>
+        </Button>
+        {open && legend}
+      </Box>
+      {open && (Svg ? (
+        <Svg source={featureMapSvg(shown, marks, { accent: t.accent, busy: t.busy, text: t.text, dim: t.dim, track: t.divider, bg: /^#/.test(t.surface) ? t.surface : s.isDarkTerm ? '#262624' : '#f5f4ef' }, width)} alt={`Feature map: ${shown.length} features`} isInteractive />
+      ) : (
+        <Box flexDirection="column">
+          {featureLayers(shown).map((layer, i) => (
+            <Box key={`ml-${i}`} flexDirection="column">
+              {layer.map(n => {
+                const f = shown.find(x => x.name === n)!
+                const m = marks[n]
+                const uses = f.uses.filter(u => shown.some(x => x.name === u))
+                return (
+                  <Text key={`mn-${n}`} wrap="truncate-end">
+                    <Text color={t.faint}>{'  '.repeat(i)}</Text>
+                    <Text color={m === 'now' ? t.busy : m === 'touched' ? t.accent : m === 'reached' ? t.busy : t.faint}>{m === 'now' ? '■ ' : m === 'touched' ? '◆ ' : m === 'reached' ? '◇ ' : '· '}</Text>
+                    <Text color={m ? t.text : t.dim} bold={m === 'now'}>{n}</Text>
+                    {uses.length > 0 && <Text color={t.faint}>{` → ${uses.join(', ')}`}</Text>}
+                  </Text>
+                )
+              })}
+            </Box>
+          ))}
+        </Box>
+      ))}
+      {open && (tests.length > 0 || fs.length > shown.length + tests.length) && (
+        <Text color={t.faint} size="footnote" wrap="wrap">
+          {[tests.length ? `${tests.length} test feature${tests.length === 1 ? '' : 's'} not drawn` : '', fs.length > shown.length + tests.length ? `${fs.length - shown.length - tests.length} smaller left out` : ''].filter(Boolean).join(' · ')}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
 // Activity: the files touched as a tree, the one being worked on pulsing, and under it the live feed of every file
 // operation and every agent's tool calls, newest first; pressing a file narrows the feed to it
 // Memory: the codebase map. The features (named by a model from what each file exports, or by folder until then), each
 // opening to what it does, its files and what it uses and is used by; and for the file chosen in the tree, or else the
 // one edited last, the Impact: its feature, what it uses, what imports it, and every file and feature a change reaches
-function Memory($: $, v: V) {
+function Memory($: $, v: V, marks: Record<string, FeatureMark>) {
   const { Box, Button, Text } = v.ui
   const { s, t } = v
+  const allFeats = !!s.ui.collapsed['act-feats']
   const m = s.memory
   const files = m.files
   const count = Object.keys(files).length
@@ -594,35 +692,39 @@ function Memory($: $, v: V) {
       <Text color={c}>{value}</Text>
     </Text>
   )
-  const state = !count ? 'mapping the codebase…' : `${count} files · ${fs.length} features${m.naming ? ' · naming them…' : named.length ? '' : ' · by folder'} · ${fmt(Math.max(0, v.now - m.at))} ago`
+  const state = !count ? 'mapping the codebase…' : `${count} files${m.naming ? ' · naming them…' : named.length ? '' : ' · by folder'} · mapped ${fmt(Math.max(0, v.now - m.at))} ago`
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={im && im.usedBy.length ? t.busy : t.divider} paddingX={1}>
-      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
-        <Text wrap="truncate-end">
-          <Text color={t.text} weight="semibold">Memory</Text>
-          <Text color={t.dim} size="footnote">{`  ${state}`}</Text>
-        </Text>
-        <Button key="mem-rebuild" label="↻" plain onPress={() => buildMemory($, true)} />
-      </Box>
+    <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
       {im && (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text size="footnote" wrap="truncate-end">
-            <Text color={t.text} bold>{`Impact · ${base(key)}`}</Text>
-            <Text color={t.dim}>{`  in ${im.feature}`}</Text>
-          </Text>
+        <Box flexDirection="column">
+          <Head v={v} label="Impact" note={`${base(key)} in ${im.feature}`} {...(im.usedBy.length ? { color: t.busy } : {})} />
           {row('uses', names(im.uses), t.text)}
           {row('used by', im.usedBy.length ? names(im.usedBy) : 'nothing imports it', im.usedBy.length ? t.busy : t.ok)}
-          {row('reaches', im.affected.length ? `${im.affected.length} file${im.affected.length === 1 ? '' : 's'}${im.features.length ? ` in ${im.features.join(', ')}` : ''}: check them` : 'only this file', im.affected.length ? t.busy : t.ok)}
+          {row('reaches', im.affected.length ? `${names(im.affected)}${im.features.length ? ` in ${im.features.join(', ')}` : ''}: check ${im.affected.length === 1 ? 'it' : 'them'}` : 'only this file', im.affected.length ? t.busy : t.ok)}
         </Box>
       )}
-      {fs.slice(0, 24).map(f => {
+      <Box flexDirection="column">
+      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+        <Button key="fold-feats" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'act-feats': !st.ui.collapsed['act-feats'] } } }))}>
+          <Text size="footnote" bold wrap="truncate-end">
+            <Text color={t.faint}>{allFeats ? '⌄ ' : '› '}</Text>
+            <Text color={t.dim}>FEATURES</Text>
+            <Text color={t.faint}>{` ${fs.length}`}</Text>
+            <Text color={t.faint} bold={false}>{`  ·  ${state}`}</Text>
+          </Text>
+        </Button>
+        <Button key="mem-rebuild" plain onPress={() => buildMemory($, true)}>
+          <Text color={t.dim} size="footnote">↻ Map again</Text>
+        </Button>
+      </Box>
+      {(allFeats ? fs.slice(0, 24) : fs.filter(f => marks[f.name] || s.ui.openFeature === f.name)).map(f => {
         const open = s.ui.openFeature === f.name
         return (
           <Box key={`ft-${f.name}`} flexDirection="column">
             <Button key={`feat-${f.name}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFeature: open ? '' : f.name } }))}>
               <Text wrap="truncate-end">
                 <Text color={t.faint}>{open ? '▾ ' : '▸ '}</Text>
-                <Text color={t.accent} bold={open}>{f.name}</Text>
+                <Text color={open ? t.accent : t.text} bold={open}>{f.name}</Text>
                 <Text color={t.dim}>{`  ${f.files.length} file${f.files.length === 1 ? '' : 's'}`}</Text>
                 {!open && f.what !== '' && <Text color={t.faint}>{`  ${f.what}`}</Text>}
               </Text>
@@ -646,7 +748,8 @@ function Memory($: $, v: V) {
           </Box>
         )
       })}
-      {fs.length > 24 && <Text color={t.faint} size="footnote">{`+${fs.length - 24} more in .cockpit/MEMORY.md`}</Text>}
+      {allFeats && fs.length > 24 && <Text color={t.faint} size="footnote">{`+${fs.length - 24} more in .cockpit/MEMORY.md`}</Text>}
+      </Box>
     </Box>
   )
 }
@@ -702,6 +805,7 @@ export function Files($: $, v: V) {
   const latest = s.ops[s.ops.length - 1]
   const nowPath = live && latest && latest.op !== 'Search' ? rel(latest.path) : ''
   const rows_ = tree(s.ops, s.ui.collapsed, v.root, s.project)
+  const wholeTree = !!s.ui.collapsed['act-tree']
   const filter = s.ui.treeSel
   type Row = { at: number; key: string; kind: 'op' | 'agent'; op?: (typeof s.ops)[number]; who?: string; glyph?: string; text?: string; running?: boolean }
   const feed: Row[] = [
@@ -711,6 +815,7 @@ export function Files($: $, v: V) {
     .sort((x, y) => y.at - x.at)
     .slice(0, 80)
   const ago = (at: number) => (at ? fmt(Math.max(0, v.now - at)) : '')
+  const { marks, nowFeature } = workMarks(s, live && latest && latest.op !== 'Search' ? latest.path : '')
   const doing = s.isWorking ? s.activity : running.length ? `${running.length} agent${running.length > 1 ? 's' : ''} working: ${running.map(a => a.name).join(', ')}` : s.turnStart ? 'Idle' : 'Ready'
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
@@ -719,6 +824,7 @@ export function Files($: $, v: V) {
           <Text wrap="truncate-end">
             <Text color={live ? t.busy : t.dim}>{`${live ? spin : '✻'} `}</Text>
             <Text color={live ? t.text : t.dim} bold>{doing}</Text>
+            {nowFeature !== '' && <Text color={t.dim}>{`  in ${nowFeature}`}</Text>}
           </Text>
           <Text size="footnote">
             {s.isWorking && <Text color={t.busy}>{`${fmt(v.now - s.turnStart)}  `}</Text>}
@@ -734,15 +840,19 @@ export function Files($: $, v: V) {
         </Box>
         {live && marquee()}
       </Box>
-      {Memory($, v)}
+      {FeatureMap($, v, marks)}
+      {Memory($, v, marks)}
       {rows_.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
       {rows_.length > 0 && (
-        <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
-          <Box justifyContent="space-between" flexWrap="wrap">
-            <Text color={t.text} weight="semibold">Project</Text>
-            <Text color={t.dim} size="footnote">{`${s.project.length ? `${s.project.length} files · ` : ''}${new Set(s.ops.filter(o => o.op !== 'Search').map(o => o.path)).size} touched`}</Text>
-          </Box>
-          {rows_.map(n => {
+        <Box flexDirection="column">
+          <Button key="fold-tree" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'act-tree': !st.ui.collapsed['act-tree'] } } }))}>
+            <Text size="footnote" bold>
+              <Text color={t.faint}>{wholeTree ? '⌄ ' : '› '}</Text>
+              <Text color={t.dim}>PROJECT</Text>
+              <Text color={t.faint} bold={false}>{`  ${s.project.length ? `${s.project.length} files · ` : ''}${new Set(s.ops.filter(o => o.op !== 'Search').map(o => o.path)).size} touched`}</Text>
+            </Text>
+          </Button>
+          {rows_.filter(n => wholeTree || (!n.isDir && n.touched) || (nowPath !== '' && n.path === nowPath)).map(n => {
             const isNow = nowPath !== '' && n.path === nowPath
             const chosen = filter === n.path
             const col = n.isDir ? (n.touched ? t.hi : t.dim) : n.op === 'Delete' ? t.bad : n.op === 'Write' ? t.ok : n.op === 'Edit' ? t.hi : n.op ? t.text : t.dim
@@ -755,9 +865,9 @@ export function Files($: $, v: V) {
                     onPress={() => set($, st => (n.isDir ? { ui: { ...st.ui, collapsed: { ...st.ui.collapsed, [n.path]: !n.collapsed } } } : { ui: { ...st.ui, treeSel: chosen ? '' : n.path } }))}
                   >
                     <Text backgroundColor={chosen ? t.wash || undefined : undefined} mono>
-                      <Text color={isNow && blink ? t.busy : t.dim}>{`${'  '.repeat(n.depth)}${n.isDir ? (n.collapsed ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
+                      <Text color={isNow && blink ? t.busy : t.dim}>{`${'  '.repeat(wholeTree ? n.depth : 0)}${n.isDir ? (n.collapsed ? '▸ ' : '▾ ') : isNow ? '▶ ' : `${n.op ? opGlyph(n.op) : ' '} `}`}</Text>
                       <Text color={isNow ? t.busy : col} bold={isNow || chosen} strikethrough={n.op === 'Delete'} wrap="truncate-end">
-                        {n.name}
+                        {wholeTree ? n.name : n.path}
                       </Text>
                     </Text>
                   </Button>
@@ -770,7 +880,7 @@ export function Files($: $, v: V) {
       )}
       {feed.length > 0 && (
         <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-          <Text color={t.text} weight="semibold">{filter ? `Feed · ${filter}` : 'Feed'}</Text>
+          <Head v={v} label="Feed" {...(filter ? { note: filter } : {})} />
           {filter ? (
             <Button key="feed-all" label="show all" plain dimColor onPress={() => set($, st => ({ ui: { ...st.ui, treeSel: '' } }))} />
           ) : (

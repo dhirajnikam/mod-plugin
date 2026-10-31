@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { factsOf, features, filesSig, impactOf, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
+import { factsOf, featureLayers, featureMapSvg, features, filesSig, impactOf, isTestFeature, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
   const repo = new Set(['src/a.ts', 'src/b.tsx', 'types/index.d.ts', 'app/models.py', 'app/__init__.py', 'app/views.py', 'styles/base.css'])
@@ -40,6 +40,28 @@ test('ESM .js specs, bare Dart and CSS imports, imports that leave the repositor
   expect(resolveImport('src/a.ts', '../../c', has)).toBe(null)
   expect(memoryKey({ 'a.ts': [], 'src/a.ts': [] }, '/repo/src/a.ts')).toBe('src/a.ts')
   expect(parseFeatures('Grouped [by feature]: [{"name": "A", "what": "w", "files": ["src/a.ts"]}]', { 'src/a.ts': [] }).length).toBe(1)
+})
+
+test('the feature map layers what uses above what it uses, survives a cycle, and draws the work on it', async () => {
+  // ui uses state and types, state uses types, and a cycle between a and b
+  const fs = features({ 'ui/v.ts': ['state/s.ts', 'types/t.ts'], 'state/s.ts': ['types/t.ts'], 'types/t.ts': [], 'a/x.ts': ['b/y.ts'], 'b/y.ts': ['a/x.ts'] })
+  const layers = featureLayers(fs)
+  const at = (n: string) => layers.findIndex(l => l.includes(n))
+  expect(at('ui')).toBe(0)
+  expect(at('state')).toBe(1)
+  expect(at('types')).toBe(2)
+  expect(layers.flat().sort()).toEqual(['a', 'b', 'state', 'types', 'ui'])
+  const svg = featureMapSvg(fs, { ui: 'now', state: 'touched', types: 'reached' }, { accent: '#b4833a', busy: '#d9a441', text: '#eee', dim: '#999', track: '#444', bg: '#222' })
+  expect(svg.startsWith('<svg')).toBe(true)
+  // Now is filled and breathes, touched outlined in the accent, reached dashed, the arrow between marked features lit
+  expect(svg).toContain('<animate')
+  expect(svg).toContain('stroke-dasharray="4 3"')
+  expect(svg).toContain('url(#ah)')
+  expect(svg).toContain('<title>ui')
+  expect(svg).not.toContain('<script')
+  expect(isTestFeature({ files: ['tests/a.test.ts', 'tests/b.ts'] })).toBe(true)
+  expect(isTestFeature({ files: ['src/a.ts', 'tests/a.test.ts'] })).toBe(false)
+  expect(isTestFeature({ files: ['src/a.spec.ts'] })).toBe(true)
 })
 
 // A session against a small repository on an in-memory disk
@@ -124,10 +146,11 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   await $.command.run({ command: 'cockpit', args: 'tab files' } as never)
   const ui = await $.ui.mount(PANE as never)
   const d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('Impact · c.ts')
+  expect(d).toContain('IMPACT')
+  expect(d).toContain('c.ts in Counter')
   expect(d).toContain('a.ts · b.ts')
   expect(d).toContain('in Counter')
-  expect(d).toContain('2 files in Pages: check them')
+  expect(d).toContain('a.ts · b.ts in Pages: check them')
   // A feature opens to what it does and its files
   await ui.press({ key: 'feat-Pages' })
   const fd = JSON.stringify(await ui.drawn())

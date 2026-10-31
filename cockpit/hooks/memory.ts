@@ -86,6 +86,12 @@ export function membership(files: Files, named: Named[] = []) {
   return of
 }
 
+// A feature made only of tests: it imports everything it checks, so the map lists it apart instead of drawing its arrows
+export const isTestFeature = (f: { files: string[] }) => f.files.length > 0 && f.files.every(p => /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[a-z]+$/i.test(p))
+
+// The feature one file belongs to
+export const memberOf = (files: Files, named: Named[], path: string) => membership(files, named)[path] ?? featureOf(path)
+
 // The features, each with what it is for, its files and the features it uses and is used by (from the imports between
 // their files), biggest first
 export function features(files: Files, named: Named[] = []): Feature[] {
@@ -210,4 +216,114 @@ export function memoryMarkdown(files: Files, when: string, named: Named[] = []) 
     out.push(``)
   }
   return out.join('\n')
+}
+
+// The feature map's layers: a feature sits one layer below the deepest feature that uses it, so what uses sits above
+// what it uses and the foundations land at the bottom. A cycle stops deepening after one round per feature
+// ponytail: longest-path layering with one ordering pass, no crossing minimisation; enough for a few dozen features
+export function featureLayers(fs: Feature[]) {
+  const names = new Set(fs.map(f => f.name))
+  const depth = new Map(fs.map(f => [f.name, 0]))
+  for (let round = 0; round < fs.length; round++) {
+    let moved = false
+    for (const f of fs)
+      for (const u of f.uses)
+        if (names.has(u) && u !== f.name && (depth.get(u) ?? 0) < (depth.get(f.name) ?? 0) + 1 && (depth.get(f.name) ?? 0) + 1 < fs.length) {
+          depth.set(u, (depth.get(f.name) ?? 0) + 1)
+          moved = true
+        }
+    if (!moved) break
+  }
+  const layers: string[][] = []
+  for (const f of fs) (layers[depth.get(f.name) ?? 0] ??= []).push(f.name)
+  // Each layer ordered under the features that use it, so the arrows run short
+  const at = new Map<string, number>()
+  return layers.filter(Boolean).map(layer => {
+    const users = (n: string) => fs.filter(f => f.uses.includes(n) && at.has(f.name)).map(f => at.get(f.name)!)
+    const mid = (n: string) => (users(n).length ? users(n).reduce((a, b) => a + b, 0) / users(n).length : Infinity)
+    const sorted = [...layer].sort((a, b) => mid(a) - mid(b) || a.localeCompare(b))
+    sorted.forEach((n, i) => at.set(n, i / Math.max(1, sorted.length - 1)))
+    return sorted
+  })
+}
+
+// How a feature stands in the work: being worked on this moment, changed this flow, reached by the last change
+export type FeatureMark = 'now' | 'touched' | 'reached'
+
+// The feature map as SVG for surfaces that draw it: a box per feature in its layer, an arrow from each feature to every
+// feature it uses. The feature being worked on is filled and breathes, the ones changed this flow are outlined in the
+// accent, the ones a change reaches are dashed; the arrows between marked features carry the accent too
+export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>, c: { accent: string; busy: string; text: string; dim: string; track: string; bg: string }, width = 520) {
+  const esc = (x: string) => x.replace(/[<>&"]/g, ch => `&#${ch.charCodeAt(0)};`)
+  const real = (x: string, tone: string) => (/^(#|rgb|hsl)/.test(x) ? x : tone)
+  c = { accent: real(c.accent, '#b4833a'), busy: real(c.busy, '#d9a441'), text: real(c.text, '#d6d3ce'), dim: real(c.dim, '#8a8a8a'), track: real(c.track, 'rgba(128,128,128,0.35)'), bg: real(c.bg, 'rgba(0,0,0,0)') }
+  const H = 26
+  const GAP = 8
+  const ROW = 58
+  const cut = (n: string, max: number) => (n.length > max ? `${n.slice(0, max - 1).trimEnd()}…` : n)
+  // A layer wider than the canvas wraps onto rows of its own
+  const rows: string[][] = []
+  for (const layer of featureLayers(fs)) {
+    let row: string[] = []
+    let used = 0
+    for (const n of layer) {
+      const wN = Math.min(width / 2, cut(n, 30).length * 6.6 + 22)
+      if (row.length && used + wN > width) {
+        rows.push(row)
+        row = []
+        used = 0
+      }
+      row.push(n)
+      used += wN + GAP
+    }
+    if (row.length) rows.push(row)
+  }
+  const box = new Map<string, { x: number; y: number; w: number }>()
+  rows.forEach((row, r) => {
+    const ws = row.map(n => Math.min(width / 2, cut(n, 30).length * 6.6 + 22))
+    const total = ws.reduce((a, b) => a + b, 0) + GAP * (row.length - 1)
+    let x = (width - total) / 2
+    row.forEach((n, i) => {
+      box.set(n, { x, y: 8 + r * ROW, w: ws[i]! })
+      x += ws[i]! + GAP
+    })
+  })
+  const height = 8 + rows.length * ROW - (ROW - H) + 8
+  const hot = (n: string) => marks[n] === 'now' || marks[n] === 'touched'
+  const uses = new Map(fs.map(f => [f.name, f.uses.filter(u => box.has(u) && u !== f.name)]))
+  // a → c is implied when a reaches c through another feature it uses: that arrow is left out unless it is lit
+  const via = (a: string, c: string) => {
+    const seen = new Set<string>()
+    const walk = (n: string): boolean => (uses.get(n) ?? []).some(m => m === c || (!seen.has(m) && (seen.add(m), walk(m))))
+    return (uses.get(a) ?? []).some(b => b !== c && walk(b))
+  }
+  const edges = fs.flatMap(f =>
+    (uses.get(f.name) ?? []).filter(() => box.has(f.name)).map(u => {
+      const a = box.get(f.name)!
+      const b = box.get(u)!
+      const down = b.y > a.y
+      const x1 = a.x + a.w / 2
+      const y1 = down ? a.y + H : a.y
+      const x2 = b.x + b.w / 2
+      const y2 = down ? b.y - 3 : b.y + H + 3
+      const bend = Math.max(18, Math.abs(y2 - y1) / 2)
+      const lit = (hot(f.name) || marks[f.name] === 'reached') && (hot(u) || marks[u] === 'reached')
+      if (!lit && via(f.name, u)) return ''
+      return `<path d="M${x1.toFixed(1)} ${y1} C${x1.toFixed(1)} ${y1 + (down ? bend : -bend)} ${x2.toFixed(1)} ${y2 + (down ? -bend : bend)} ${x2.toFixed(1)} ${y2}" fill="none" stroke="${lit ? c.accent : c.track}" stroke-width="${lit ? 1.6 : 1}" stroke-opacity="${lit ? 1 : 0.55}" marker-end="url(#${lit ? 'ah' : 'a'})"/>`
+    }),
+  )
+  const nodes = [...box].map(([n, b]) => {
+    const m = marks[n]
+    const stroke = m === 'now' ? c.busy : m === 'touched' ? c.accent : m === 'reached' ? c.busy : c.track
+    const fill = m === 'now' ? c.busy : c.bg
+    const ink = m === 'now' ? '#1c1b1a' : m ? c.text : c.dim
+    const pulse = m === 'now' ? `<animate attributeName="opacity" values="1;0.55;1" dur="1.6s" repeatCount="indefinite"/>` : ''
+    const f = fs.find(x => x.name === n)
+    // Hovering a box tells what the feature does and what it uses (the frame draws <title> as a tooltip)
+    const tip = `<title>${esc([n, f?.what ?? '', f?.uses.length ? `uses ${f.uses.join(', ')}` : '', f?.files.length ? `${f.files.length} file${f.files.length === 1 ? '' : 's'}` : ''].filter(Boolean).join('\n'))}</title>`
+    return `<g>${tip}<rect x="${b.x.toFixed(1)}" y="${b.y}" width="${b.w.toFixed(1)}" height="${H}" rx="7" fill="${fill}" fill-opacity="${m === 'now' ? 0.9 : 1}" stroke="${stroke}" stroke-width="${m ? 1.6 : 1}"${m === 'reached' ? ' stroke-dasharray="4 3"' : ''}>${pulse}</rect>` +
+      `<text x="${(b.x + b.w / 2).toFixed(1)}" y="${b.y + 17}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11.5" font-weight="${m ? 600 : 400}" fill="${ink}">${esc(cut(n, 30))}</text></g>`
+  })
+  const arrow = (id: string, col: string) => `<marker id="${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="${col}"/></marker>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><defs>${arrow('a', c.track)}${arrow('ah', c.accent)}</defs>${edges.join('')}${nodes.join('')}</svg>`
 }
