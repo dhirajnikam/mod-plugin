@@ -1016,7 +1016,7 @@ export function Agents($: $, v: V) {
               return (
                 <Box key={`ag-${a.id}`} flexDirection="column">
                   <Box alignItems="center" columnGap={sp(v, 1)}>
-                    <Box flexShrink={0}>{icon(a.type, st, 26)}</Box>
+                    <Box flexShrink={0}>{icon(a.type, st, 28)}</Box>
                     <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                       <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
                         <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
@@ -1106,6 +1106,11 @@ export function Agents($: $, v: V) {
                   {i > 0 && <Text color={i <= pipe.index ? t.ok : t.faint}>›</Text>}
                   {icon(st, at, 24)}
                   <Text color={at === 'pending' ? t.dim : colorOf(at)} bold={at === 'running'} size="footnote">{expertName(st)}</Text>
+                  {at === 'done' && (() => {
+                    const ran = s.agents.filter(x => x.type === st && x.startedAt >= pipe.at).pop()
+                    const fail = ran?.cases.filter(c => c.st === 'fail').length ?? 0
+                    return ran?.cases.length ? <Text color={fail ? t.bad : t.ok} size="footnote">{`${fail ? '✗' : '✓'}${ran.cases.length - fail}/${ran.cases.length}`}</Text> : null
+                  })()}
                 </Box>
               )
             })}
@@ -1192,10 +1197,7 @@ export function Agents($: $, v: V) {
           const ticked = !!s.ui.selected[x.type]
           const rowEl = (
             <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
-              <Button key={`pick-${x.type}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, selected: { ...st.ui.selected, [x.type]: !st.ui.selected[x.type] } } }))}>
-                <Text color={ticked ? t.accent : t.faint}>{ticked ? '▣' : '□'}</Text>
-              </Button>
-              <Box flexShrink={0}>{icon(x.type, st, 30)}</Box>
+              <Box flexShrink={0}>{icon(x.type, st, 28)}</Box>
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
                 <Text color={t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
@@ -1203,11 +1205,14 @@ export function Agents($: $, v: V) {
               </Box>
               {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
               {live && <Text color={t.faint} size="footnote">{`running${copies.length > 1 ? ` ×${copies.length}` : ''} ↑`}</Text>}
+              <Button key={`run-${x.type}`} plain onPress={() => runExpert($, x.type)}>
+                <Text color={live ? t.faint : t.dim}>▶</Text>
+              </Button>
               <Button key={`edit-${x.type}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, rerunFor: st.ui.rerunFor === `type:${x.type}` ? '' : `type:${x.type}`, rerunText: '' } }))}>
                 <Text color={t.faint}>✎</Text>
               </Button>
-              <Button key={`run-${x.type}`} plain onPress={() => runExpert($, x.type)}>
-                <Text color={t.dim}>▶</Text>
+              <Button key={`pick-${x.type}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, selected: { ...st.ui.selected, [x.type]: !st.ui.selected[x.type] } } }))}>
+                <Text color={ticked ? t.accent : t.faint}>{ticked ? '▣' : '□'}</Text>
               </Button>
             </Box>
           )
@@ -1244,7 +1249,7 @@ export function Agents($: $, v: V) {
           <Text size="footnote" bold>
             <Text color={t.faint}>{s.ui.collapsed['ag-settings'] ? '⌄ ' : '› '}</Text>
             <Text color={t.dim}>SETTINGS</Text>
-            <Text color={t.faint} bold={false}>{`  testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'}`}</Text>
+            <Text color={t.faint} bold={false}>{`  both testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'}`}</Text>
           </Text>
         </Button>
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />}
