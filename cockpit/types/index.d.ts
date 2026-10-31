@@ -109,6 +109,8 @@ export type Flow = {
   plan?: PlanItem[]
   // Steps written for this prompt's task, each tagged with the kind of work that reaches it
   steps?: { name: string; kind: string }[]
+  // Turns this flow ran: more than one when a /goal, a background task or another plugin carried it on
+  turns?: number
 }
 
 export type PlanItem = { id: string; text: string; st: 'pending' | 'in_progress' | 'completed' }
@@ -128,6 +130,8 @@ export type Ph = {
   // auto: the judges decide (risky decisions they only advise on); ask: they advise, you decide; off: no judges
   mode: 'auto' | 'ask' | 'off'
   task: string
+  // The completion condition set by /goal or Claude's ProposeGoal, while one stands
+  goal?: { text: string; at: number }
   turnStart: number
   isWorking: boolean
   activity: string

@@ -8,11 +8,12 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
-  on('clock.now', async () => ({ value: 1_000_000 }))
+  let clock = 1_000_000
+  on('clock.now', async () => ({ value: st.tick ? (clock += 1000) : clock }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), { value: { agent: `cockpit:${e.name}` } }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -540,4 +541,46 @@ test('the context and cost come from the session usage', async ($, on) => {
   expect(drawn).toContain('$1.50')
   expect(drawn).toContain('Messages')
   await ui.unmount()
+})
+
+test('turns with no prompt of yours still show progress: /goal, continuations, prompts another plugin kept', async ($, on) => {
+  stand($, on, { tick: true })
+  on('turn.start', async (_: unknown, e: any) => ({ turnId: e.turnId }))
+  const turn = (text: string) => $.turn.start({ text, turnId: 't' } as never)
+  const end = () => $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 'x', isAborted: false, durationMs: 1000 } as never)
+  // /goal opens a flow named for it when its first turn starts
+  await $.command.run({ command: 'goal', args: 'all tests pass' } as never)
+  await turn('all tests pass')
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', items: [{ content: 'Fix auth', status: 'in_progress' }, { content: 'Run tests', status: 'pending' }], tool_use_id: 'p1' } as never)
+  await end()
+  // The goal carries on: an empty continued turn reopens that flow with its plan, and the plan moves its progress
+  await turn('')
+  await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', advance: true, tool_use_id: 'p2' } as never)
+  const b = await $.ui.mount(band as never)
+  expect(JSON.stringify(await b.drawn())).toContain('75%')
+  await b.unmount()
+  let ov = await $.ui.mount(pane('overview') as never)
+  let od = JSON.stringify(await ov.drawn())
+  expect(od).toContain('◎ Goal ')
+  expect(od).toContain('all tests pass')
+  expect(od).toContain('Flows (1)')
+  expect(od).toContain('×2')
+  // The repository's changes, in a card of their own
+  expect(od).toContain('Changed files (1) ')
+  expect(od).toContain('a.txt')
+  await ov.press({ key: 'changed-git' })
+  expect(JSON.stringify(await ov.drawn())).toContain('Branch pattern')
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  await ov.unmount()
+  await end()
+  // A prompt another plugin kept from Cockpit's prompt.submit still opens its own flow; a hand-off opens none
+  await $.command.run({ command: 'goal', args: 'clear' } as never)
+  await turn('fix the login page')
+  await end()
+  ov = await $.ui.mount(pane('overview') as never)
+  od = JSON.stringify(await ov.drawn())
+  expect(od).toContain('Flows (2)')
+  expect(od).toContain('fix the login page')
+  expect(od).not.toContain('◎ Goal ')
+  await ov.unmount()
 })

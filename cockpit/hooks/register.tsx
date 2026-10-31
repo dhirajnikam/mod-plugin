@@ -66,6 +66,8 @@ export const register: Register = on => {
   const changesOf = (c: { path: string; meta: string }[]) => c.map(x => `${x.path} ${x.meta}`).join('\n')
   // Prompts typed over a running turn: each opens its flow when a turn of its own starts with it
   const queued = new Set<string>()
+  // The last prompt was a command or the engine's own: the turn it starts carries on the last flow
+  let carryOn = false
   // The live-figure timers, so a second session.start (an enable) replaces them rather than doubling them
   let timers: { cancel: () => void }[] = []
   on('session.start', async ($, e, next) => {
@@ -178,9 +180,13 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    // Cockpit's own hand-off of an agent start is no task of yours: no flow, no steps
-    if (handoffs.delete(e.text)) return next(e)
-    if (e.command || e.isMeta || !e.text.trim()) return next(e)
+    // Cockpit's own hand-off of an agent start is no task of yours: no flow, no steps (turn.start drops the mark)
+    if (handoffs.has(e.text)) return next(e)
+    // A command (/goal) or the engine's own message: the turn it starts carries on the last flow
+    if (e.command || e.isMeta || !e.text.trim()) {
+      carryOn = true
+      return next(e)
+    }
     const now = await $.clock.now()
     if (e.origin?.kind === 'composer') await personSpoke($, now)
     // Typed over a running turn: that turn and its flow go on; this one opens its own flow if a turn starts with it
@@ -206,16 +212,52 @@ export const register: Register = on => {
     return r
   }).catch(($, e, next) => next(e))
 
-  // A prompt typed over a turn that the engine ran as a turn of its own: its flow opens now
+  // Every main turn runs in a flow. A prompt typed over a turn that the engine ran as a turn of its own opens its flow
+  // now; so does a prompt another plugin's hook kept from Cockpit's prompt.submit. A turn with no prompt of yours (a
+  // /goal carrying on, a background task's notice, a continuation) carries on the last flow, or opens the goal's flow
+  // when /goal was set after it ended
   on('turn.start', async ($, e, next) => {
+    if (e.agentId) return next(e)
     const text = e.text.trim()
-    if (!e.agentId && text && queued.delete(text)) {
-      const now = await $.clock.now()
+    const carried = carryOn || !text
+    carryOn = false
+    if (handoffs.delete(e.text)) return next(e)
+    const now = await $.clock.now()
+    const s = await read($, S)
+    const last = s.flows[s.flows.length - 1]
+    const fresh = (task: string) => {
       changedThisTurn = false
-      changesAtStart = await openFlow($, text, now)
-      void writeSteps($, `f${now}`, text).catch(() => null)
+      return openFlow($, task, now).then(c => {
+        changesAtStart = c
+        void writeSteps($, `f${now}`, task).catch(() => null)
+      })
+    }
+    if (text && queued.delete(text)) await fresh(text)
+    else if (last?.status !== 'running') {
+      const goalAfter = s.goal && (!last || s.goal.at > (last.endedAt ?? last.startedAt))
+      if (goalAfter) await fresh(`Goal: ${s.goal!.text}`)
+      else if (!carried) await fresh(text)
+      else if (last) {
+        changedThisTurn = false
+        changesAtStart = await resumeFlow($, now)
+      }
     }
     return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The goal Claude works toward across turns: set by /goal or Claude's ProposeGoal, cleared by /goal clear
+  on('command.run', { command: 'goal' }, async ($, e, next) => {
+    const r = await next(e)
+    const args = e.args.trim()
+    if (args === 'clear') await set($, { goal: undefined })
+    else if (args) await set($, { goal: { text: args, at: await $.clock.now() } })
+    return r
+  }).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'ProposeGoal' }, async ($, e, next) => {
+    const r = await next(e)
+    const cond = 'result' in r ? (r.result as { condition?: unknown } | undefined)?.condition : undefined
+    if (!e.agentId && !r.isError && typeof cond === 'string' && cond) await set($, { goal: { text: cond, at: await $.clock.now() } })
+    return r
   }).catch(($, e, next) => next(e))
 
   // Every tool call: subagent calls go to that agent's log; main-loop calls drive activity, steps and the file list
@@ -780,5 +822,17 @@ async function openFlow($: EngineInterface, text: string, now: number) {
     // The previous flow closes if it was still open; this prompt opens a new one
     flows: [...s.flows.map(f => (f.status === 'running' ? { ...f, status: 'aborted' as const, endedAt: now } : f)), { id: `f${now}`, task, startedAt: now, status: 'running' as const, reached: ['Understand'], ops: 0, add: 0, del: 0, decisions: 0, commit: '' }].slice(-30),
   }))
+  return changes
+}
+
+// A turn that carries on the last flow: it runs again, one turn more, its plan and steps kept
+async function resumeFlow($: EngineInterface, now: number) {
+  await refreshRepo($)
+  const changes = (await read($, S)).repo.changed.map(x => `${x.path} ${x.meta}`).join('\n')
+  await set($, s => {
+    const f = s.flows[s.flows.length - 1]!
+    const { endedAt: _, ...open } = f
+    return { task: f.task, turnStart: now, isWorking: true, activity: 'Carrying on', reached: f.reached, flows: [...s.flows.slice(0, -1), { ...open, status: 'running' as const, turns: (f.turns ?? 1) + 1 }] }
+  })
   return changes
 }

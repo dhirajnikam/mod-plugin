@@ -237,10 +237,14 @@ export function Tabs($: $, v: V) {
   )
 }
 
+// A change's kind in its status colour: new, deleted, renamed, edited
+const kindColor = (t: Theme, meta: string) => (meta === 'new' ? t.ok : meta === 'deleted' ? t.bad : meta.startsWith('renamed') ? t.busy : t.hi)
+
 export function Overview($: $, v: V) {
   const { Box, Button, Text, Svg } = v.ui
   const { s, t, w } = v
   const p = progress(s)
+  const cur = s.flows[s.flows.length - 1]
   const changed = s.repo.changed.length
   const needs = s.waiting ? 'Claude is waiting for your answer in the chat.' : s.pending ? `Commit "${s.pending.msg}" → ${s.pending.branch}?` : !s.isWorking && changed ? `${changed} files ready to commit.` : ''
   const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
@@ -286,9 +290,22 @@ export function Overview($: $, v: V) {
         )}
         <Box flexDirection="column" gap={sp(v, 1)} flexGrow={1} flexShrink={1}>
           <Text color={t.text} bold size="heading" wrap="wrap">{s.task || 'No task yet: send a prompt.'}</Text>
-          <Text>
+          {s.goal && (
+            <Box columnGap={sp(v, 1)} alignItems="center">
+              <Box flexShrink={1}>
+                <Text wrap="wrap">
+                  <Text color={t.accent}>◎ Goal </Text>
+                  <Text color={t.text}>{s.goal.text}</Text>
+                  {(cur?.turns ?? 1) > 1 && <Text color={t.dim}>{` · turn ${cur!.turns}`}</Text>}
+                </Text>
+              </Box>
+              <Button key="goal-hide" label="Hide" plain onPress={() => set($, { goal: undefined })} />
+            </Box>
+          )}
+          <Text wrap="wrap">
             <Text color={s.isWorking ? t.accent : t.dim}>{p.stepName}</Text>
             {s.flows.length > 0 && <Text color={t.dim}>{` · ${p.flow.label} flow`}</Text>}
+            {s.isWorking && s.activity && <Text color={t.dim}>{` · ${s.activity}`}</Text>}
           </Text>
           <Box columnGap={sp(v, 3)} flexWrap="wrap">
             {[['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Changes', diff, adds || dels ? t.ok : t.dim], ['Cost', `$${s.cost.toFixed(2)}`, t.accent]].map(([label, val, c]) => (
@@ -321,6 +338,33 @@ export function Overview($: $, v: V) {
           <Text color={t.dim}>{` = ${p.pct}%  ·  `}</Text>
           <Text color={t.faint}>{p.flow.name === 'plan' ? "steps from Claude's task list" : p.flow.name === 'task' ? 'steps written for this task' : `steps from the ${p.flow.label} flow${s.flows[s.flows.length - 1]?.kind ? ', your pick' : ''}`}</Text>
         </Text>
+      )}
+      {changed > 0 && (
+        <Box flexDirection="column">
+          <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+            <Text>
+              <Text color={t.text} weight="semibold">{`Changed files (${changed}) `}</Text>
+              <Text color={t.ok} size="footnote">{`+${adds}`}</Text>
+              <Text color={t.bad} size="footnote">{` −${dels}`}</Text>
+            </Text>
+            <Button key="changed-git" label="Open Git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])} />
+          </Box>
+          {s.repo.changed.slice(0, 8).map(c => (
+            <Box key={`ovc-${c.path}`} columnGap={sp(v, 1)}>
+              <Box flexGrow={1} flexShrink={1}>
+                <Text color={t.text} wrap="truncate-start">{c.path}</Text>
+              </Box>
+              {(c.add || c.del) > 0 && (
+                <Text size="footnote">
+                  <Text color={t.ok}>{`+${c.add}`}</Text>
+                  <Text color={t.bad}>{` −${c.del}`}</Text>
+                </Text>
+              )}
+              <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
+            </Box>
+          ))}
+          {changed > 8 && <Text color={t.dim} size="footnote">{`+ ${changed - 8} more in Git`}</Text>}
+        </Box>
       )}
       {flows.length === 0 && (
         <Box flexDirection="column">
@@ -366,6 +410,7 @@ export function Overview($: $, v: V) {
                       <Text key={`fs-${f.id}-${i}`} color={x.st === 'active' ? t.busy : x.st === 'done' ? t.ok : t.faint}>{x.st === 'active' ? '●' : x.st === 'done' ? '✓' : x.st === 'skipped' ? '–' : '○'}</Text>
                     ))}
                   </Text>}
+                  {(f.turns ?? 1) > 1 && <Text color={t.dim} size="footnote">{`×${f.turns}`}</Text>}
                   <Text color={t.dim} size="footnote">{`${fp.pct}%`}</Text>
                   {(f.add || f.del) > 0 && (
                     <Text size="footnote">
@@ -378,7 +423,7 @@ export function Overview($: $, v: V) {
                 {open && (
                   <Box flexDirection="column" paddingLeft={2}>
                     <Text color={t.dim} size="footnote" wrap="wrap">{`${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
-                    <Text color={t.dim} size="footnote">{`${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
+                    <Text color={t.dim} size="footnote">{`${(f.turns ?? 1) > 1 ? `${f.turns} turns · ` : ''}${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
                   </Box>
                 )}
               </Box>
@@ -1055,7 +1100,6 @@ export function Git($: $, v: V) {
   const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
   const when = g.commitMode === 'manual' ? '' : ` · ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
   const newBranch = plan.branch !== s.repo.current
-  const kindColor = (meta: string) => (meta === 'new' ? t.ok : meta === 'deleted' ? t.bad : meta.startsWith('renamed') ? t.busy : t.hi)
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
@@ -1129,7 +1173,7 @@ export function Git($: $, v: V) {
                 <Text color={s.staged[c.path] !== false ? t.text : t.dim} wrap="truncate-end">{c.path}</Text>
               </Button>
             </Box>
-            <Text color={kindColor(c.meta)} size="footnote">{c.meta}</Text>
+            <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
           </Box>
         ))}
       </Box>
