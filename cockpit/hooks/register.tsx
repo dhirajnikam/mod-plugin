@@ -19,6 +19,7 @@ import {
   earlyPlans,
   startAutopilot,
   stopAutopilot,
+  loadRules,
   resumeAutopilot,
   autopilotTurnEnd,
   judgeNext,
@@ -52,13 +53,13 @@ import { EXPERTS, FLOWS, PIPELINES, activityOf, applyPlan, base, expertName, flo
 import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS, chatThemeOf, ctxShades, themeOf } from './theme'
-import { Agents, Card, Files, Git, Header, Overview, Tabs, seatDots } from './views'
+import { Agents, Card, Files, Git, Header, Overview, Rules, Tabs, seatDots } from './views'
 import type { UI } from './views'
 
 // The session's Cockpit state (see state.ts)
 const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
 
-const TABS: Tab[] = ['overview', 'files', 'agents', 'git']
+const TABS: Tab[] = ['overview', 'files', 'agents', 'git', 'rules']
 
 export const register: Register = on => {
   // Root of the session's working directory, for relative paths
@@ -153,6 +154,7 @@ export const register: Register = on => {
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'tab' && arg === 'git') await refreshRepo($)
     if (verb === 'tab' && arg === 'files') await loadProject($)
+    if (verb === 'tab' && arg === 'rules') await loadRules($)
     if (verb === 'tab' && arg === 'agents') await Promise.all([discoverAgentTypes($), syncAgents($)])
     if (verb === 'focus') {
       const want = arg.toLowerCase()
@@ -839,6 +841,7 @@ export const register: Register = on => {
         {s.tab === 'files' && Files($, v)}
         {s.tab === 'agents' && Agents($, v)}
         {s.tab === 'git' && Git($, v)}
+        {s.tab === 'rules' && Rules($, v)}
       </Box>
     )
   })

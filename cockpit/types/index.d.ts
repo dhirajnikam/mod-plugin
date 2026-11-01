@@ -1,7 +1,7 @@
 export type Palette = 'paper' | 'white' | 'black' | 'solarized' | 'nord'
 // 'auto' follows Claude Code's own light or dark theme
 export type ThemeId = 'auto' | Palette
-export type Tab = 'overview' | 'files' | 'agents' | 'git'
+export type Tab = 'overview' | 'files' | 'agents' | 'git' | 'rules'
 export type Line = { t: string; k: 'a' | 'd' | 'c' }
 
 // One file operation seen in a tool call
@@ -60,6 +60,8 @@ export type Agent = {
   // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
   provider?: string
 }
+
+export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
 
 // The autopilot: Claude works on a goal cycle after cycle until the judges agree it is done, a limit is hit, or you stop it
 export type Autopilot = {
@@ -162,6 +164,8 @@ export type Ph = {
   // The completion condition set by /goal or Claude's ProposeGoal, while one stands
   goal?: { text: string; at: number }
   autopilot?: Autopilot
+  // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
+  rules?: { repo: RuleFiles; user: RuleFiles }
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current
   lastError?: { tool: string; text: string; at: number }
   turnStart: number
@@ -256,6 +260,14 @@ export type Ph = {
     apGoal?: string
     apBudget?: string
     apHours?: string
+    // The Rules tab: which scope, the item being edited or about to be deleted, the open add form, and the fields typed
+    ruleScope?: 'repo' | 'user'
+    ruleEdit?: string
+    ruleDel?: string
+    ruleAdd?: string
+    ruleA?: string
+    ruleB?: string
+    ruleC?: string
     acctOpen: boolean
     acct: Account
     // The account whose Remove was pressed, waiting for its confirmation
