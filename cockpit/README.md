@@ -1,170 +1,44 @@
 # Cockpit
 
-A Claude Code mod that shows what a session is doing and gives you its controls, around the prompt and in a side pane. It is built from the "Powerhouse Mod v2" design.
+A Claude Code mod that shows what a session is doing and gives you its controls, around the prompt and in a side pane.
+Built from the "Powerhouse Mod v2" design.
 
 ## Install
 
-Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, type:
+Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session:
 
 ```
 /plugin install cockpit --marketplace dhirajnikam/mod-plugin
 ```
 
-Answer `y` to add this repository as a marketplace, then pick a scope: for you everywhere, or for one project. Cockpit loads at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
-
-**Good to know before you turn it on**
-
-- Cockpit writes a `.cockpit/` folder at the top of each repository you use it in: its codebase memory and history. The folder carries its own `.gitignore`, so nothing in it is ever committed.
-- Testing each agent's work is on: every agent run that edits files starts two more subagents (a positive and a negative tester). Switch it off in the Agents tab.
-- Each prompt makes one small model call to write its own flow steps, another writes the next commit from the diff whenever the changed files shift, and the judges make a few for each question Claude asks you (turn them off with `/cockpit mode off`).
-- Push, pull requests and Verify after each turn are off until you turn them on.
-- Plugins your organization manages may run before Cockpit and skip some of its hooks; Cockpit's other parts keep working.
+`/cockpit` opens the pane. Later versions arrive with `claude plugin update cockpit`.
 
 ## What it adds
 
-- **Side pane** (`/cockpit`) with five tabs:
-  - **Overview**: one calm column. A "Needs you" card (the only boxed element) for a question or a proposed commit; the current flow as the hero: a progress ring, the task, the goal while one stands, elapsed and cost, then the step chips with the flow they follow (a press opens the flow picker); **Checks**, red while something fails: the current flow's last failed or refused tool call, wrapped, and the testers' latest count with the first failing case; **Agents** as a neural view: the task in the middle; above it every agent at work on it (Claude's and Cockpit's), joined by a line a signal runs along while it works, its ring filling with its own task list; below it, faint, the runs **remembered** from similar earlier tasks, each joined to the agent of its kind at work now; a tester joined to the agent whose work it tests; hovering a neuron says what it is doing or found (on the terminal, each agent's tracker as a bar with done of all and the task it is on, and a line per memory); with how many finished this flow and Open Agents; **Changed files** (the first five, each with its kind beside it and its +/−, and Open Git); **Earlier flows** (the three newest, a press opens one, the session's total on the heading); **Context** with its percentage, **Compact** (keeps a summary, as `/compact`) and **Clear** (starts the conversation afresh, as `/clear`, after you confirm), the bar under it and the tokens folded; **Decisions**, one line each, the mode and rules folded; and earlier sessions, folded. Every section opens with the same small capitalised heading, with an arrow only where it folds.
-  - **Activity**: what is happening, live. A header with the current action and the feature it is in ("Editing views.tsx in Cockpit views"), a turning glyph and a light running along a bar while work runs; the **Feature map**: the codebase's features as a diagram, what uses sits above what it uses with an arrow to each, the feature being worked on this moment filled and breathing, the ones changed this flow outlined in gold, the ones the last change reaches dashed, and the arrows between them lit (the rest faint, and an arrow another path already implies left out); hovering a box says what the feature does. Test-only features are counted under it instead of drawn, as they import everything. The terminal draws the same map as layered text. Then the **Impact** of the file chosen or edited last (what it uses, what imports it, the files a change reaches by name); **Features**, folded to the ones in the work (each opening to what it does, its files and links); **Project**, folded to the files touched (open for the whole tree, git's view of it, ignored files left out), the one being worked on marked `▶ … now`; and the **Feed**, newest first: every file read, written, edited, deleted or searched (its diff a press away) and what each agent is doing, each line with its age. Pressing a file narrows the feed to it. Every section has the Overview's small capitalised heading.
-  - **Agents**: each run shows in one place. The Build, Verify and Review pipelines and **+ New agent** in one row; a running pipeline as a card with its experts' icons, the current one turning, the hand-off it carries and its Stop; **Running**: every other live run with its tracker (the same bar and task the Overview shows), its tool calls and time, and a red ■; the **team** as a launcher (an agent that is running points up to it, `running ↑`, instead of repeating it); **Connections**: who started each agent as a diagram (you, Claude, Cockpit's pipelines, or another agent), a tester pointing at the work it tests, `↗` marking an agent from outside Cockpit (Claude's own types, another plugin's), running ones filled; a run's details say who started it and which plugin provides it; **Finished** runs, the three newest, the rest a press away; **Settings** folded to one line. The **team**, one row per agent: an icon (a line icon in a tinted tile on desktop, coloured by state, an arc turning round it while it runs and a ✓ or ✗ badge when it finishes; a glyph that spins on the terminal), its name, one line of what it is doing now, its report or what it is for, and ▶ to run it or ■ to stop it; and the **runs**, once there are any: each run's state, tool calls and time, its failing test cases in view, and a press opens its cases, report, recent steps and transcript. Every expert, and every agent made with + New agent, keeps a short task list (so Cockpit can track it), never commits, pushes or switches branches (Cockpit handles git) and never touches `.cockpit/`; the testers keep throwaway scripts in the temp folder and name any test they leave in the repository. A subagent's edits count in the running flow's +/− as they happen. The experts (`cockpit:planner`, `builder`, `reviewer`, `prover`, `breaker`, `scribe`) ship with the mod and work in turn: each is handed the task and the REPORT and HANDOFF lines of the experts before it. Verify runs the Prover (proves the change works) then the Breaker (tries to break it); their CASE lines show on their rows and as `tests ✓n/m` in the band. **Every agent is tested by two testers**: when an agent's run edits or writes a file (an expert, an agent you made, or one Claude started), the positive tester (the Prover) proves it works, then the negative tester (the Breaker) tries to break it, both briefed with what that agent was asked and reported; the agent's row shows `+ positive 3/3   − negative 3/4`, and the testers' runs say whose work they test. A run that changed nothing gets a **± Test** button instead. Pipeline steps are left to their pipeline (Build already ends in both testers), and **Test each agent's work** under the list turns the automatic testing off. **+ New agent** makes an agent from a plain description: a model writes its definition (name, when to use it, tools, instructions), Cockpit registers it as `cockpit:<name>` and keeps it for later sessions, and it joins the team board with a ▶ like the experts. The engine dispatches a newly registered type from the next turn on, so if ▶ right after making one says the type is unknown, send any prompt first. The same form can also run a one-off task with any agent type. **Several at once:** tick agents on the team list and press ▶ Run selected (with a task, or the current one), or type `/cockpit run planner reviewer -- the task`; ▶ always starts another run, ■ stops every running copy, and the Runs list has ■ Stop all and Clear finished. **✎** runs an agent again with your instructions: on a team row they are its task, on a finished run they are added to its brief. The subagents Claude starts show here as they work, read from the engine's own list of agents, so they appear even where another plugin's hook keeps Cockpit's own from seeing them start. The form lists every agent type it finds: the built-ins, the experts, `.claude/agents/*.md` in the project and in `~/.claude`, each installed plugin's agents as `plugin:name`, and any type that has started this session; any other name can be typed in.
-  - **Rules**: the hooks, permission rules and instructions Claude Code follows, for **this repository** (`.claude/settings.json` and `CLAUDE.md`) or **you, everywhere** (`~/.claude/settings.json` and `~/.claude/CLAUDE.md`). Hooks with their event, matcher and command; permission rules as allow, ask or deny; instructions as the bullet lines of `CLAUDE.md`. Each row has ✎ to edit it in place and ✕ to delete it (after you confirm), each section **+ Add**. Every change reads the file again first and writes it back with the rest of it kept (a row that moved meanwhile is left alone); a settings file that is not valid JSON is shown read-only with the error, never overwritten. Hooks run shell commands: read one before you add it.
-  - **Git**: the branch with what is unpushed and unpulled, and **↓ Pull** and **↑ Push** buttons only when there is something to pull or push; the next commit as a card (type, message, branch, files, Commit) and the changes with their kind (new, deleted, renamed, edited) and ticks, only while there are changes (a clean tree says so in one line, and Commit shows only with a file ticked); the **history as a git graph** of every branch, remote and tag: each commit a dot on its lane, lines carrying the lanes down, a merge opening a lane and a branch joining one, each lane its own colour; refs as chips on their commit (HEAD's branch filled, local branches tinted, remotes ☁ and tags ⌑), unpushed commits hollow, Cockpit's own marked ✦, and a press opens a commit's author, date, message and changed files. Desktop draws the graph as SVG, the terminal with line characters. The account, patterns and options are folded away.
-- **Above the prompt**: Progress and Context bars. Click either one to open Overview.
-- **Spinner**: `✻ Editing login.ts … 1:23`. The desktop app keeps its own row and shows Cockpit's words in it.
-- **Under the prompt** (terminal only): `[cockpit] ⎇ branch ↑ahead @account +add −del tests $cost mode`.
-- **In the chat**: your prompts as `›` rows, Claude's replies with a `●`, and tool activity as cards (file edits, searches, judge votes, subagents, commits) that open the matching tab when clicked. The latest turn ends with `✻ Done · ready to commit … Done in m:ss`. A running pipeline shows its step above the prompt.
+- [**Overview**](../docs/overview.md): progress by flow, checks, the agents at work as a neural view, context, decisions
+- [**Activity**](../docs/activity.md): a live feed, your codebase's features as a map, the impact of a change
+- [**Agents**](../docs/agents.md): pipelines, six experts, agents made from a description, trackers, connections, memory
+- [**Git**](../docs/git.md): commits written from the diff, commit modes, a git graph, accounts
+- [**Rules**](../docs/rules.md): hooks, permission rules and instructions, for the repository or for you
+- [**Autopilot**](../docs/autopilot.md): work on a goal until the judges agree it is done
+- [**Judges**](../docs/judges.md) and [**flows**](../docs/flows.md): who answers Claude's questions, and how progress is counted
 
-## Autopilot
+Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit keeps, spends and turns on by default.
 
-`/cockpit autopilot [$budget] [hours h] <goal>`, or **⟳ Autopilot** in the Agents tab, sets Claude working on a goal for a product, its own improvement or new development, cycle after cycle until it is reached. On the first cycle Claude studies the codebase and well-known open-source projects of the same kind and writes a roadmap in `.cockpit/roadmap.md`: milestones, each with acceptance criteria a test or command can check. Each cycle then takes the next milestone: plan, build, verify with the tests and the Prover, Breaker and Reviewer, and tick it only when its criteria pass. Cockpit sends each cycle as a turn of its own, so each is a flow in the Overview.
-
-- **It stops when the judges agree.** Claude ends each cycle with `AUTOPILOT: CONTINUE <next milestone>` or `AUTOPILOT: DONE <why>`; a claim of done goes to the judges, and the run ends only when two thirds vote Done and every milestone in the roadmap is ticked. Otherwise the next cycle carries what is missing.
-- **Limits are yours.** A budget in dollars and a time limit, each optional: leave them out and it runs until it is done. The Overview's Autopilot card shows the cycle, the milestones ticked, the spend and the time, with ■ Stop, and ▶ Resume when it has paused.
-- **It pauses for you** on a decision it must not make (anything that publishes, pushes, deletes, merges, or touches settings, permissions or credentials, and a question only you can answer), after three cycles in a row that change nothing, and when you interrupt a turn. While it runs, the judges answer Claude's questions and next steps without the usual three-in-a-row limit.
-- It never pushes, publishes or deploys; commits follow your Git settings.
-
-## Agent memory
-
-Every finished agent run is kept in `.cockpit/history.json`. When a new task is like an earlier one (by the words that carry meaning), the runs on it are **remembered**: the Overview draws them under the task, and each expert's brief gets a REMEMBERED section with what they found, to check rather than trust blindly, so a Breaker that once found empty passwords getting through starts by looking there.
-
-## Flows
-
-Every prompt opens a flow, and its steps come from the work itself, in this order (below). A turn with no prompt of yours carries on the last flow, its plan kept and its turns counted (`×3` on its row): a `/goal` working on, a background task's notice, a continuation. A goal set after the last flow ended opens its own flow, `Goal: …`, and the Overview shows the goal under the task while it stands. A prompt another plugin's hook kept from Cockpit still opens its flow when its turn starts.
-
-- **Claude's task list, when it keeps one.** As soon as Claude writes a plan (this app's task list, TodoWrite, or TaskCreate and TaskUpdate), the flow's steps are its tasks, each with the status Claude gave it, updated live as tasks are added, started, finished or ticked off at the turn's end. An update to a task from an earlier prompt's plan carries that plan over.
-- **Steps written for the task.** Otherwise a quick model writes three to six steps for this prompt, specific to it ("Read the limiter code", "Add the rate limit", "Run the tests"), in the background so the prompt is not held. Each is tagged with the kind of work that reaches it (exploring, deciding, editing, testing, committing, answering), so tool calls move it.
-- **A template, until then.** While the steps are being written, or if they cannot be: **Build** (Understand › Explore › Implement › Verify › Commit), **Docs** (no Verify), **Check** (Understand › Explore › Verify › Answer) or **Answer** (Understand › Explore › Answer), picked from the words of the prompt, with any step reached beyond it added. These five words are Cockpit's generic phases; they show only when there is nothing better.
-
-**Progress** is `(steps done + ½ × steps in progress) ÷ steps that count`, rounded. On a task list, done and in progress are the tasks' own statuses. On written steps or a template, the step furthest reached is in progress while the turn runs and done once it ends; a step before it is done if its kind of work happened, and **skipped** (struck through, left out of the count) if it did not. Before the first prompt there is no task, so progress is 0%, Ready, even if you start a pipeline by hand. The Overview shows the sum under the step chips, for example `2 of 4 steps done (1 skipped, not counted) = 50%`. The ring, the chips, the band's Progress bar and each flow's row all use it. On the terminal the ring is drawn in braille dots; on desktop it is SVG.
-
-`/cockpit flow <plan|task|build|docs|check|answer>`, or the **Flow** picker under the step chips, puts the current prompt on another flow; the choice stands.
-
-## Codebase memory
-
-At each session start Cockpit maps the repository: every source file (TypeScript, JavaScript, Dart, CSS, Python and the like), the files it imports and the files that import it. A model then names the product's **features** from what each file exports and its first comment (for example "Hero section", "Contact form", "Theme toggle", "Commit flow"), each with one sentence on what it does; the links between features come from the real imports between their files. The names are kept and written again only when files are added or removed; until then, or where a model cannot be asked, features are the folders.
-
-- **Activity** shows it: every feature with its one line, opening to what it does, its files (each with what it imports → and what imports it ←) and the features it uses and is used by; and the **Impact** of the file chosen in the tree, or else the one edited last: its feature, what it uses, what imports it, and every file and feature a change to it reaches, to check. ↻ maps and names them again.
-- After every edit (Claude's, an agent's, or a shell command's) the file is read again.
-- **Claude reads it** every turn, as a short section of its system prompt, and **the testers get it**: each brief lists the files that import the changed ones.
-- **It is kept in the repository** as `.cockpit/memory.json` and a readable `.cockpit/MEMORY.md`.
-
-## What is kept, and where
-
-- **In the repository**, in `.cockpit/` at its top folder: `history.json` (every finished flow and agent run, and Cockpit's commits, across sessions: the Overview lists earlier sessions, and each agent's last result outlasts the session) and the codebase memory. The folder has its own `.gitignore` of `*`, so none of it is committed, auto-commit included.
-- **In Cockpit's own store**, across sessions and reloads: Focus, the theme, the decision mode, and the Agents settings; the Git settings and account, per repository; the agents you made.
-
-## Live figures
-
-Timers, bars and the context window redraw every second while a turn, a tester or an agent runs. While the pane is shown, the repository and the usage are read again every 15 seconds, so a commit made in a terminal shows up without a turn. Status colours (green, red, amber) are Claude Code's own theme colours, so they follow your theme.
-
-## Focus
-
-Focus is **on** by default, and what you choose is kept: across sessions, reloads and updates of the mod. While it is on, the chat shows only your prompts, Claude's replies and the activity line. Tool cards and the "Done in" lines are hidden (errors still show), the band above the prompt shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with the **◉ Focus** button on the band or `/cockpit focus [on|off]`.
-
-## Colours
-
-The **Auto** theme (the default) uses Claude Code's own theme colours, so it follows your light or dark theme on every surface, with a gold accent; status colours (green, red, amber) are the theme's too. Paper, White, Black, Solarized and Nord can be picked by hand.
-
-## Git
-
-The first time you open the Git tab in a repository it asks five things, once: the **account** that commits, the **branch pattern**, the **message pattern**, the **commit mode**, and **when**. **⚙ Setup** asks again; **Patterns & options** edits any of it. Everything is remembered per repository.
-
-- **Commit mode**: *Auto-commit* commits by itself, after each turn that changed the repository's files however they were changed (Edit and Write, a shell command, a script) and after each agent run that changed files, then pushes when **Push after commit** is on; *Ask me* proposes each commit above the prompt and in the pane, with Commit and Skip; *Manual* commits only when you press the button.
-- **Type, message and branch are written from the changes, not from your prompt.** A quick model reads the diff of the ticked files (and the start of each new file) and writes the commit type (feat, fix, docs, refactor, perf, test, chore) and the subject, again whenever the ticked files change; the branch kind (feature, fix, docs, …) and the branch's name follow them. When the work sits on a base branch (main, master, develop, trunk) a branch is cut by the pattern, e.g. `feature/add-login`; on any other branch the commit stays there. In Manual mode you pick the type.
-- The Next commit card shows the message before anything happens ("writing from the diff…" while the model works); Commit, Ask me and Auto-commit wait for it. If no model answers, the subject names the files changed.
-- **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
-- The tab reads the repository each time you open it (and after every turn); **↻ Refresh** reads it again.
-- **Open pull request** needs a branch other than the base, which the pattern gives you.
-- Failed pushes, PRs and commits say why in the toast.
-- Git runs from the repository's top folder, and the settings and account are kept per repository, so a session working in a subfolder commits the right paths with the same settings.
-
-## Git accounts
-
-The **Account** box shows the saved login; **Modify** opens the choices and the ways to add one. It lists your global git identity (pushing as the gh login of the same name, else gh's active one) and each other GitHub login `gh auth status` reports, with its GitHub name and no-reply address.
-
-- **Add** puts the login on this machine. Paste a classic personal access token with the `repo` and `read:org` scopes (**Add token** hands it to `gh auth login --with-token` on stdin; gh keeps it, Cockpit does not), or press **Log in with gh**: gh copies a one-time code to your clipboard, the box shows the code too, and gh waits for you at github.com/login/device. Either way Cockpit then runs `gh auth setup-git` and picks the new login.
-- **Remove** takes it off this machine, after you confirm: `gh auth logout` for its login, and for the global identity `git config --global --unset user.name` and `user.email` as well. ↻ Detect does not bring it back. (Logging out does not revoke the token on GitHub.)
-- Commits use the chosen account's name and email. With push on, and for ↑ Push, Cockpit first runs `gh auth switch` to that account's login (which changes the active GitHub account for the whole machine) and `gh auth setup-git`, so git asks gh for github.com's credentials instead of a helper such as Windows' credential manager that would push as whoever it remembers. **Use for this repo** writes the identity into the repository's own git config.
-
-## Web rendering
-
-Where the surface draws SVG (the desktop app, the editor extension, mobile), the progress ring is the design's SVG ring. In a terminal it is drawn with coloured block characters instead, because terminals cannot draw HTML or SVG.
-
-## Decisions by judges
-
-Claude asks you things two ways: its question box in the middle of a turn, and the **next-step box** with reply buttons at the end of one. The judges take both. A quick model rates each decision from 0 to 10 for complexity: 0–3 gets 3 judges, 4–6 gets 6, 7–10 gets 9, each with its own point of view, and one option needs two thirds of the votes.
-
-- **Auto · judge** (the default): a clear winner answers for you. A question gets that answer; a next step gets its winning reply sent as your next prompt, marked as the judges' choice in the chat. A decision that publishes, pushes, deletes, merges, sends or is otherwise hard to undo, a split, a button only you can press (an app action), and a fourth answer in a row with no prompt of yours in between all come to you, with what the judges recommend.
-  Settings, permissions, rules and credentials count as hard to undo too. A question only you can answer is never judged: what you saw, did or want ("did ▶ start the agent?"), which of the things you asked for comes first ("Which … should I build first?"), what you want or prefer ("Want it bigger, or is this the right size?"), and anything about the judges themselves. Neither is a decision with a reply that needs your own words ("Tweak it first", "Something else"). An answer that arrives after a newer question or a prompt of yours is dropped, not sent.
-  Each judge has its own point of view: a pragmatic senior engineer, a security reviewer, a long-term maintainer, the end user, a sceptic, a performance engineer, a test engineer, an architect and a minimalist, seated in that order. A judge whose reply names no option abstains (– in the Overview); it never counts for the first option.
-- **Ask me**: every decision is yours. The judges still vote and say what they recommend: above the prompt (⚖), in the chat for a next step, and in the Overview beside what you chose.
-- **Off**: no judges and no model calls for them.
-
-Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; the choice is kept across sessions.
-
-## Commands
-
-| Command | Does |
-|---|---|
-| `/cockpit` | open the pane |
-| `/cockpit focus [on\|off]` | hide or show Claude's tool activity |
-| `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch theme (or click the dots in the pane header) |
-| `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
-| `/cockpit tab <overview\|files\|agents\|git\|rules>` | open a tab (`git` reads the repo again) |
-| `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current prompt on that flow (or pick it under the step chips) |
-| `/cockpit run <agents> [-- task]` | run those agents at once, each with that task |
-| `/cockpit test` | run the Verify pipeline now |
-| `/cockpit autopilot [$budget] [hours h] <goal>` | work on a goal cycle after cycle until the judges agree it is reached; `stop` and `resume` |
-
-## Agents in auto mode
-
-In auto permission mode the engine's classifier judges each subagent by the request to the model that asked for it. A press in the pane is no such request, so a start from the pane (▶, Start, Restart, a pipeline, `/cockpit test`, the testers after an agent's edit) can be refused with "no verdict". Cockpit handles that in two ways:
-
-- Where it can, it puts the start to you in the permission dialog: approve it and the agent runs.
-- Where that is refused anyway (a managed plugin that runs before Cockpit can stop the dialog), Cockpit **hands the start to Claude**: a short request in the conversation ("start the cockpit:prover agent with this brief"), so Claude starts the agent in that turn and auto mode judges it like any agent Claude starts. The agent shows in the Agents tab as usual, a waiting pipeline step takes it, and the hand-off opens no flow of its own.
-
-A start your settings or permission mode already allow runs straight from the pane.
-
-## Defaults that cost or publish
-
-Push and PR creation are **off** until you turn them on in Git → Patterns & options. Running Verify after each turn that changes files is **off** too (Agents tab), because each run starts two subagents. Testing each agent's work is **on**: each agent run that changes files starts the two testers.
-
-## Develop
-
-```
-./dev.sh        # macOS / Linux, from the repo root
-dev.cmd         # Windows
-```
-
-Saving a file under `hooks/` reloads the mod when the turn ends. `claude plugin validate ./cockpit` checks it, `claude plugin test ./cockpit` runs the tests (renders on terminal and desktop, every width from 28 to 160 columns, the git flow). `hooks/logic.ts` has a `selfCheck()` that runs at session start and logs any failure.
+## Code
 
 | File | Holds |
 |---|---|
-| `hooks/register.tsx` | event hooks: prompt, tool calls, judges, turn end, the spinner, band and status row |
-| `hooks/views.tsx` | the pane's header, tabs and five tab views |
-| `hooks/rules.ts` | the Rules tab's reading and changing of settings.json hooks and permissions and CLAUDE.md instructions |
-| `hooks/actions.ts` | git, judges, experts and pipelines, agents, measuring context |
-| `agents/*.md` | the six experts: planner, builder, reviewer, prover, breaker, scribe |
-| `hooks/logic.ts` | pure helpers: patterns, diffs, tree, progress, ring |
-| `hooks/theme.ts` | the five themes |
-| `hooks/state.ts` | initial state |
+| `hooks/register.tsx` | event hooks: prompts, tool calls, judges, turn ends, agents, and every drawing outside the pane |
+| `hooks/views.tsx` | the pane's header, tabs and tab views |
+| `hooks/actions.ts` | git, judges, experts and pipelines, agents, the autopilot, history |
+| `hooks/logic.ts` | pure helpers: flows and progress, diffs, the tree, the ring and other SVG drawings |
+| `hooks/memory.ts` | the codebase memory and the feature map |
+| `hooks/rules.ts` | the Rules tab's reading and changing of settings and `CLAUDE.md` |
+| `hooks/theme.ts` | the themes |
+| `hooks/state.ts` | the initial state |
 | `types/index.d.ts` | the state contract |
+| `agents/*.md` | the six experts |
+
+`hooks/logic.ts` has a `selfCheck()` that runs at session start and logs any failure. To work on it, see
+[CONTRIBUTING.md](../CONTRIBUTING.md).

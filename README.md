@@ -1,10 +1,18 @@
-# mod-plugin
+# Cockpit for Claude Code
 
 [![CI](https://github.com/dhirajnikam/mod-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/dhirajnikam/mod-plugin/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Claude Code mods (plugins built from hooks modules), open source under the MIT license.
+**See what Claude Code is doing, and steer it.** Cockpit is a Claude Code mod: a side pane and a band around the
+prompt that show each task's progress, the agents at work and what they found, your codebase as a map, and git, with
+the controls to act on all of it. It can also work on a goal by itself, cycle after cycle, until a panel of judges
+agrees it is done.
 
-## Install Cockpit
+![Cockpit's Overview: the autopilot, the current task's progress, checks, and the agents at work as a neural view](docs/images/overview.png)
+
+*A preview of the Overview, drawn from the desktop pane.*
+
+## Install
 
 Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, type:
 
@@ -12,41 +20,68 @@ Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, t
 /plugin install cockpit --marketplace dhirajnikam/mod-plugin
 ```
 
-Answer `y` to add this repository as a marketplace, then pick a scope: for you everywhere, or for one project. Cockpit loads at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
+Answer `y` to add this repository as a marketplace, then pick a scope: you everywhere, or one project. Cockpit loads
+at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
 
-**Good to know before you turn it on**
+## A tour
 
-- Cockpit writes a `.cockpit/` folder at the top of each repository you use it in: its codebase memory and history. The folder carries its own `.gitignore`, so nothing in it is ever committed.
-- Testing each agent's work is on: every agent run that edits files starts two more subagents (a positive and a negative tester). Switch it off in the Agents tab.
-- Each prompt makes one small model call to write its own flow steps, and the judges make a few for each question Claude asks you (turn them off with `/cockpit mode off`).
-- Push, pull requests and Verify after each turn are off until you turn them on.
-- Plugins your organization manages may run before Cockpit and skip some of its hooks; Cockpit's other parts keep working.
-
-## What is here
-
-| Folder | What |
+| Tab | What you see and do |
 |---|---|
-| `cockpit/` | **Cockpit**: progress by flow, codebase memory with impact, agents with positive and negative testers, judges, and a git graph, around the prompt and in a side pane. See `cockpit/README.md`. |
-| `ui-template/` | A small earlier mod: a clean spinner and a mode · model · effort line under the prompt. |
-| `design/` | The "Powerhouse Mod v2" design Cockpit is built from (open the HTML in a browser). |
-| `dev.sh` / `dev.cmd` | Start Claude Code here with Cockpit loaded (macOS/Linux / Windows); saving a file under `cockpit/hooks` reloads it. |
+| [**Overview**](docs/overview.md) | The task's progress ring and steps, checks that turn red when something fails, the agents at work as a neural view with what is remembered from similar tasks, changed files, context with Compact and Clear, and the judges' decisions |
+| [**Activity**](docs/activity.md) | A live feed of every file read, edited or searched; your codebase's features as a map, with what is being worked on lit; the impact of a change |
+| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change |
+| [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch |
+| [**Rules**](docs/rules.md) | The hooks, permission rules and `CLAUDE.md` instructions of the repository or of you, to add, edit and delete |
 
-Load only one of `cockpit` and `ui-template` at a time: both replace the spinner and the line under the prompt.
+Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in
+the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
+
+- **[Autopilot](docs/autopilot.md)**: give it a goal, and an optional budget and time limit. Claude writes a roadmap of
+  checkable milestones and works through them, testing each, until the judges agree every one is done. It pauses for
+  you on anything hard to undo.
+- **[Judges](docs/judges.md)**: when Claude asks you something, a panel of 3 to 9 model judges, each with its own point
+  of view, votes. In Auto mode a clear winner answers; anything that publishes, pushes, deletes or touches settings
+  comes to you.
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `/cockpit` | open the pane |
+| `/cockpit tab <overview\|files\|agents\|git\|rules>` | open a tab |
+| `/cockpit autopilot [$budget] [hours h] <goal>` | work on a goal until the judges agree it is done; `stop`, `resume` |
+| `/cockpit run <agents> [-- task]` | run those agents at once |
+| `/cockpit test` | run the Verify pipeline now |
+| `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
+| `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current task on another flow |
+| `/cockpit focus [on\|off]` | hide or show Claude's tool activity in the chat |
+| `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch the theme |
+
+## Privacy and cost
+
+- Cockpit keeps its history and codebase memory in a `.cockpit/` folder at the top of each repository, with its own
+  `.gitignore`, so nothing in it is ever committed. It stores no credentials.
+- It makes small model calls: one per prompt for its steps, one for each commit message, and a few per decision for the
+  judges (`/cockpit mode off` stops those). Testing each agent's work starts two subagents after any agent run that
+  changes files (off in the Agents tab).
+- Push, pull requests and Verify after each turn are off until you turn them on. Before a push it switches gh to the
+  account you chose, which changes the active GitHub account on your machine.
+- Plugins your organization manages may run before Cockpit and skip some of its hooks; the rest keeps working.
+
+The details: [Privacy and cost](docs/privacy.md) and the [security policy](SECURITY.md).
 
 ## Develop
 
-Clone the repository and run `./dev.sh` (macOS, Linux) or `dev.cmd` (Windows) to start Claude Code with Cockpit loaded from `cockpit/`; saving a file there reloads it.
-
-## Checks
-
-```
-claude plugin validate cockpit
-claude plugin test cockpit
-npx -p typescript tsc -p cockpit
+```sh
+./dev.sh        # start Claude Code with Cockpit loaded from this checkout (dev.cmd on Windows)
 ```
 
-`cockpit/.claude-plugin/types/` is written by Claude Code when it loads the mod, and is git-ignored.
+Saving a file under `cockpit/hooks/` reloads the mod when the turn ends. The checks, the code's layout and how to write
+a test are in [CONTRIBUTING.md](CONTRIBUTING.md); every change is listed in [CHANGELOG.md](CHANGELOG.md).
+
+Also here: [`ui-template/`](ui-template), a small earlier mod (a clean spinner and a mode · model · effort line; load
+only one of it and Cockpit at a time), and [`design/`](design), the "Powerhouse Mod v2" design Cockpit is built from.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+[MIT](LICENSE)

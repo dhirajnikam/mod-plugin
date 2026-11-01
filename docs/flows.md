@@ -1,0 +1,13 @@
+# Flows and progress
+
+Every prompt opens a flow, and its steps come from the work itself, in this order (below). A turn with no prompt of yours carries on the last flow, its plan kept and its turns counted (`×3` on its row): a `/goal` working on, a background task's notice, a continuation. A goal set after the last flow ended opens its own flow, `Goal: …`, and the Overview shows the goal under the task while it stands. A prompt another plugin's hook kept from Cockpit still opens its flow when its turn starts.
+
+- **Claude's task list, when it keeps one.** As soon as Claude writes a plan (this app's task list, TodoWrite, or TaskCreate and TaskUpdate), the flow's steps are its tasks, each with the status Claude gave it, updated live as tasks are added, started, finished or ticked off at the turn's end. An update to a task from an earlier prompt's plan carries that plan over.
+- **Steps written for the task.** Otherwise a quick model writes three to six steps for this prompt, specific to it ("Read the limiter code", "Add the rate limit", "Run the tests"), in the background so the prompt is not held. Each is tagged with the kind of work that reaches it (exploring, deciding, editing, testing, committing, answering), so tool calls move it.
+- **A template, until then.** While the steps are being written, or if they cannot be: **Build** (Understand › Explore › Implement › Verify › Commit), **Docs** (no Verify), **Check** (Understand › Explore › Verify › Answer) or **Answer** (Understand › Explore › Answer), picked from the words of the prompt, with any step reached beyond it added. These five words are Cockpit's generic phases; they show only when there is nothing better.
+
+**Progress** is `(steps done + ½ × steps in progress) ÷ steps that count`, rounded. On a task list, done and in progress are the tasks' own statuses. On written steps or a template, the step furthest reached is in progress while the turn runs and done once it ends; a step before it is done if its kind of work happened, and **skipped** (struck through, left out of the count) if it did not. Before the first prompt there is no task, so progress is 0%, Ready, even if you start a pipeline by hand. The Overview shows the sum under the step chips, for example `2 of 4 steps done (1 skipped, not counted) = 50%`. The ring, the chips, the band's Progress bar and each flow's row all use it. On the terminal the ring is drawn in braille dots; on desktop it is SVG.
+
+`/cockpit flow <plan|task|build|docs|check|answer>`, or the **Flow** picker under the step chips, puts the current prompt on another flow; the choice stands.
+
+[All docs](README.md) · [Cockpit README](../README.md)
