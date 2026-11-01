@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 // The layout's promises, each checked by drawing a tab with a pipeline, agents and a changed file
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-test('Activity tells one story: agents\' events fill the feed, so the tab never says it has nothing, and the count matches the rows', { timeoutMs: 20_000 }, async ($, on) => {
+test('Activity tells one story: agents\' events fill the feed, so the tab never says it has nothing, and the count matches the rows; empty lists all say None yet', { timeoutMs: 20_000 }, async ($, on) => {
   let clock = 1_000_000
   let spawns = 0
   on('clock.now', async () => ({ value: (clock += 900) }))
@@ -39,6 +39,13 @@ test('Activity tells one story: agents\' events fill the feed, so the tab never 
   expect(d).not.toContain('No files found here yet')
   // Six events: the agents' tool calls and the Prover's report
   expect(d).toContain('6 events · 3 agents')
+  // Every empty list says it the same way: the Rules tab's three lists, before anything is added
+  await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
+  const rules = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  const r = JSON.stringify(await rules.drawn())
+  await rules.unmount()
+  expect(r.split('"None yet."').length - 1).toBe(3)
+  expect(r).not.toContain('"None."')
 })
 
 test('Checks read plainly: passes are counted in words, and a tester still at work says running without a ✓ of its own', { timeoutMs: 20_000 }, async ($, on) => {

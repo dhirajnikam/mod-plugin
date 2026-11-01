@@ -14,6 +14,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- Empty lists are worded alike: the Rules tab's hooks and permission rules say "None yet." as its instructions do.
 - A skipped flow step is marked ↷ and dimmed, with a "↷ skipped" legend, instead of struck through as if deleted.
 - The pane's header is one line: the folder, branch, judges' mode, theme and the run badge beside the name. The
   Overview no longer repeats the running turn's time under its ring; it shows the last turn's once it ends.

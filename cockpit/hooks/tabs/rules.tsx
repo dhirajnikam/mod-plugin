@@ -160,7 +160,7 @@ export function Rules($: $, v: V) {
             <Button key="rh-go" label="Add hook" variant="primary" onPress={() => ((s.ui.ruleC ?? '').trim() ? save(writeSettings($, scope, j => changeHook(j, { add: { event: s.ui.ruleA || 'PreToolUse', matcher: (s.ui.ruleB ?? '').trim(), command: (s.ui.ruleC ?? '').trim() } }), 'Hook added')) : undefined)} />
           </Box>
         )}
-        {hooks.length === 0 && s.ui.ruleAdd !== 'hook' && <Text color={t.faint} size="footnote">None.</Text>}
+        {hooks.length === 0 && s.ui.ruleAdd !== 'hook' && <Text color={t.faint} size="footnote">None yet.</Text>}
         {hooks.map(hk => {
           const key = `h:${hk.key}`
           rowsDelete.set(key, () => save(writeSettings($, scope, j => changeHook(j, { remove: hk }), 'Hook deleted')))
@@ -200,7 +200,7 @@ export function Rules($: $, v: V) {
             <Button key="rp-go" label="Add rule" variant="primary" onPress={() => ((s.ui.ruleB ?? '').trim() ? save(writeSettings($, scope, j => changePerm(j, { add: { kind: (s.ui.ruleA || 'allow') as PermKind, rule: (s.ui.ruleB ?? '').trim() } }), 'Rule added')) : undefined)} />
           </Box>
         )}
-        {perms.length === 0 && s.ui.ruleAdd !== 'perm' && <Text color={t.faint} size="footnote">None.</Text>}
+        {perms.length === 0 && s.ui.ruleAdd !== 'perm' && <Text color={t.faint} size="footnote">None yet.</Text>}
         {perms.map(p => {
           const key = `p:${p.key}`
           rowsDelete.set(key, () => save(writeSettings($, scope, j => changePerm(j, { remove: p }), 'Rule deleted')))
