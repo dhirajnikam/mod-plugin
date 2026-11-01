@@ -12,7 +12,8 @@ with an arrow only where it folds.
 - **Needs you**: the attention card, for a question Claude is waiting on or a commit Cockpit proposes (Commit, Skip).
 - **Autopilot**, once one has started and until you clear it (×): its cycle, the milestones ticked, the spend and the time, with ■ Stop and ▶ Resume.
   See [Autopilot](autopilot.md).
-- **The current flow**: a progress ring, the task, the goal while one stands (`/goal`), elapsed and cost, then the
+- **The current flow**: a progress ring, the task, the goal while one stands (`/goal`), the cost and, once a turn ends, how long it took (while it runs, the
+  header's badge counts it), then the
   step chips with the flow they follow; pressing the flow's name opens the flow picker. See [Flows](flows.md).
 - **Checks**, red while something fails: the current flow's last failed or refused tool call, and the testers'
   latest count with the first failing case.

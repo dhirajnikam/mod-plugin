@@ -216,7 +216,8 @@ export function Overview($: $, v: V) {
             </Box>
           )}
           <Box columnGap={sp(v, 3)} flexWrap="wrap">
-            {([['Elapsed', s.isWorking ? fmt(v.now - s.turnStart) : s.lastTurnMs ? fmt(s.lastTurnMs) : '—', s.isWorking ? t.busy : t.text], ['Cost', `$${s.cost.toFixed(2)}`, t.text]] as const).map(([label, val, c]) => (
+            {/* While a turn runs its time is in the header's badge; once it ends, here */}
+            {([...(!s.isWorking && s.lastTurnMs ? [['Last turn', fmt(s.lastTurnMs), t.text] as const] : []), ['Cost', `$${s.cost.toFixed(2)}`, t.text] as const]).map(([label, val, c]) => (
               <Box key={`st-${label}`} flexDirection="column">
                 <Text color={t.faint} size="footnote">{label}</Text>
                 <Text color={c} bold>{val}</Text>

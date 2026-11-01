@@ -14,6 +14,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- The pane's header is one line: the folder, branch, judges' mode, theme and the run badge beside the name. The
+  Overview no longer repeats the running turn's time under its ring; it shows the last turn's once it ends.
 - The source is split for newcomers: the pane in `hooks/tabs/`, one file per tab, and what Cockpit does in
   `hooks/ops/`, one file per concern; no source file is over 900 lines.
 - Everything Cockpit draws outside the tabs (the band, the spinner, the chat's cards, the pane's frame) moved from

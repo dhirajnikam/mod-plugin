@@ -87,38 +87,34 @@ export function Header($: $, v: V) {
   const { Box, Button, Select, Text } = v.ui
   const { s, t, w } = v
   const run = s.waiting ? 'Paused · needs you' : s.isWorking ? `Running · ${fmt(v.now - s.turnStart)}` : s.turnStart ? 'Finished' : 'Idle'
+  const busy = Object.values(s.busy ?? {})
+  // One line: the brand and where you are on the left; what is happening and the controls on the right. It wraps,
+  // rather than clips, when a pane is too narrow for it
   return (
-    <Box flexDirection="column">
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        <Box gap={sp(v, 1)}>
-          <Text color={t.accent} bold size="heading">Cockpit</Text>
-          {w >= 60 && <Text color={t.dim} size="footnote">a Claude Code mod</Text>}
-        </Box>
-        <Box gap={sp(v, 1)} flexWrap="wrap">
-          {v.desk ? (
-            <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
-          ) : (
-            THEME_IDS.map(id => (
-              <Button key={`theme-${id}`} plain onPress={() => setTheme($, id as ThemeId)}>
-                {id === 'auto' ? (
-                  <Text color={id === s.theme ? t.accent : t.dim}>{id === s.theme ? '[◐ auto]' : '◐'}</Text>
-                ) : (
-                  <Text color={THEMES[id].accent} backgroundColor={THEMES[id].bg}>{id === s.theme ? '◉' : '●'}</Text>
-                )}
-              </Button>
-            ))
-          )}
-          <Text backgroundColor={s.waiting ? t.busy : s.isWorking ? t.accent : t.text} color={t.bg || 'inverseText'}>{` ${run} `}</Text>
-        </Box>
+    <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)} alignItems="center" marginBottom={v.desk ? 'sm' : 0}>
+      <Box gap={sp(v, 1)} flexShrink={1} alignItems="center">
+        <Text color={t.accent} bold size="heading">Cockpit</Text>
+        {v.root !== '' && <Text color={t.faint} size="footnote" wrap="truncate-start">{v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+$)/, '')}</Text>}
       </Box>
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 2)}>
-        <Text color={t.dim} wrap="truncate-start">{v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/')}</Text>
-        <Text>
-          {/* Slow work a press started, running on after it: "⟳ Pushing" */}
-          {Object.values(s.busy ?? {}).length > 0 && <Text color={t.busy}>{`⟳ ${Object.values(s.busy ?? {}).join(' · ')}  `}</Text>}
-          <Text color={t.accent}>{s.repo.isRepo ? `⎇ ${s.repo.current}  ` : ''}</Text>
-          <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
-        </Text>
+      <Box gap={sp(v, 1)} flexWrap="wrap" alignItems="center">
+        {/* Slow work a press started, running on after it: "⟳ Pushing" */}
+        {busy.length > 0 && <Text color={t.busy}>{`⟳ ${busy.join(' · ')}`}</Text>}
+        {s.repo.isRepo && <Text color={t.accent}>{`⎇ ${s.repo.current}`}</Text>}
+        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto' : s.mode === 'ask' ? 'Ask' : 'Judges off'}</Text>
+        {v.desk ? (
+          <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
+        ) : (
+          THEME_IDS.map(id => (
+            <Button key={`theme-${id}`} plain onPress={() => setTheme($, id as ThemeId)}>
+              {id === 'auto' ? (
+                <Text color={id === s.theme ? t.accent : t.dim}>{id === s.theme ? '[◐ auto]' : '◐'}</Text>
+              ) : (
+                <Text color={THEMES[id].accent} backgroundColor={THEMES[id].bg}>{id === s.theme ? '◉' : '●'}</Text>
+              )}
+            </Button>
+          ))
+        )}
+        <Text backgroundColor={s.waiting ? t.busy : s.isWorking ? t.accent : t.text} color={t.bg || 'inverseText'}>{` ${run} `}</Text>
       </Box>
     </Box>
   )

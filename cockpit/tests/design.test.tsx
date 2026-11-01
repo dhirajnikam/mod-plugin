@@ -79,4 +79,10 @@ test('Checks read plainly: passes are counted in words, and a tester still at wo
   expect(d).toContain('✓ 3 passed')
   expect(d).toContain('· more running')
   expect(d).not.toContain('✓3')
+  // The header is one row, and the turn's time is in its badge alone
+  const head = JSON.parse(d).children[0]
+  expect(head.props.flexDirection ?? 'row').toBe('row')
+  expect(JSON.stringify(head)).toContain('Running · ')
+  expect(d).not.toContain('Elapsed')
+  expect(d).not.toContain('a Claude Code mod')
 })
