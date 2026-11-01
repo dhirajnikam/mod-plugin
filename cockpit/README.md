@@ -30,8 +30,8 @@ Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit
 | File | Holds |
 |---|---|
 | `hooks/register.tsx` | event hooks: prompts, tool calls, judges, turn ends, agents, and every drawing outside the pane |
-| `hooks/views.tsx` | the pane's header, tabs and tab views |
-| `hooks/actions.ts` | git, judges, experts and pipelines, agents, the autopilot, history |
+| `hooks/tabs/` | the pane, one file per tab (`views.tsx` re-exports them) |
+| `hooks/ops/` | what Cockpit does: state and history, git, agents, judges and the autopilot, memory, rules files (`actions.ts` re-exports them) |
 | `hooks/logic.ts` | pure helpers: flows and progress, diffs, the tree, the ring and other SVG drawings |
 | `hooks/memory.ts` | the codebase memory and the feature map |
 | `hooks/rules.ts` | the Rules tab's reading and changing of settings and `CLAUDE.md` |

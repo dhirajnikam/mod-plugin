@@ -12,6 +12,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An architecture guide for contributors (`docs/architecture.md`).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
+### Changed
+- The source is split for newcomers: the pane in `hooks/tabs/`, one file per tab, and what Cockpit does in
+  `hooks/ops/`, one file per concern; no source file is over 900 lines.
+
 ### Fixed
 - A GitHub token typed into the account box but not added is dropped when the box closes, instead of staying in the
   session's state.

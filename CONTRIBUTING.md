@@ -43,8 +43,8 @@ through the code.
 | Path | What it holds |
 |---|---|
 | `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges, and every drawing outside the pane |
-| `cockpit/hooks/views.tsx` | the pane: its header, tabs and each tab's view |
-| `cockpit/hooks/actions.ts` | what the views and hooks do: git, agents and pipelines, judges, the autopilot, history |
+| `cockpit/hooks/tabs/` | the pane: one file per tab, `header.tsx` for its header and tabs, `shared.tsx` for the pieces they share |
+| `cockpit/hooks/ops/` | what the views and hooks do: `core.ts` (state, history), `git.ts`, `agents.ts`, `decisions.ts` (judges and autopilot), `memory-io.ts`, `rules-io.ts` |
 | `cockpit/hooks/logic.ts` | pure helpers: flows and progress, diffs, the file tree, SVG drawings |
 | `cockpit/hooks/memory.ts` | the codebase memory: imports, features, impact, the feature map |
 | `cockpit/hooks/rules.ts` | the Rules tab's reading and changing of settings and `CLAUDE.md` |

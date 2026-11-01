@@ -11,15 +11,22 @@ drawing), `e` the event, and `next(e)` runs whatever comes after Cockpit (other 
 Cockpit almost always calls `next(e)` and records what happened; it seldom changes an event.
 
 ```
-Claude Code events ──▶ register.tsx (hooks) ──▶ actions.ts (what to do) ──▶ set(): the state ──▶ ui.render hooks redraw
-                                                       │                         │
-                                                  git, gh, models,          views.tsx (the pane),
-                                                  agents, files             register.tsx (band, spinner, chat cards)
+Claude Code events ──▶ register.tsx (hooks) ──▶ ops/ (what to do) ──▶ set(): the state ──▶ ui.render hooks redraw
+                                                    │                        │
+                                               git, gh, models,         tabs/ (the pane),
+                                               agents, files            register.tsx (band, spinner, chat cards)
 ```
 
-- **State** is one atom (`S`, declared in `actions.ts`, its type `Ph` in `cockpit/types/index.d.ts`, its first value
-  in `hooks/state.ts`). Every change goes through `set()` in `actions.ts`, which also saves the preferences that outlast
-  a session. A drawing reads the atom; a change to it redraws the readers.
+- **What Cockpit does** is in `hooks/ops/`, one file per concern: `core.ts` (the state, `set()`, notes, paths,
+  history), `git.ts` (git, gh, commits, accounts), `agents.ts` (experts, pipelines, hand-offs, testers),
+  `decisions.ts` (the judges and the autopilot, which call each other), `memory-io.ts` (mapping the codebase, writing
+  flow steps) and `rules-io.ts` (the Rules tab's files). Every arrow points at `core.ts`, and `agents.ts` also uses
+  `git.ts`: there are no import cycles. `hooks/actions.ts` re-exports them all, so the rest imports from `./actions`.
+- **State** is one atom, its type `Ph` in `cockpit/types/index.d.ts`, its first value in `hooks/state.ts`. Claude
+  Code reads an atom from its literal plugin and key in the module that names it, so every module that reads the state
+  declares the same atom (`atom({ plugin: 'cockpit', key: 's' }, …)`) rather than importing it. Every change goes
+  through `set()` in `ops/core.ts`, which also saves the preferences that outlast a session. A drawing reads the
+  state; a change to it redraws the readers.
 - **Pure helpers** live apart so they can be tested without the engine: `logic.ts` (flows, progress, diffs, the file
   tree, the judges' tally, the SVG drawings), `memory.ts` (imports, features, impact, the feature map), `rules.ts`
   (reading and changing settings and `CLAUDE.md`), `theme.ts` (the themes).
@@ -51,17 +58,17 @@ All hooks are registered in `register.tsx`.
 
 ## Where each tab lives
 
-Each tab is one function in `hooks/views.tsx`, called from the `Pane` hook:
+Each tab is a file in `hooks/tabs/`, its function called from the `Pane` hook (`hooks/views.tsx` re-exports them):
 
 | Tab | Function | Uses |
 |---|---|---|
-| Overview | `Overview` | `progress()` and `ringSvg()` from `logic.ts`; `neuralSvg()` and `similarRuns()` for the agents |
-| Activity | `Files` | `FeatureMap`, `Memory` (impact and features), `tree()` from `logic.ts`, `featureMapSvg()` from `memory.ts` |
-| Agents | `Agents` | `Tracker`, `AgentMap` and `agentGraph()`, `agentIconSvg()` from `logic.ts`; starts go through `runExpert`, `startPipeline`, `spawnAgent` in `actions.ts` |
-| Git | `Git` | `History` (the graph), `AccountBox`, `Setup`, `Options`; git and gh calls in `actions.ts` |
-| Rules | `Rules` | `rules.ts` for the changes; `loadRules`, `writeSettings`, `writeInstructions` in `actions.ts` |
+| Overview (`tabs/overview.tsx`) | `Overview` | `progress()` and `ringSvg()` from `logic.ts`; `neuralSvg()` and `similarRuns()` for the agents |
+| Activity (`tabs/activity.tsx`) | `Files` | `FeatureMap`, `Memory` (impact and features), `tree()` from `logic.ts`, `featureMapSvg()` from `memory.ts` |
+| Agents (`tabs/agents.tsx`) | `Agents` | `Tracker`, `AgentMap` and `agentGraph()`, `agentIconSvg()` from `logic.ts`; starts go through `runExpert`, `startPipeline`, `spawnAgent` in `ops/agents.ts` |
+| Git (`tabs/git.tsx`) | `Git` | `History` (the graph), `AccountBox`, `Setup`, `Options`; git and gh calls in `ops/git.ts` |
+| Rules (`tabs/rules.tsx`) | `Rules` | `rules.ts` for the changes; `loadRules`, `writeSettings`, `writeInstructions` in `ops/rules-io.ts` |
 
-Shared drawing pieces in `views.tsx`: `Bar`, `Segs`, `Seg` (a segmented choice), `Check`, `Head` (a section heading),
+Shared drawing pieces in `tabs/shared.tsx`: `Bar`, `Segs`, `Seg` (a segmented choice), `Check`, `Head` (a section heading),
 `MapText` (a map drawn as text where there is no SVG), `Card` (a chat card).
 
 ## The main paths through the code
@@ -75,7 +82,7 @@ Shared drawing pieces in `views.tsx`: `Bar`, `Segs`, `Seg` (a segmented choice),
   (`advancePipeline()`), and starts its testers (`testAgent()`). Claude Code's own list (`syncAgents()`) catches the
   agents Cockpit did not see start.
 - **A decision**: `AskUserQuestion` or a `wrap_up` question → `judge()` scores its complexity, seats 3, 6 or 9
-  judges and tallies their votes → in Auto mode a clear winner answers; `RISKY`, `PERSONAL` and `OPEN` in `actions.ts`
+  judges and tallies their votes → in Auto mode a clear winner answers; `RISKY`, `PERSONAL` and `OPEN` in `ops/decisions.ts`
   decide what always comes to you.
 - **The autopilot**: `startAutopilot()` sends cycle 1 → each main `turn.complete` calls `autopilotTurnEnd()`, which
   reads the `AUTOPILOT:` line, checks the limits and the stall count, puts a claim of done to the judges, and sends the
