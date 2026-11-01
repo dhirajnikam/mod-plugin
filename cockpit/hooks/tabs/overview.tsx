@@ -228,11 +228,13 @@ export function Overview($: $, v: V) {
       </Box>
       <Box flexWrap="wrap" columnGap={sp(v, 1)} alignItems="center">
         {p.steps.map((x, i) => (
-          <Text key={`step-${i}-${x.name}`} backgroundColor={x.st === 'active' ? t.wash || undefined : (x.st === 'done' && t.surface) || undefined} color={x.st === 'pending' || x.st === 'skipped' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'} strikethrough={x.st === 'skipped'}>
-            <Text color={x.st === 'done' ? t.ok : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '–' : '○'}`}</Text>
+          <Text key={`step-${i}-${x.name}`} backgroundColor={x.st === 'active' ? t.wash || undefined : (x.st === 'done' && t.surface) || undefined} color={x.st === 'skipped' ? t.faint : x.st === 'pending' ? t.dim : x.st === 'active' ? t.hi : t.text} bold={x.st === 'active'}>
+            <Text color={x.st === 'done' ? t.ok : x.st === 'active' ? t.accent : t.faint}>{` ${x.st === 'done' ? '✓' : x.st === 'active' ? '●' : x.st === 'skipped' ? '↷' : '○'}`}</Text>
             {` ${x.name} `}
           </Text>
         ))}
+        {/* A skipped step is passed over, not undone: say so once rather than strike it through */}
+        {p.steps.some(x => x.st === 'skipped') && <Text color={t.faint} size="footnote">↷ skipped</Text>}
         {s.flows.length > 0 && (
           <Button key="flow-pick" plain onPress={() => toggle('flowpick')}>
             <Text color={t.faint} size="footnote">{`${p.flow.label} flow ${isOpen('flowpick') ? '⌄' : '›'}`}</Text>

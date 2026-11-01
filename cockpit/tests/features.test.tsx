@@ -373,7 +373,7 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   expect(d).toContain(' Commit ')
   // Explore was skipped (the edit came first): left out of the count, 2 of 4 steps
   expect(d).toContain('"50%"')
-  expect(d).toContain('"strikethrough":true')
+  expect(d).toContain('↷ skipped')
   await ui.unmount()
   // Verify run between turns reaches the closed flow too
   await $.command.run({ command: 'cockpit', args: 'test' } as never)

@@ -85,4 +85,8 @@ test('Checks read plainly: passes are counted in words, and a tester still at wo
   expect(JSON.stringify(head)).toContain('Running · ')
   expect(d).not.toContain('Elapsed')
   expect(d).not.toContain('a Claude Code mod')
+  // Explore and Implement were passed over: marked ↷ with a legend, never struck through
+  expect(d).toContain('" ↷"')
+  expect(d).toContain('↷ skipped')
+  expect(d).not.toContain('"strikethrough":true')
 })
