@@ -6,6 +6,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- An icon (`cockpit/.claude-plugin/icon.png`): the Overview's progress ring in the Black theme's gold.
 - CI on every push and pull request: the tests, validation and the link check.
 - `docs/privacy.md` lists every model call Cockpit makes, what it sends and how to turn it off; a check in CI fails
   when a call goes undocumented.
