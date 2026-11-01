@@ -76,7 +76,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   return log
 }
 
-test('judges decide a simple question for you, and a split goes to you', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('judges decide a simple question for you, and a split goes to you', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { votes: [0, 0, 0], score: 2 })
   const q = { question: 'Which lib?', options: [{ label: 'date-fns' }, { label: 'dayjs' }], multiSelect: false, header: 'lib' }
   const r = (await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 't1', questions: [q] } as never)) as any
@@ -89,7 +90,8 @@ test('judges decide a simple question for you, and a split goes to you', async (
   await ui.unmount()
 })
 
-test('a split vote asks you instead', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('a split vote asks you instead', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { votes: [0, 1, 0, 1, 0, 1], score: 5 })
   const q = { question: 'Which lib?', options: [{ label: 'date-fns' }, { label: 'dayjs' }], multiSelect: false, header: 'lib' }
   await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 't2', questions: [q] } as never)
@@ -104,7 +106,8 @@ const settle = () => new Promise(res => (globalThis as any).setTimeout(res, 150)
 const nextStep = ($: any, ask: string, actions: object[]) => $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', tool_use_id: `w-${ask}`, recap: 'Done.', ask, actions } as never)
 const replies = [{ label: 'Keep going', message: 'Yes, keep going with the next step.' }, { label: 'Stop here', message: 'Stop here.' }]
 
-test('Ask me sends every question to you with the judges\' advice; Off runs no judges at all', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('Ask me sends every question to you with the judges\' advice; Off runs no judges at all', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { votes: [0, 0, 0] })
   await $.command.run({ command: 'cockpit', args: 'mode ask' } as never)
   await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 't3', questions: [{ question: 'Q?', options: [{ label: 'a' }, { label: 'b' }], multiSelect: false, header: 'q' }] } as never)
@@ -129,7 +132,8 @@ test('Ask me sends every question to you with the judges\' advice; Off runs no j
   expect(log.submitted).toEqual([])
 })
 
-test('in Auto the judges answer a next-step question by sending the winning reply; a risky one only gets advice', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('in Auto the judges answer a next-step question by sending the winning reply; a risky one only gets advice', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { votes: [0, 0, 0] })
   await nextStep($, 'Keep going?', replies)
   await settle()
@@ -146,7 +150,8 @@ test('in Auto the judges answer a next-step question by sending the winning repl
   await b.unmount()
 })
 
-test('the judges leave settings, questions only you can answer, and late answers to you', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('the judges leave settings, questions only you can answer, and late answers to you', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { votes: [0, 0, 0] })
   // A settings change is hard to undo: advice only
   await nextStep($, "Add permission allow rules for Cockpit's agents to your settings?", [{ label: 'Add the rules', message: 'Add them.' }, { label: 'Not now' }])
@@ -173,7 +178,8 @@ test('the judges leave settings, questions only you can answer, and late answers
   expect(log.submitted).toEqual(['Go on with the second.'])
 })
 
-test('the judges answer at most three next steps in a row; your own prompt starts the count again', async ($, on) => {
+// A whole session end to end: about a second when the machine is quiet, past the 5 s default when it is busy
+test('the judges answer at most three next steps in a row; your own prompt starts the count again', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { votes: [0, 0, 0] })
   for (const n of [1, 2, 3, 4]) {
     await nextStep($, `Step ${n}?`, replies)
@@ -750,7 +756,8 @@ test("a subagent's task list that comes before its row is kept, and the row take
   await ov.unmount()
 })
 
-test('the autopilot sends cycle after cycle, ends when the judges agree it is done, and stops at its budget or on a stall', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('the autopilot sends cycle after cycle, ends when the judges agree it is done, and stops at its budget or on a stall', { timeoutMs: 20_000 }, async ($, on) => {
   let spend = 1.5
   const log = stand($, on, { tick: true, votes: [0, 0, 0], cost: () => spend })
   const end = (answer: string) => $.turn.complete({ answer, reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)

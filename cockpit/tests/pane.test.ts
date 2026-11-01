@@ -2,7 +2,8 @@ import { expect, test } from 'claude-code/testing'
 
 import { selfCheck } from '../hooks/logic'
 
-test('/cockpit opens the pane, and a theme switch reopens it', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('/cockpit opens the pane, and a theme switch reopens it', { timeoutMs: 20_000 }, async ($, on) => {
   const opened: string[] = []
   on('ui.open', async (_, e) => {
     opened.push(e.id)

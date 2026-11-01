@@ -4,7 +4,8 @@ import { expect, test } from 'claude-code/testing'
 // "git add failed: could not open directory 'cockpit/cockpit/'" and never auto-committed a turn's shell edits
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
-test('from a subfolder, a turn that changed files by any means is committed and pushed at the repository root', async ($, on) => {
+// A whole session end to end: about a second when the machine is quiet, past the 5 s default when it is busy
+test('from a subfolder, a turn that changed files by any means is committed and pushed at the repository root', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: { cmd: string; cwd: string }[] = []
   const toasts: string[] = []
   const store: Record<string, unknown> = {

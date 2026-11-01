@@ -94,7 +94,8 @@ async function checkDuringStart($: any, log: any) {
   return { own: own as any, other: other as any, after: after as any }
 }
 
-test('a start from the pane goes to the person where auto mode would judge it; the model\'s calls are untouched', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('a start from the pane goes to the person where auto mode would judge it; the model\'s calls are untouched', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { hold: true })
   const c = await checkDuringStart($, log)
   expect(c.own.decision).toBe('ask')
@@ -105,7 +106,8 @@ test('a start from the pane goes to the person where auto mode would judge it; t
   expect(c.after.reason).toBeUndefined()
 })
 
-test('a rule or mode that allows Agent calls lets a pane start run with no dialog', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('a rule or mode that allows Agent calls lets a pane start run with no dialog', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on, { hold: true, core: 'allow' })
   expect((await checkDuringStart($, log)).own.decision).toBe('allow')
 })
@@ -114,7 +116,8 @@ test('a rule or mode that allows Agent calls lets a pane start run with no dialo
 const modelSpawn = ($: any, type: string, task: string) =>
   $.agent.spawn({ tool_use_id: `m-${task}`, prompt: task, description: task, subagentType: type, provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: true, fork: false } as never)
 
-test('an agent that changes files gets a positive and a negative tester, and their results show on its row', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('an agent that changes files gets a positive and a negative tester, and their results show on its row', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on)
   await modelSpawn($, 'cockpit:builder', 'add a rate limiter')
   await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b', agentId: 'ag1' } as never)
@@ -333,7 +336,8 @@ test('an agent whose run ends on an error shows as failed', async ($, on) => {
   await ui.unmount()
 })
 
-test('an agent made from a description joins the team, runs from its card, and is kept for later sessions', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('an agent made from a description joins the team, runs from its card, and is kept for later sessions', { timeoutMs: 20_000 }, async ($, on) => {
   const log = stand($, on)
   on('command.register', async () => ({ value: {} }) as never)
   on('clock.every', async () => ({ value: {} }) as never)
@@ -452,7 +456,8 @@ const boot = async ($: any, on: any, files: Record<string, string>, regDeny = fa
   return { specs, log, r }
 }
 
-test('agents md without frontmatter, CRLF, empty tools, colonless line', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('agents md without frontmatter, CRLF, empty tools, colonless line', { timeoutMs: 20_000 }, async ($, on) => {
   const { specs } = await boot($, on, {
     'a.md': 'no frontmatter at all',
     'b.md': '---\r\nname: b\r\ndescription: d\r\n---\r\nbody',
@@ -468,7 +473,8 @@ test('agents md without frontmatter, CRLF, empty tools, colonless line', async (
   expect(specs.find(s => s.name === 'f').tools).toEqual(['Read', 'Bash'])
 })
 
-test('registerExperts survives a failing register and unreadable files', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('registerExperts survives a failing register and unreadable files', { timeoutMs: 20_000 }, async ($, on) => {
   const { r, specs } = await boot($, on, { 'z.md': '---\nname: z\ndescription: d\n---\nb', 'bad.md': undefined as never }, true)
   expect(JSON.stringify(r)).not.toContain('err')
   expect(specs.length).toBe(1)

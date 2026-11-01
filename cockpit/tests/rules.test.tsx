@@ -39,7 +39,8 @@ test('hooks, permission rules and instructions change in their files, the rest o
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const pane = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 120 }, view: {} } }
 
-test('the Rules tab adds, edits and deletes hooks, rules and instructions, and never writes a broken settings file', async ($, on) => {
+// A whole session end to end: about a second when the machine is quiet, past the 5 s default when it is busy
+test('the Rules tab adds, edits and deletes hooks, rules and instructions, and never writes a broken settings file', { timeoutMs: 20_000 }, async ($, on) => {
   const disk: Record<string, string> = {
     '/repo/.claude/settings.json': JSON.stringify({ env: { A: '1' }, permissions: { allow: ['Bash(npm test:*)'] } }, null, 2),
     '/repo/CLAUDE.md': '# Repo\n- Run the tests first\n',

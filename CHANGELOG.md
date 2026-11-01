@@ -17,6 +17,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `hooks/ops/`, one file per concern; no source file is over 900 lines.
 
 ### Fixed
+- End-to-end tests no longer time out when the machine is busy: every test that takes over 300 ms on a quiet
+  machine has 20 s, the rest keep the 5 s default so a real hang still fails fast.
 - A GitHub token typed into the account box but not added is dropped when the box closes, instead of staying in the
   session's state.
 

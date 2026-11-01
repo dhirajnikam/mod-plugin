@@ -7,7 +7,8 @@ const NUMSTAT = '1\t0\ta.txt\x000\t1\tgone.txt\x001\t0\tkeep.txt\x000\t0\t\0old.
 const scroll = { offset: 0, bodyRows: 40 }
 const PANE = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } }
 
-test('the Git tab reads the repo and commits only the ticked files', async ($, on) => {
+// A whole session end to end: about a second when the machine is quiet, past the 5 s default when it is busy
+test('the Git tab reads the repo and commits only the ticked files', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: string[][] = []
   const toasts: string[] = []
   on('clock.now', async () => ({ value: 1_000_000 }))
@@ -95,7 +96,8 @@ test('the Git tab reads the repo and commits only the ticked files', async ($, o
   await ui.unmount()
 })
 
-test('a failed push says why', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('a failed push says why', { timeoutMs: 20_000 }, async ($, on) => {
   const toasts: string[] = []
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('prompt.submit', async (_, e) => ({ text: e.text }))
@@ -124,7 +126,8 @@ test('a failed push says why', async ($, on) => {
   await ui.unmount()
 })
 
-test('accounts come from and go to the machine: a token logs in with gh, push goes out as the account, Remove logs out', async ($, on) => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('accounts come from and go to the machine: a token logs in with gh, push goes out as the account, Remove logs out', { timeoutMs: 20_000 }, async ($, on) => {
   const ran: { argv: string[]; stdin?: string }[] = []
   const toasts: string[] = []
   const store: Record<string, unknown> = {}

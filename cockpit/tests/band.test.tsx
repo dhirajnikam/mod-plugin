@@ -16,7 +16,8 @@ const borders = (n: unknown): string[] => {
   return [...own, ...(Array.isArray(el.children) ? el.children : []).flatMap(borders)]
 }
 
-test('the band is a bordered box with Focus on, and again after pressing Focus off', async $ => {
+// End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
+test('the band is a bordered box with Focus on, and again after pressing Focus off', { timeoutMs: 20_000 }, async $ => {
   const ui = await $.ui.mount(BAND as never)
   const first = JSON.stringify(await ui.drawn())
   expect(borders(await ui.drawn())).toContain('Box:round')

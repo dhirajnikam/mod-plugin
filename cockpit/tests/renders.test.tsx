@@ -29,7 +29,8 @@ const labelled = (n: unknown): string[] => {
 }
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`every render draws on ${surface}, Focus on and off`, async ($, on) => {
+  // Every render, tab and Focus setting on one surface: about a second quiet, past the 5 s default when the machine is busy
+  test(`every render draws on ${surface}, Focus on and off`, { timeoutMs: 20_000 }, async ($, on) => {
     on('clock.now', async () => ({ value: 1_000_000 }))
     on('ui.toast', async () => ({ value: undefined }))
     const messages: unknown[] = []
