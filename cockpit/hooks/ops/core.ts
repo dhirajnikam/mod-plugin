@@ -149,24 +149,30 @@ export async function setTheme($: $, theme: ThemeId) {
 }
 
 // Slow work from a press (a push, a model call, a compaction): Claude Code gives a press 10 s, and a press that waits
-// past it is dropped, so the work runs on after the press returns. One of each kind at a time, a second press says it
-// is still running; the pane's header names what runs, and a failure says why
-const running = new Set<string>()
+// past it is dropped, so the work runs on after the press returns. One of each kind at a time, and a second press says
+// it is still running; the pane's header names what runs, and a failure says why.
+// The lock is the state's `busy`, claimed in one update: every module reads the same state, while a module-level
+// variable can be a separate copy in each module that imports this one
+export async function claim($: $, kind: string, label: string) {
+  let won = false
+  await update($, S, s => (s.busy?.[kind] ? s : ((won = true), { ...s, busy: { ...s.busy, [kind]: label } })))
+  return won
+}
+export async function release($: $, kind: string) {
+  await set($, st => {
+    const { [kind]: _, ...rest } = st.busy ?? {}
+    return { busy: rest }
+  }).catch(() => null)
+}
 export function inBackground($: $, kind: string, label: string, work: () => Promise<unknown>) {
-  if (running.has(kind)) return void toast($, `${label}: still running`)
-  running.add(kind)
   void (async () => {
-    await set($, st => ({ busy: { ...st.busy, [kind]: label } })).catch(() => null)
+    if (!(await claim($, kind, label).catch(() => false))) return toast($, `${label}: still running`).catch(() => null)
     try {
       await work()
     } catch (e) {
       await toast($, `${label} failed: ${String((e as Error)?.message ?? e)}`).catch(() => null)
     } finally {
-      running.delete(kind)
-      await set($, st => {
-        const { [kind]: _, ...rest } = st.busy ?? {}
-        return { busy: rest }
-      }).catch(() => null)
+      await release($, kind)
     }
   })()
 }

@@ -20,6 +20,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Slow presses no longer run past Claude Code's 10 s budget for a press: Push, Pull, Commit, Add token, Map
   again, Create agent and Compact return at once and run on in the background, named in the pane's header
   ("⟳ Pushing"), one of each at a time.
+- Cockpit's auto-commit and a Commit you press share one lock, so two commits never run on the same files at once;
+  a press while one runs says "still running".
 - End-to-end tests no longer time out when the machine is busy: every test that takes over 300 ms on a quiet
   machine has 20 s, the rest keep the 5 s default so a real hang still fails fast.
 - A GitHub token typed into the account box but not added is dropped when the box closes, instead of staying in the

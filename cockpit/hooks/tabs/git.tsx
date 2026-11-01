@@ -326,7 +326,7 @@ function AccountBox($: $, v: V) {
           <Rule v={{ ...v, w: v.w - 4 }} />
           <Text color={t.dim} size="footnote">Add a GitHub login to this machine's gh: paste a classic token (scopes repo, read:org), or log in with gh in your browser.</Text>
           <Box columnGap={sp(v, 1)} flexWrap="wrap">
-            <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => ghLoginToken($, val)} />
+            <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, val))} />
             <Button key="gh-token-go" label="Add token" onPress={() => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, s.ui.ghToken))} />
             <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
           </Box>

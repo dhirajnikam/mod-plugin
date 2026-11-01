@@ -8,7 +8,7 @@ import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCom
 import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
-import { git, moveSaved, note, repoRoot, set, toast } from './core'
+import { claim, git, moveSaved, note, release, repoRoot, set, toast } from './core'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
@@ -247,10 +247,17 @@ export async function skipPending($: $) {
 
 // What happens to this turn's changes, by the chosen commit mode
 export async function decideCommit($: $) {
-  await suggestCommit($)
-  const s = await read($, S)
-  if (s.git.commitMode === 'auto') await commit($, true)
-  else if (s.git.commitMode === 'ask') await proposeCommit($)
+  // A commit you pressed is still running: this turn's changes wait for the next turn's end rather than race it on
+  // the same files (and a press during this one is refused)
+  if (!(await claim($, 'commit', 'Committing'))) return
+  try {
+    await suggestCommit($)
+    const s = await read($, S)
+    if (s.git.commitMode === 'auto') await commit($, true)
+    else if (s.git.commitMode === 'ask') await proposeCommit($)
+  } finally {
+    await release($, 'commit')
+  }
 }
 
 // Push the current branch
