@@ -432,7 +432,7 @@ export function Agents($: $, v: V) {
           const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
           // The roster says what each expert does; its runs and their results are listed once, under Running and
           // Finished, and the row points there
-          const right = !a || live ? '' : `${a.status === 'done' ? 'done' : word(a).toLowerCase()} ↓`
+          const right = !a || live ? '' : `${st === 'failed' ? 'failed' : a.status === 'done' ? 'done' : word(a).toLowerCase()} ↓`
           const ticked = !!s.ui.selected[x.type]
           const rowEl = (
             <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
