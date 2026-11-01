@@ -1,0 +1,43 @@
+# The checks every change must pass, on every push and pull request.
+# The type-check (npx -p typescript tsc -p cockpit) is not here: it needs the types Claude Code writes into
+# cockpit/.claude-plugin/types/ when it loads the mod in a session, which a CI machine without an API key cannot do.
+# Run it locally after ./dev.sh has loaded the mod once; see CONTRIBUTING.md.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Claude Code 2.1.275 or later runs the mod's tests and validates it; it needs Node 22
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      - name: Tests
+        run: claude plugin test ./cockpit
+
+      - name: Validate the plugins and the marketplace
+        run: |
+          claude plugin validate ./cockpit
+          claude plugin validate ./ui-template
+          claude plugin validate .
+
+      - name: Links in the Markdown
+        run: python3 scripts/check_links.py

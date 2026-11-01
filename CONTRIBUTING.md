@@ -29,6 +29,11 @@ claude plugin validate ./cockpit             # what the engine would refuse
 python3 scripts/check_links.py               # every relative link in the Markdown resolves
 ```
 
+The type-check needs the types Claude Code writes into `cockpit/.claude-plugin/types/` (git-ignored) when it loads the
+mod, so run `./dev.sh` once before it. CI runs the other three on every push and pull request
+([.github/workflows/ci.yml](.github/workflows/ci.yml)); it cannot load the mod in a session, so the type-check is yours
+to run before you open a pull request.
+
 ## Where things are
 
 | Path | What it holds |

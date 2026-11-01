@@ -1,5 +1,7 @@
 # mod-plugin
 
+[![CI](https://github.com/dhirajnikam/mod-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/dhirajnikam/mod-plugin/actions/workflows/ci.yml)
+
 Claude Code mods (plugins built from hooks modules), open source under the MIT license.
 
 ## Install Cockpit
