@@ -37,6 +37,9 @@ to run before you open a pull request.
 
 ## Where things are
 
+The [architecture guide](docs/architecture.md) explains how these fit together: the events, the state, the paths
+through the code.
+
 | Path | What it holds |
 |---|---|
 | `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges, and every drawing outside the pane |

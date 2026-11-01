@@ -10,6 +10,7 @@
 - [Decisions by judges](judges.md): how the judges vote, and what always comes to you
 - [Autopilot](autopilot.md): working on a goal cycle after cycle until it is done
 - [Privacy and cost](privacy.md): what Cockpit keeps, spends and turns on by default
+- [Architecture](architecture.md): for contributors: the events Cockpit hooks, its state, and where each tab lives
 
 Contributing: [CONTRIBUTING.md](../CONTRIBUTING.md) · Security: [SECURITY.md](../SECURITY.md) ·
 Changes: [CHANGELOG.md](../CHANGELOG.md)
