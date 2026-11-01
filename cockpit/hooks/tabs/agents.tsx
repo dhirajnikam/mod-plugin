@@ -239,11 +239,12 @@ export function Agents($: $, v: V) {
                         <Text color={t.text} bold wrap="truncate-end">{`${a.name} ${open ? '⌄' : '›'}`}</Text>
                       </Button>
                       {a.for !== undefined && <Text color={t.dim} size="footnote" wrap="truncate-end">{`testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work`}</Text>}
-                      {live ? <Tracker v={v} a={a} /> : !a.for && <Text color={t.dim} size="footnote" wrap="truncate-end">{a.task}</Text>}
+                      {/* A finished run says what it found (its REPORT line), or else what it was asked */}
+                      {live ? <Tracker v={v} a={a} /> : (!a.for || reportOf(a)) && <Text color={t.dim} size="footnote" wrap="truncate-end">{reportOf(a) || a.task}</Text>}
                       {testLine(a.id, `rl-${a.id}`)}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
-                      {!live && <Text color={colorOf(st)}>{`${word(a)} · `}</Text>}
+                      {!live && <Text color={colorOf(st)}>{a.cases.length ? `${a.cases.length - failing.length}/${a.cases.length} passed · ` : `${word(a)} · `}</Text>}
                       <Text color={live ? t.busy : t.dim}>{`${a.tools} tool call${a.tools === 1 ? '' : 's'} · ${took(a)}`}</Text>
                     </Text>
                     {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}
@@ -428,18 +429,17 @@ export function Agents($: $, v: V) {
           const a = latestOf(x.type)
           const st = stateOf(a)
           const live = st === 'running'
-          const fails = a?.cases.filter(c => c.st === 'fail').length ?? 0
-          const sub = reportOf(a) || x.what
           const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
-          const right = !a || live ? '' : a.cases.length ? `${a.cases.length - fails}/${a.cases.length} passed` : a.status === 'done' ? `✓ ${took(a)}` : word(a).toLowerCase()
+          // The roster says what each expert does; its runs and their results are listed once, under Running and
+          // Finished, and the row points there
+          const right = !a || live ? '' : `${a.status === 'done' ? 'done' : word(a).toLowerCase()} ↓`
           const ticked = !!s.ui.selected[x.type]
           const rowEl = (
             <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
               <Box flexShrink={0}>{icon(x.type, st, 28)}</Box>
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
-                <Text color={t.dim} size="footnote" wrap="truncate-end">{sub}</Text>
-                {a && !live && testLine(a.id, `tl-${x.type}`)}
+                <Text color={t.dim} size="footnote" wrap="truncate-end">{x.what}</Text>
               </Box>
               {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
               {live && <Text color={t.faint} size="footnote">{`running${copies.length > 1 ? ` ×${copies.length}` : ''} ↑`}</Text>}

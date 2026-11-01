@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 // The layout's promises, each checked by drawing a tab with a pipeline, agents and a changed file
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-test('Activity tells one story: agents\' events fill the feed, so the tab never says it has nothing, and the count matches the rows; empty lists all say None yet', { timeoutMs: 20_000 }, async ($, on) => {
+test('Activity tells one story: agents\' events fill the feed, so the tab never says it has nothing, and the count matches the rows; empty lists all say None yet, and an agent\'s result shows once', { timeoutMs: 20_000 }, async ($, on) => {
   let clock = 1_000_000
   let spawns = 0
   on('clock.now', async () => ({ value: (clock += 900) }))
@@ -46,6 +46,14 @@ test('Activity tells one story: agents\' events fill the feed, so the tab never 
   await rules.unmount()
   expect(r.split('"None yet."').length - 1).toBe(3)
   expect(r).not.toContain('"None."')
+  // A finished agent's result shows once, on its Finished row; its Team row points there
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ag = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  const a = JSON.stringify(await ag.drawn())
+  await ag.unmount()
+  expect(a.split('3/3 passed').length - 1).toBe(1)
+  expect(a.split('the three happy paths pass').length - 1).toBe(1)
+  expect(a).toContain('done ↓')
 })
 
 test('Checks read plainly: passes are counted in words, and a tester still at work says running without a ✓ of its own', { timeoutMs: 20_000 }, async ($, on) => {

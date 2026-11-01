@@ -17,10 +17,10 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
   recent steps, who started it, which plugin provides it, and its transcript.
 - **Connections**: who started each agent, as a diagram: you, Claude, Cockpit's pipelines, or another agent; a tester
   points at the work it tests; `↗` marks an agent from outside Cockpit (Claude's own types, another plugin's).
-- **Team**: the experts and the agents you made, as a launcher: what each is for or its last result, ▶ to run it, ✎ to
-  run it with your instructions as its task, and a box to tick it for running several at once. A running one points up to its
-  run (`running ↑`) instead of repeating it.
-- **Finished**: the three newest runs, the rest a press away, each with ↻ Restart and ✎; **Clear** empties the list.
+- **Team**: the experts and the agents you made, as a launcher: what each is for, ▶ to run it, ✎ to
+  run it with your instructions as its task, and a box to tick it for running several at once. A running or finished one points to
+  its run (`running ↑`, `done ↓`) instead of repeating it.
+- **Finished**: the three newest runs, each with its result (`3/3 passed`, its report), the rest a press away, each with ↻ Restart and ✎; **Clear** empties the list.
   **■ Stop all**, beside Running, stops every live run.
 - **Settings**, folded: test each agent's work, and Verify after each turn.
 

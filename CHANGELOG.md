@@ -14,6 +14,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- An agent's result shows once, on its Finished row ("3/3 passed", its report); its Team row says what the expert
+  does and points to the run ("done ↓").
 - Empty lists are worded alike: the Rules tab's hooks and permission rules say "None yet." as its instructions do.
 - A skipped flow step is marked ↷ and dimmed, with a "↷ skipped" legend, instead of struck through as if deleted.
 - The pane's header is one line: the folder, branch, judges' mode, theme and the run badge beside the name. The
