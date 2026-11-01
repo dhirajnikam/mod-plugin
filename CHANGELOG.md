@@ -20,6 +20,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- The Overview's checks say what each mark counts ("✓ 3 passed · more running" instead of "✓3 running"), and a
+  failure is marked ✗ everywhere.
 - The Activity tab no longer says "No files found here yet" over a feed of agents' events, and the feed's count
   is of the rows it shows ("6 events · 3 agents").
 - The judges no longer answer a question about what only you can do ("Will you…", "Can you…", "Could you…"):

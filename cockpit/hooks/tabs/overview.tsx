@@ -243,7 +243,7 @@ export function Overview($: $, v: V) {
           <Label label={err || vs.fail ? 'Checks · failing' : 'Checks'} {...(err || vs.fail ? { color: t.bad } : {})} />
           {err && (
             <Text wrap="wrap">
-              <Text color={t.bad}>{`✕ ${err.tool} `}</Text>
+              <Text color={t.bad}>{`✗ ${err.tool} `}</Text>
               <Text color={t.text}>{err.text}</Text>
               <Text color={t.faint}>{` · ${fmt(v.now - err.at)} ago`}</Text>
             </Text>
@@ -251,9 +251,10 @@ export function Overview($: $, v: V) {
           {(vs.cases.length > 0 || vs.running) && (
             <Text wrap="truncate-end">
               <Text color={t.dim}>Tests </Text>
-              {vs.pass > 0 && <Text color={t.ok}>{`✓${vs.pass} `}</Text>}
-              {vs.fail > 0 && <Text color={t.bad}>{`✗${vs.fail} `}</Text>}
-              {vs.running ? <Text color={t.busy}>running</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
+              {/* Words beside each mark, so a count of passes never reads as the running test's result */}
+              {vs.pass > 0 && <Text color={t.ok}>{`✓ ${vs.pass} passed  `}</Text>}
+              {vs.fail > 0 && <Text color={t.bad}>{`✗ ${vs.fail} failed  `}</Text>}
+              {vs.running ? <Text color={t.busy}>{vs.cases.length ? '· more running' : 'running'}</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
             </Text>
           )}
         </Box>
@@ -376,7 +377,7 @@ export function Overview($: $, v: V) {
             return (
               <Box key={`fl-${f.id}`} flexDirection="column">
                 <Box columnGap={sp(v, 1)} alignItems="center">
-                  <Text color={f.status === 'done' ? t.faint : col}>{live ? '●' : f.status === 'done' ? '✓' : '✕'}</Text>
+                  <Text color={f.status === 'done' ? t.faint : col}>{live ? '●' : f.status === 'done' ? '✓' : '✗'}</Text>
                   <Box flexGrow={1} flexShrink={1}>
                     <Button key={`flb-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFlow: open ? '' : f.id } }))}>
                       <Text color={live ? t.text : t.text} bold={live} wrap="truncate-end">{f.task}</Text>
@@ -405,7 +406,7 @@ export function Overview($: $, v: V) {
           </Box>
           {isOpen('past') && s.past.slice(-8).reverse().map(f => (
             <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
-              <Text color={f.status === 'done' ? t.ok : t.bad}>{f.status === 'done' ? '✓' : '✕'}</Text>
+              <Text color={f.status === 'done' ? t.ok : t.bad}>{f.status === 'done' ? '✓' : '✗'}</Text>
               <Text color={t.faint} size="footnote" mono>{fmt((f.endedAt ?? f.startedAt) - f.startedAt)}</Text>
               <Box flexGrow={1} flexShrink={1}>
                 <Text color={t.dim} wrap="truncate-end">{f.task}</Text>
