@@ -244,7 +244,8 @@ export function Agents($: $, v: V) {
                       {testLine(a.id, `rl-${a.id}`)}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
-                      {!live && <Text color={colorOf(st)}>{a.cases.length ? `${a.cases.length - failing.length}/${a.cases.length} passed · ` : `${word(a)} · `}</Text>}
+                      {/* The count stands for the result only when the run finished; a stopped or failed run says so first */}
+                      {!live && <Text color={colorOf(st)}>{`${a.status !== 'done' || !a.cases.length ? `${word(a)} · ` : ''}${a.cases.length ? `${a.cases.filter(c => c.st === 'pass' || c.st === 'fixed').length}/${a.cases.length} passed · ` : ''}`}</Text>}
                       <Text color={live ? t.busy : t.dim}>{`${a.tools} tool call${a.tools === 1 ? '' : 's'} · ${took(a)}`}</Text>
                     </Text>
                     {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}

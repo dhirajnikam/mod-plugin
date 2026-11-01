@@ -55,6 +55,13 @@ test('Activity tells one story: agents\' events fill the feed, so the tab never 
   expect(a.split('3/3 passed').length - 1).toBe(1)
   expect(a.split('the three happy paths pass').length - 1).toBe(1)
   expect(a).toContain('done ↓')
+  // A tester stopped part way says so before its count: its passes are not a pass
+  await $.turn.complete({ agentId: 'ag2', answer: 'CASE PASS empty password refused\nCASE PASS long password refused', reason: 'answer', turnId: 'y', isAborted: true, durationMs: 1000 } as never)
+  const ag2 = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  const b = JSON.stringify(await ag2.drawn())
+  await ag2.unmount()
+  expect(b).toContain('Stopped · 2/2 passed · ')
+  expect(b).toContain('stopped ↓')
 })
 
 test('Checks read plainly: passes are counted in words, and a tester still at work says running without a ✓ of its own', { timeoutMs: 20_000 }, async ($, on) => {

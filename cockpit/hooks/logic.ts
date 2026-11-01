@@ -560,9 +560,8 @@ export function neuralSvg(task: string, ns: Neuron[], c: { accent: string; busy:
     return [own, ...[...live, ...mem].filter(x => x.link === n.id).map(x => at.get(x.id)!)]
   }
   const up = new Map([...live, ...mem].map(n => [n.id, ends(n).every(e => e.y > at.get(n.id)!.y)]))
-  const above = (p: { y: number }) => [...at.entries()].some(([id, q]) => q === p && up.get(id))
   // Trimmed to what is drawn: the highest label to the lowest
-  const ys = [cy - 42, cy + 52, ...[...at.values()].flatMap(p => (above(p) ? [p.y - 52, p.y + 22] : [p.y - 22, p.y + 52]))]
+  const ys = [cy - 42, cy + 52, ...[...at.entries()].flatMap(([id, p]) => (up.get(id) ? [p.y - 52, p.y + 22] : [p.y - 22, p.y + 52]))]
   const top = Math.min(...ys) - 6
   const height = Math.round(Math.max(...ys) - top + 6)
   const col = (n: Neuron) => (n.state === 'running' ? c.busy : n.state === 'done' ? c.ok : n.state === 'failed' ? c.bad : c.dim)
@@ -596,8 +595,8 @@ export function neuralSvg(task: string, ns: Neuron[], c: { accent: string; busy:
     return `<g opacity="${n.state === 'memory' ? 0.75 : 1}"><title>${esc(`${n.name}\n${n.line}`)}</title>` +
       `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="14" fill="${c.bg}" stroke="${k}" stroke-width="2"${n.state === 'memory' ? ' stroke-dasharray="3 3"' : ''}>${pulse}</circle>${ring}` +
       `<text x="${p.x.toFixed(1)}" y="${(p.y + 4.5).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${k}">${esc(n.name.replace(/^\W+/, '').slice(0, 1).toUpperCase())}</text>` +
-      `<text x="${p.x.toFixed(1)}" y="${(p.y + (above(p) ? -40 : 34)).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="${n.state === 'memory' ? c.dim : c.text}">${esc(cut(n.name, 18))}</text>` +
-      `<text x="${p.x.toFixed(1)}" y="${(p.y + (above(p) ? -26 : 48)).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10.5" fill="${c.dim}">${esc(cut(n.line, 28))}</text></g>`
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + (up.get(n.id) ? -40 : 34)).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="${n.state === 'memory' ? c.dim : c.text}">${esc(cut(n.name, 18))}</text>` +
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + (up.get(n.id) ? -26 : 48)).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10.5" fill="${c.dim}">${esc(cut(n.line, 28))}</text></g>`
   })
   // The task: two lines of it inside the core
   const t1 = cut(task || 'No task yet', 34)

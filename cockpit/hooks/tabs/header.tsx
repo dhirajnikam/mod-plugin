@@ -100,7 +100,7 @@ export function Header($: $, v: V) {
         {/* Slow work a press started, running on after it: "⟳ Pushing" */}
         {busy.length > 0 && <Text color={t.busy}>{`⟳ ${busy.join(' · ')}`}</Text>}
         {s.repo.isRepo && <Text color={t.accent}>{`⎇ ${s.repo.current}`}</Text>}
-        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto' : s.mode === 'ask' ? 'Ask' : 'Judges off'}</Text>
+        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
         {v.desk ? (
           <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
         ) : (

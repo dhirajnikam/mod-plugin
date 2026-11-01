@@ -14,6 +14,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- The previews of the Overview, Agents and Rules tabs in the docs are redrawn from the new layout.
 - The Overview's neural view keeps its lines off the labels: each agent's name and work sit on the side its lines
   do not come from, and every line stops at the circles' rims.
 - An agent's result shows once, on its Finished row ("3/3 passed", its report); its Team row says what the expert
@@ -28,6 +29,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- A stopped or failed tester's Finished row says so before its count ("Stopped · 2/2 passed"), and the count is of
+  cases that passed, not of every case that did not fail.
 - The Overview's checks say what each mark counts ("✓ 3 passed · more running" instead of "✓3 running"), and a
   failure is marked ✗ everywhere.
 - The Activity tab no longer says "No files found here yet" over a feed of agents' events, and the feed's count
