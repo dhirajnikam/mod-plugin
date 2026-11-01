@@ -14,6 +14,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- The Overview's neural view keeps its lines off the labels: each agent's name and work sit on the side its lines
+  do not come from, and every line stops at the circles' rims.
 - An agent's result shows once, on its Finished row ("3/3 passed", its report); its Team row says what the expert
   does and points to the run ("done ↓").
 - Empty lists are worded alike: the Rules tab's hooks and permission rules say "None yet." as its instructions do.

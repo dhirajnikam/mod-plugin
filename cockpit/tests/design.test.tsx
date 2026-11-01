@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { neuralSvg } from '../hooks/logic'
 
 // The layout's promises, each checked by drawing a tab with a pipeline, agents and a changed file
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
@@ -105,3 +106,36 @@ test('Checks read plainly: passes are counted in words, and a tester still at wo
   expect(d).toContain('↷ skipped')
   expect(d).not.toContain('"strikethrough":true')
 })
+
+// The neural view: no line runs through a neuron's name or line of work. Each label's box is measured from its text
+// (about 6.5px a character, 13px tall, centred), and each line is sampled along its curve
+test('the neural view\'s lines stay clear of every label, and end at the circles\' rims', async () => {
+  const c = { accent: '#b4833a', busy: '#d9a441', ok: '#5cc98a', bad: '#ef6b6b', text: '#ddd', dim: '#888', track: '#333', bg: '#222' }
+  const ns = [
+    { id: 'r', name: 'Reviewer', line: 'Read the login diff', state: 'running' as const, pct: 0 },
+    { id: 'p', name: 'Prover', line: 'the three happy paths pass', state: 'done' as const },
+    { id: 'b', name: 'Breaker', line: 'Try very long passwords', state: 'running' as const, pct: 0.5, link: 'p' },
+    { id: 'm1', name: 'Builder', line: 'fixed the login form', state: 'memory' as const },
+    { id: 'm2', name: 'Prover', line: 'covered the sign-up', state: 'memory' as const },
+  ]
+  for (const width of [360, 560]) {
+    const svg = neuralSvg('fix the empty password bug in login', ns, c, width)
+    const boxes = [...svg.matchAll(/<text x="([\d.-]+)" y="([\d.-]+)"[^>]*font-size="(1[02]\.?5?|12)"[^>]*>([^<]{2,})<\/text>/g)]
+      .filter(m => !/^\w$/.test(m[4] ?? ''))
+      .map(m => { const [x, y, w] = [Number(m[1]), Number(m[2]), (m[4] ?? '').length * 6.5]; return { x0: x - w / 2, x1: x + w / 2, y0: y - 11, y1: y + 2, t: m[4] ?? '' } })
+    // The core's own words are inside its circle, where no line reaches
+    const labels = boxes.filter(b => !'fix the empty password bug in login'.includes(b.t.replace('…', '')))
+    expect(labels.length).toBe(ns.length * 2)
+    for (const m of svg.matchAll(/<path d="M([\d.-]+) ([\d.-]+) Q([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)"/g)) {
+      const [x0 = 0, y0 = 0, qx = 0, qy = 0, x1 = 0, y1 = 0] = m.slice(1).map(Number)
+      for (let i = 0; i <= 40; i++) {
+        const k = i / 40
+        const x = (1 - k) ** 2 * x0 + 2 * (1 - k) * k * qx + k ** 2 * x1
+        const y = (1 - k) ** 2 * y0 + 2 * (1 - k) * k * qy + k ** 2 * y1
+        const hit = labels.find(b => x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1)
+        expect(hit?.t ?? '').toBe('')
+      }
+    }
+  }
+})
+
