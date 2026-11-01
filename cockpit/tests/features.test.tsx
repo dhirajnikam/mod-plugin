@@ -169,6 +169,8 @@ test('the judges leave settings, questions only you can answer, and late answers
   await nextStep($, 'Commit the decluttered Overview?', [{ label: 'Commit it' }, { label: 'Tweak it first' }])
   // A preference: what size you want is yours to say
   await nextStep($, 'Want it bigger still, or is this the right size?', [{ label: 'This size is good' }, { label: 'Bigger still' }])
+  // Something only you can do: yours to say whether you will
+  await nextStep($, 'Will you take the tab screenshots for docs/images/?', [{ label: "I'll take them" }, { label: 'Keep the previews' }])
   await settle()
   expect(log.scored).toBe(scored)
   expect(log.submitted).toEqual([])

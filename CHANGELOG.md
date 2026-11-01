@@ -19,6 +19,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- The judges no longer answer a question about what only you can do ("Will you…", "Can you…", "Could you…"):
+  it comes to you.
 - ui-template validates cleanly: its manifest names its author, licence and repository, and a failed model lookup
   keeps the last model name instead of failing the hook.
 - Slow presses no longer run past Claude Code's 10 s budget for a press: Push, Pull, Commit, Add token, Map

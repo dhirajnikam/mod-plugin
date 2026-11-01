@@ -29,7 +29,7 @@ export const RISKY = /\b(public|publish|push|pushed|delete|remove|merge|deploy|r
 // Questions only the person can answer, about what they saw, did or want: the judges never take these. What to do
 // next among things the person asked for ("Which … should I build first?"), and anything about the judges themselves,
 // are theirs too
-export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you|should i|shall i|would you like|want|wants)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call)|do you want|do you prefer|you'?d (like|prefer)|is (this|that|it) the right|right (size|amount|look|level)|judges?)\b|\bwhich\b[^?]*\b(should i|first|next)\b/i
+export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you|should i|shall i|would you|will you|can you|could you|want|wants)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call)|do you want|do you prefer|you'?d (like|prefer)|is (this|that|it) the right|right (size|amount|look|level)|judges?)\b|\bwhich\b[^?]*\b(should i|first|next)\b/i
 // A reply that needs the person's own words ("Tweak it first", "Something else"): no judge can say what they would
 export const OPEN = /^other\b|\b(tweak|something else|adjust|change (it|something)|let me|my own|explain)\b/i
 
