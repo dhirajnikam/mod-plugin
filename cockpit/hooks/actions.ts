@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../types'
+import type { Account, Agent, Autopilot, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../types'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from './memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
+import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
 
@@ -593,7 +593,8 @@ export async function judgeNext($: $, input: Record<string, unknown>) {
   const id = `next-${String(input.tool_use_id ?? '')}-${at}`
   await set($, st => ({ decisions: [...st.decisions, { id, q: ask, opts: opts.map(o => o.label), at, score: 0, signals: [], votes: [], status: 'scoring' as const, result: '', kind: 'next' as const }].slice(-50) }))
   const risky = RISKY.test([ask, ...acts.map(a => `${a.label ?? ''} ${a.message ?? ''}`)].join(' ')) || acts.some(a => a.action === 'merge' || a.action === 'create_pr')
-  const canAct = s.mode === 'auto' && !risky && s.judgedRun < 3
+  const piloting = s.autopilot?.status === 'running'
+  const canAct = s.mode === 'auto' && !risky && (s.judgedRun < 3 || piloting)
   const win = await judge($, id, ask, opts, canAct)
   const choice = acts[opts.findIndex(o => o.label === win)]
   const d = (await read($, S)).decisions.find(x => x.id === id)
@@ -601,6 +602,8 @@ export async function judgeNext($: $, input: Record<string, unknown>) {
     const why = risky ? ': it is hard to undo, so it is yours to decide' : s.judgedRun >= 3 && s.mode === 'auto' ? ': three were answered in a row, so this one is yours' : choice?.action ? ': it is a button only you can press' : ''
     const text = d?.advice ?? (win ? `Judges recommend "${win}"` : d?.result ?? '')
     if (text) await note($, `⚖ ${text}${why}`)
+    // The autopilot waits for you on what it cannot decide
+    if (piloting) await stopAutopilot($, 'paused', `a decision waits for you: ${ask}`)
     if (canAct && win && choice?.action) await set($, st => ({ decisions: st.decisions.map(x => (x.id === id ? { ...x, status: 'advised', advice: `Judges recommend "${win}"` } : x)) }))
     return
   }
@@ -661,7 +664,7 @@ export async function registerExperts($: $) {
 
 // What every agent Cockpit makes is told, as the experts' own files say it
 const PLAN_TOOLS = ['TodoWrite', 'TaskCreate', 'TaskUpdate']
-const AGENT_RULES = 'Keep a short task list with your todo tool (TodoWrite, or TaskCreate and TaskUpdate): three to six steps, each marked in progress when you start it and completed when it is done. Cockpit shows it as your progress.\n\nNever commit, push, switch branches or stash: Cockpit handles git. Never touch .cockpit/.'
+const AGENT_RULES = 'Keep a short task list with your todo tool (TodoWrite, or TaskCreate and TaskUpdate): three to six steps, each marked in progress when you start it and completed when it is done. Cockpit shows it as your progress.\n\nNever commit, push, switch branches or stash: Cockpit handles git. Never write to .cockpit/ (reading .cockpit/roadmap.md is fine).'
 type MadeAgent = { name: string; description: string; prompt: string; tools?: string[] }
 const TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch']
 
@@ -709,7 +712,9 @@ function expertPrompt(s: Ph, prior: string[]) {
   const by = importers(s.memory.files)
   const keys = touched.map(p => memoryKey(s.memory.files, p)).filter(Boolean)
   const reach = [...new Set(keys.flatMap(k => by[k] ?? []))].filter(f => !keys.includes(f)).slice(0, 20)
-  return `Task: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}${reach.length ? `\nAlso affected (they import the changed files): ${reach.join(', ')}` : ''}\n\nPRIOR REPORTS:\n${prior.length ? prior.map((r, i) => `--- ${i + 1} ---\n${r}`).join('\n\n') : '(none: you are first)'}`
+  // Agent memory: what earlier runs on a task like this found, so this one starts from it rather than from nothing
+  const recall = similarRuns(s.task, [...s.pastAgents, ...s.agents]).map(x => `- the ${x.run.name}, on "${x.run.task.slice(0, 100)}": ${recallOf(x.run) || 'no report'}`)
+  return `Task: ${s.task || '(see the git diff)'}\nChanged files: ${touched.join(', ') || '(see git diff)'}${reach.length ? `\nAlso affected (they import the changed files): ${reach.join(', ')}` : ''}${recall.length ? `\n\nREMEMBERED (earlier runs on similar tasks; check they still hold, do not trust them blindly):\n${recall.join('\n')}` : ''}\n\nPRIOR REPORTS:\n${prior.length ? prior.map((r, i) => `--- ${i + 1} ---\n${r}`).join('\n\n') : '(none: you are first)'}`
 }
 
 // Starts one expert; returns its agent id ('' when the start handed none back: the agent.spawn hook records it), or null when refused
@@ -872,7 +877,7 @@ const takeEarly = (id: string) => {
   return p ? { plan: p } : {}
 }
 
-export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'>) {
+export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'> & Partial<Pick<Agent, 'by' | 'parent' | 'provider'>>) {
   const at = await $.clock.now()
   // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count.
   // A tester a Verify pipeline started on an agent's work is tagged with that agent
@@ -1160,4 +1165,104 @@ export async function applyAccount($: $) {
   const m = n.exitCode === 0 ? await git($, ['config', 'user.email', a.email]) : n
   if (m.exitCode !== 0) return toast($, `Could not set the identity: ${firstLine(m)}`)
   await toast($, `This repo now commits as ${a.name} <${a.email}>`)
+}
+
+// The autopilot: Claude works on a goal cycle after cycle, each cycle one turn Cockpit sends, until the judges agree the
+// goal is reached. It pauses for you on a decision only you can make, after three cycles that change nothing, and when
+// you stop it; it ends at a budget or a time limit when you set one (none by default: it runs until it is done)
+const AP_RULES = `How the autopilot works:
+- The roadmap lives in .cockpit/roadmap.md (git-ignored): milestones as "- [ ] <milestone>: <acceptance criteria a test or command can check>". On the first cycle, study the codebase and well-known open-source projects of the same kind for proven patterns, then write it. Keep it current: tick a milestone ("- [x]") only when its criteria pass, and add milestones as you learn.
+- Each cycle, take the next unticked milestone: plan, build, then verify (run the project's tests and checks; use the cockpit:prover and cockpit:breaker agents for anything non-trivial, and cockpit:reviewer before you tick it). Keep your task list for the cycle.
+- Never push, publish, deploy, delete branches, or change settings, permissions or credentials. If the next step needs one of those, ask, and stop the cycle there.
+- End your answer with exactly one last line: "AUTOPILOT: CONTINUE <the next milestone>" or "AUTOPILOT: DONE <why every milestone's criteria pass>".`
+
+export function autopilotPrompt(ap: { goal: string; cycle: number; next: string }, notDone = '') {
+  const head = ap.cycle === 1 ? `Autopilot, cycle 1. Goal: ${ap.goal}` : `Autopilot, cycle ${ap.cycle}. Goal: ${ap.goal}\nNext: ${ap.next || 'the next unticked milestone in .cockpit/roadmap.md'}`
+  return `${head}${notDone ? `\n\nThe judges found it not done yet: ${notDone}` : ''}\n\n${AP_RULES}`
+}
+
+// Its milestones, ticked and in all, from the roadmap
+async function roadmapCount($: $) {
+  const dir = await cockpitDir($)
+  const text = dir ? await $.fs.read(`${dir}/roadmap.md`).catch(() => '') : ''
+  const all = String(text).match(/^\s*[-*] \[[ xX]\]/gm) ?? []
+  return { done: all.filter(l => /\[[xX]\]/.test(l)).length, total: all.length }
+}
+
+// The next cycle's prompt. From inside a hook that holds the turn (a command, a turn's end) the engine refuses it, so it
+// goes again from a timer once that hook has returned, as a hand-off does; a second refusal pauses the run
+async function sendCycle($: $, notDone = '') {
+  const ap = (await read($, S)).autopilot
+  if (!ap || ap.status !== 'running') return
+  const text = autopilotPrompt(ap, notDone)
+  const failed = () => stopAutopilot($, 'paused', 'its next cycle could not be sent')
+  const send = async () => {
+    const r = await $.prompt.submit({ text })
+    if ('drop' in r && r.drop) await failed()
+  }
+  void send().catch(() => {
+    try {
+      $.clock.after(20, () => {
+        void send().catch(() => failed())
+      })
+    } catch {
+      void failed()
+    }
+  })
+}
+
+export async function startAutopilot($: $, goal: string, budget = 0, hours = 0) {
+  const s = await read($, S)
+  if (s.autopilot?.status === 'running') return toast($, 'The autopilot is already running: stop it first')
+  const at = await $.clock.now()
+  await set($, { autopilot: { goal, budget, hours, at, costAt: s.cost, cycle: 1, status: 'running', why: '', next: '', stall: 0, done: 0, total: 0 } })
+  await note($, `⟳ Autopilot started: ${goal}${budget ? ` · budget $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}`)
+  // A turn already running ends first; this cycle then starts
+  if (!s.isWorking) await sendCycle($)
+}
+
+export async function stopAutopilot($: $, status: 'paused' | 'stopped' | 'done', why: string) {
+  const ap = (await read($, S)).autopilot
+  if (!ap || ap.status !== 'running') return
+  await set($, { autopilot: { ...ap, status, why } })
+  await note($, `⟳ Autopilot ${status === 'done' ? 'done' : status}: ${why}`)
+}
+
+export async function resumeAutopilot($: $) {
+  const s = await read($, S)
+  if (!s.autopilot || s.autopilot.status === 'running' || s.autopilot.status === 'done') return
+  await set($, { autopilot: { ...s.autopilot, status: 'running', why: '', stall: 0, cycle: s.autopilot.cycle + 1 } })
+  if (!s.isWorking) await sendCycle($)
+}
+
+// A main turn ended while the autopilot runs: read its last line, check the limits, then send the next cycle, or put a
+// claim of done to the judges first
+export async function autopilotTurnEnd($: $, answer: string, changed: boolean, aborted: boolean, turnAt: number) {
+  const s = await read($, S)
+  const ap = s.autopilot
+  if (!ap || ap.status !== 'running') return
+  const now = await $.clock.now()
+  const { done, total } = await roadmapCount($)
+  const line = answer.trim().split('\n').reverse().find(l => /^\s*AUTOPILOT:/i.test(l)) ?? ''
+  const claim = line.match(/AUTOPILOT:\s*(CONTINUE|DONE)\s*(.*)$/i)
+  const next = claim?.[1]?.toUpperCase() === 'CONTINUE' ? (claim[2] ?? '').trim() : ap.next
+  const stall = !changed && next === ap.next && done <= ap.done ? ap.stall + 1 : 0
+  await set($, { autopilot: { ...ap, next, stall, done, total } })
+  if (aborted) return stopAutopilot($, 'paused', 'you interrupted the turn')
+  if (ap.budget && s.cost - ap.costAt >= ap.budget) return stopAutopilot($, 'stopped', `the $${ap.budget} budget is spent`)
+  if (ap.hours && now - ap.at >= ap.hours * 3_600_000) return stopAutopilot($, 'stopped', `the ${ap.hours}h limit is up`)
+  if (stall >= 3) return stopAutopilot($, 'paused', 'three cycles in a row changed nothing')
+  // A question or next step from this turn is the judges' or yours: their reply, or yours, drives the next turn
+  if (s.waiting || s.decisions.some(d => d.at >= turnAt && d.kind === 'next')) return
+  if (claim?.[1]?.toUpperCase() === 'DONE') {
+    const id = `ap-${now}`
+    const q = `Is the autopilot's goal fully achieved? Goal: ${ap.goal}. The claim: ${(claim[2] ?? '').trim() || 'done'}. Roadmap: ${done} of ${total} milestones ticked.`
+    await set($, st => ({ decisions: [...st.decisions, { id, q, opts: ['Done', 'Not done yet'], at: now, score: 0, signals: [], votes: [], status: 'scoring' as const, result: '' }].slice(-50) }))
+    const win = await judge($, id, q, [{ label: 'Done', description: 'every milestone is ticked and its criteria pass' }, { label: 'Not done yet', description: 'something in the goal or the roadmap is unfinished or unproven' }], true)
+    if (win === 'Done' && (total === 0 || done === total)) return stopAutopilot($, 'done', `the judges agree: ${(claim[2] ?? '').trim() || 'the goal is reached'}`)
+    await set($, st => ({ autopilot: st.autopilot && { ...st.autopilot, cycle: st.autopilot.cycle + 1 } }))
+    return sendCycle($, win === 'Done' ? `${total - done} of ${total} milestones in the roadmap are still unticked` : 'check the goal against every milestone, finish what is missing, and prove it')
+  }
+  await set($, st => ({ autopilot: st.autopilot && { ...st.autopilot, cycle: st.autopilot.cycle + 1 } }))
+  await sendCycle($)
 }

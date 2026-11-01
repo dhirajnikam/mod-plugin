@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { agentGraph } from '../hooks/views'
 
 // Every feature driven end to end with the engine stood in: judges, testers, agents, files, commands, accounts, buttons
 const scroll = { offset: 0, bodyRows: 60 }
@@ -8,12 +9,14 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean; cost?: () => number }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
   let clock = 1_000_000
   on('clock.now', async () => ({ value: st.tick ? (clock += 1000) : clock }))
+  // A timer's callback runs once its wait resolves
+  on('clock.after', async (_: unknown, e: any) => (await new Promise(res => (globalThis as any).setTimeout(res, e.ms)), { value: undefined }) as never)
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), { value: { agent: `cockpit:${e.name}` } }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -36,7 +39,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('config.set', async (_: unknown, e: any) => ({ value: e.value }))
   on('session.measure', async () => ({ changed: [] }))
   on('session.cwd', async () => ({ value: '/repo' }))
-  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000, percent: 25, breakdown: { categories: [{ name: 'Messages', tokens: 30000 }, { name: 'System prompt', tokens: 20000 }], totalTokens: 50000 } }, rateLimits: [], cost: { usd: 1.5 } } }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 50000, percent: 25, breakdown: { categories: [{ name: 'Messages', tokens: 30000 }, { name: 'System prompt', tokens: 20000 }], totalTokens: 50000 } }, rateLimits: [], cost: { usd: st.cost ? st.cost() : 1.5 } } }))
   on('model.complete', async (_: unknown, e: any) => {
     if (String(e.prompt).startsWith('Break this task') && st.noSteps) return { value: { isAnswered: false, reason: 'empty-reply' } } as never
     // The commit is written from the diff
@@ -738,4 +741,100 @@ test("a subagent's task list that comes before its row is kept, and the row take
   expect(d).toContain('1/2  ')
   expect(d).toContain('Split the early handler')
   await ov.unmount()
+})
+
+test('the autopilot sends cycle after cycle, ends when the judges agree it is done, and stops at its budget or on a stall', async ($, on) => {
+  let spend = 1.5
+  const log = stand($, on, { tick: true, votes: [0, 0, 0], cost: () => spend })
+  const end = (answer: string) => $.turn.complete({ answer, reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
+  const ov = async () => {
+    const ui = await $.ui.mount(pane('overview') as never)
+    await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+    const d = JSON.stringify(await ui.drawn())
+    await ui.unmount()
+    return d
+  }
+  // No budget, no hours: cycle 1 goes out at once, with the roadmap rules
+  expect(JSON.stringify(await $.command.run({ command: 'cockpit', args: 'autopilot add offline sync' } as never))).toContain('no budget')
+  // The prompt goes once the command's hook has returned
+  await settle()
+  expect(log.submitted.at(-1)).toContain('Autopilot, cycle 1. Goal: add offline sync')
+  expect(log.submitted.at(-1)).toContain('.cockpit/roadmap.md')
+  expect(await ov()).toContain('AUTOPILOT · CYCLE 1')
+  // A cycle that names the next milestone: the next cycle carries it
+  await $.prompt.submit({ text: log.submitted.at(-1)!, command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/sync.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
+  await end('Wrote the roadmap and the queue.\nAUTOPILOT: CONTINUE build the sync engine')
+  await settle()
+  expect(log.submitted.at(-1)).toContain('Autopilot, cycle 2.')
+  expect(log.submitted.at(-1)).toContain('Next: build the sync engine')
+  // A claim of done goes to the judges; three votes for Done end it
+  await $.prompt.submit({ text: 'cycle 2', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/sync.ts', old_string: 'b', new_string: 'c', tool_use_id: 'e2' } as never)
+  await end('All criteria pass.\nAUTOPILOT: DONE sync works offline and the tests pass')
+  let d = await ov()
+  expect(d).toContain('AUTOPILOT · DONE')
+  expect(d).toContain('the judges agree')
+  expect(log.notes.join()).toContain('Autopilot done')
+  // A budget: the session's spend past it stops the run at the turn's end
+  await $.command.run({ command: 'cockpit', args: 'autopilot $1 tidy the docs' } as never)
+  await $.prompt.submit({ text: 'docs', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  spend = 3
+  await end('AUTOPILOT: CONTINUE more docs')
+  d = await ov()
+  expect(d).toContain('AUTOPILOT · STOPPED')
+  expect(d).toContain('the $1 budget is spent')
+  // Three cycles in a row that change nothing (after the one that names the milestone) pause it; Resume starts it again
+  await $.command.run({ command: 'cockpit', args: 'autopilot polish the readme' } as never)
+  for (const i of [1, 2, 3, 4]) {
+    await $.prompt.submit({ text: `idle ${i}`, command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+    await end('AUTOPILOT: CONTINUE same milestone')
+  }
+  d = await ov()
+  expect(d).toContain('AUTOPILOT · PAUSED')
+  expect(d).toContain('three cycles in a row changed nothing')
+  const ui = await $.ui.mount(pane('overview') as never)
+  await ui.press({ key: 'ap-resume' })
+  expect(JSON.stringify(await ui.drawn())).toContain('AUTOPILOT · CYCLE')
+  await ui.press({ key: 'ap-stop' })
+  expect(JSON.stringify(await ui.drawn())).toContain('AUTOPILOT · STOPPED')
+  await ui.unmount()
+})
+
+test('agents remember similar tasks: the brief carries what earlier runs found, and the Overview shows them as memories', async ($, on) => {
+  const log = stand($, on, { tick: true })
+  // An earlier task, tested
+  await $.prompt.submit({ text: 'check the login password rules', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.command.run({ command: 'cockpit', args: 'test' } as never)
+  await $.turn.complete({ agentId: 'ag1', answer: 'CASE PASS strong passwords\nREPORT: password rules hold for normal input', reason: 'answer', turnId: 'a', isAborted: false, durationMs: 1 } as never)
+  await $.turn.complete({ agentId: 'ag2', answer: 'CASE FAIL empty password :: accepted\nREPORT: empty passwords get through the login check', reason: 'answer', turnId: 'b', isAborted: false, durationMs: 1 } as never)
+  await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 'm', isAborted: false, durationMs: 1 } as never)
+  // A similar one: its first expert is told what was found before; an unrelated earlier task is not remembered
+  await $.prompt.submit({ text: 'fix the empty password bug in login', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.command.run({ command: 'cockpit', args: 'test' } as never)
+  expect(log.prompts.at(-1)).toContain('REMEMBERED')
+  expect(log.prompts.at(-1)).toContain('empty passwords get through the login check')
+  const ui = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('2 remembered')
+  expect(d).toContain('remembers ')
+  await ui.unmount()
+})
+
+test('the connection map says who started each agent, and an agent from outside Cockpit is marked', async () => {
+  const base = { prompt: '', status: 'running' as const, startedAt: 0, tools: 0, log: [], cases: [], report: '' }
+  const g = agentGraph([
+    { ...base, id: 'a', name: 'Reviewer', type: 'cockpit:reviewer', task: 'review', by: 'you', provider: 'cockpit' },
+    { ...base, id: 'b', name: 'Explore', type: 'Explore', task: 'scan', by: 'claude', provider: 'engine' },
+    { ...base, id: 'c', name: 'Prover', type: 'cockpit:prover', task: 'prove', by: 'pipeline', provider: 'cockpit', for: 'a' },
+    { ...base, id: 'd', name: 'helper', type: 'other:helper', task: 'help', by: 'agent', parent: 'b', provider: 'other' },
+  ])
+  const uses = (n: string) => g.nodes.find(x => x.name === n)?.uses ?? []
+  expect(uses('You')).toEqual(['Reviewer'])
+  expect(uses('Claude')).toEqual(['↗ Explore'])
+  // A tester points at the work it tests; an agent's own agents hang from it
+  expect(uses('Prover')).toEqual(['Reviewer'])
+  expect(uses('↗ Explore')).toEqual(['↗ helper'])
+  expect(g.marks.Reviewer).toBe('now')
 })

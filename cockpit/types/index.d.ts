@@ -53,6 +53,33 @@ export type Agent = {
   for?: string
   // The agent's own task list (TodoWrite, or TaskCreate and TaskUpdate), as its run keeps it: its progress
   plan?: PlanItem[]
+  // Who started it: you (a press or a command), Claude, Cockpit (a tester, the autopilot), a pipeline, or another agent
+  by?: 'you' | 'claude' | 'cockpit' | 'pipeline' | 'agent'
+  // The agent that started it, when by is 'agent'
+  parent?: string
+  // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
+  provider?: string
+}
+
+// The autopilot: Claude works on a goal cycle after cycle until the judges agree it is done, a limit is hit, or you stop it
+export type Autopilot = {
+  goal: string
+  // Limits, 0 for none: dollars of cost, hours of wall time
+  budget: number
+  hours: number
+  at: number
+  // The session's cost when it started, so the budget counts this run's spend only
+  costAt: number
+  cycle: number
+  status: 'running' | 'paused' | 'done' | 'stopped'
+  // Why it paused, stopped or finished
+  why: string
+  // The milestone the last cycle named as next, and cycles in a row that changed nothing
+  next: string
+  stall: number
+  // Milestones ticked and in all, read from .cockpit/roadmap.md after each cycle
+  done: number
+  total: number
 }
 
 // A chain of experts on one task; each gets the reports of the ones before it
@@ -134,6 +161,7 @@ export type Ph = {
   task: string
   // The completion condition set by /goal or Claude's ProposeGoal, while one stands
   goal?: { text: string; at: number }
+  autopilot?: Autopilot
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current
   lastError?: { tool: string; text: string; at: number }
   turnStart: number
@@ -223,6 +251,11 @@ export type Ph = {
     // The run (an agent id) or team agent (type:<type>) being run again with your instructions, and those instructions
     rerunFor: string
     rerunText: string
+    // The autopilot form: open, and its goal, budget and hours as typed
+    apOpen?: boolean
+    apGoal?: string
+    apBudget?: string
+    apHours?: string
     acctOpen: boolean
     acct: Account
     // The account whose Remove was pressed, waiting for its confirmation

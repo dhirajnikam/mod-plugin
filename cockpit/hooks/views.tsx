@@ -41,6 +41,9 @@ import {
   AGENT_TYPES,
   stepWords,
   planProgress,
+  similarRuns,
+  recallOf,
+  neuralSvg,
   graphRows,
   graphSvg,
   graphText,
@@ -69,10 +72,10 @@ import {
   thrOf,
   tree,
 } from './logic'
-import type { IconState } from './logic'
+import type { IconState, Neuron } from './logic'
 import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from './memory'
 import type { FeatureMark } from './memory'
-import { pickFlow, setGit as setGitPref } from './actions'
+import { pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot } from './actions'
 import { THEMES, THEME_IDS, ctxShades } from './theme'
 import type { Theme } from './theme'
 
@@ -318,6 +321,49 @@ export function Overview($: $, v: V) {
           )}
         </Box>
       )}
+      {s.autopilot && (() => {
+        const ap = s.autopilot
+        const live = ap.status === 'running'
+        const spent = Math.max(0, s.cost - ap.costAt)
+        const col = live ? t.busy : ap.status === 'done' ? t.ok : ap.status === 'paused' ? t.accent : t.dim
+        return (
+          <Box flexDirection="column" borderStyle={live ? 'round' : undefined} borderColor={live ? t.busy : undefined} paddingX={live ? 1 : 0}>
+            <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+              <Text size="footnote" bold>
+                <Text color={col}>{`⟳ AUTOPILOT · ${ap.status === 'running' ? `CYCLE ${ap.cycle}` : ap.status.toUpperCase()}`}</Text>
+              </Text>
+              <Box columnGap={sp(v, 1)}>
+                {live ? (
+                  <Button key="ap-stop" plain onPress={() => stopAutopilot($, 'stopped', 'you stopped it')}>
+                    <Text color={t.bad} size="footnote">■ Stop</Text>
+                  </Button>
+                ) : ap.status !== 'done' ? (
+                  <Button key="ap-resume" plain onPress={() => resumeAutopilot($)}>
+                    <Text color={t.accent} size="footnote">▶ Resume</Text>
+                  </Button>
+                ) : null}
+                {!live && (
+                  <Button key="ap-clear" plain onPress={() => set($, { autopilot: undefined })}>
+                    <Text color={t.faint} size="footnote">×</Text>
+                  </Button>
+                )}
+              </Box>
+            </Box>
+            <Text color={t.text} wrap="wrap">{ap.goal}</Text>
+            {ap.total > 0 && (
+              <Box columnGap={sp(v, 1)} alignItems="center">
+                <Bar ui={v.ui} w={14} frac={ap.done / ap.total} fill={t.ok} track={t.track} />
+                <Text color={t.dim} size="footnote">{`${ap.done} of ${ap.total} milestones`}</Text>
+              </Box>
+            )}
+            <Text size="footnote" wrap="wrap">
+              <Text color={t.dim}>{`$${spent.toFixed(2)}${ap.budget ? ` of $${ap.budget}` : ', no budget'} · ${fmt(v.now - ap.at)}${ap.hours ? ` of ${ap.hours}h` : ''}`}</Text>
+              {live && ap.next !== '' && <Text color={t.faint}>{`  ·  next: ${ap.next}`}</Text>}
+              {!live && ap.why !== '' && <Text color={col}>{`  ·  ${ap.why}`}</Text>}
+            </Text>
+          </Box>
+        )
+      })()}
       <Box columnGap={sp(v, 2)} flexWrap="wrap">
         {Svg ? (
           <Svg source={ringSvg(p.pct, '', { accent: t.accent, track: t.track, text: t.text, dim: t.dim })} alt={`${p.pct}% · ${p.stepName}`} width={96} height={96} />
@@ -398,33 +444,59 @@ export function Overview($: $, v: V) {
         </Box>
       )}
       {(() => {
+        // The agents at this task (at work, or done this flow) and what is remembered from similar earlier tasks
         const busy = s.agents.filter(a => a.status === 'running')
         const ran = cur ? s.agents.filter(a => a.status !== 'running' && a.startedAt >= cur.startedAt) : []
-        if (!busy.length && !ran.length) return null
+        const mem = s.task ? similarRuns(s.task, [...s.pastAgents, ...s.agents.filter(a => !cur || a.startedAt < cur.startedAt)]) : []
+        if (!busy.length && !ran.length && !mem.length) return null
+        const lineOf = (a: Agent) => {
+          const pp = planProgress(a.plan)
+          return a.status === 'running' ? pp.now || stepWords(a.log[a.log.length - 1]?.t) : recallOf(a) || a.status
+        }
+        const neurons: Neuron[] = [
+          ...[...busy, ...ran.slice(-4)].map(a => {
+            const pp = planProgress(a.plan)
+            return { id: a.id, name: a.name, line: lineOf(a), state: a.status === 'running' ? ('running' as const) : a.status === 'done' ? ('done' as const) : ('failed' as const), ...(pp.total ? { pct: pp.done / pp.total } : {}), ...(a.for ? { link: a.for } : {}) }
+          }),
+          ...mem.map(m => {
+            const kin = busy.find(a => a.type === m.run.type)
+            return { id: `mem-${m.run.id}`, name: m.run.name, line: `remembers: ${recallOf(m.run)}`, state: 'memory' as const, ...(kin ? { link: kin.id } : {}) }
+          }),
+        ]
         return (
           <Box flexDirection="column">
             <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
               <Label label="Agents" n={busy.length} />
               <Button key="ov-agents" plain onPress={() => set($, { tab: 'agents' })}>
-                <Text color={t.accent} size="footnote">{`${ran.length ? `${ran.length} finished · ` : ''}Open Agents ›`}</Text>
+                <Text color={t.accent} size="footnote">{`${ran.length ? `${ran.length} finished · ` : ''}${mem.length ? `${mem.length} remembered · ` : ''}Open Agents ›`}</Text>
               </Button>
             </Box>
-            {busy.slice(0, 4).map(a => (
-              <Box key={`ova-${a.id}`} columnGap={sp(v, 1)} alignItems="center">
-                {/* One width for the glyph and name, so the trackers' bars start in one column */}
-                <Box width="28%" flexShrink={0}>
-                  <Text wrap="truncate-end">
-                    <Text color={t.busy}>{`${expertGlyph(a.type)} `}</Text>
-                    <Text color={t.text}>{a.name}</Text>
-                  </Text>
+            {Svg ? (
+              <Svg source={neuralSvg(s.task, neurons, { accent: t.accent, busy: t.busy, ok: t.ok, bad: t.bad, text: t.text, dim: t.dim, track: t.divider, bg: /^#/.test(t.surface) ? t.surface : s.isDarkTerm ? '#262624' : '#f5f4ef' }, Math.max(320, w * 8))} alt={`Agents: ${busy.length} at work, ${mem.length} remembered`} isInteractive />
+            ) : (
+              busy.slice(0, 4).map(a => (
+                <Box key={`ova-${a.id}`} columnGap={sp(v, 1)} alignItems="center">
+                  {/* One width for the glyph and name, so the trackers' bars start in one column */}
+                  <Box width="28%" flexShrink={0}>
+                    <Text wrap="truncate-end">
+                      <Text color={t.busy}>{`${expertGlyph(a.type)} `}</Text>
+                      <Text color={t.text}>{a.name}</Text>
+                    </Text>
+                  </Box>
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Tracker v={v} a={a} />
+                  </Box>
+                  <Text color={t.faint} size="footnote">{fmt(v.now - a.startedAt)}</Text>
                 </Box>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Tracker v={v} a={a} />
-                </Box>
-                <Text color={t.faint} size="footnote">{fmt(v.now - a.startedAt)}</Text>
-              </Box>
+              ))
+            )}
+            {!Svg && busy.length > 4 && <Text color={t.faint} size="footnote">{`+ ${busy.length - 4} more running`}</Text>}
+            {!Svg && mem.map(m => (
+              <Text key={`ovm-${m.run.id}`} size="footnote" wrap="truncate-end">
+                <Text color={t.faint}>{'◌ remembers '}</Text>
+                <Text color={t.dim}>{`${m.run.name}: ${recallOf(m.run)}`}</Text>
+              </Text>
             ))}
-            {busy.length > 4 && <Text color={t.faint} size="footnote">{`+ ${busy.length - 4} more running`}</Text>}
           </Box>
         )
       })()}
@@ -651,6 +723,96 @@ export function workMarks(s: Ph, now: string) {
   return { marks, nowFeature: now ? of(now) : '' }
 }
 
+// A map where no SVG is drawn (the terminal): its layers as indented lines, each node with what it points to
+function MapText({ v, nodes, marks }: { v: V; nodes: { name: string; uses: string[] }[]; marks: Record<string, FeatureMark> }) {
+  const { Box, Text } = v.ui
+  const { t } = v
+  return (
+    <Box flexDirection="column">
+      {featureLayers(nodes.map(n => ({ ...n, what: '', files: [], usedBy: [] }))).map((layer, i) => (
+        <Box key={`ml-${i}`} flexDirection="column">
+          {layer.map(n => {
+            const f = nodes.find(x => x.name === n)!
+            const m = marks[n]
+            const uses = f.uses.filter(u => nodes.some(x => x.name === u))
+            return (
+              <Text key={`mn-${n}`} wrap="truncate-end">
+                <Text color={t.faint}>{'  '.repeat(i)}</Text>
+                <Text color={m === 'now' ? t.busy : m === 'touched' ? t.accent : m === 'reached' ? t.busy : t.faint}>{m === 'now' ? '■ ' : m === 'touched' ? '◆ ' : m === 'reached' ? '◇ ' : '· '}</Text>
+                <Text color={m ? t.text : t.dim} bold={m === 'now'}>{n}</Text>
+                {uses.length > 0 && <Text color={t.faint}>{` → ${uses.join(', ')}`}</Text>}
+              </Text>
+            )
+          })}
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+// The agents and who started them, as a diagram: you, Claude and Cockpit on top, an arrow from each to the agents it
+// started (a pipeline's steps under Cockpit), a tester's arrow to the agent whose work it tests, an agent's to the ones
+// it started. Running ones are filled and breathe, finished ones outlined; ↗ marks an agent from outside Cockpit
+// (Claude's own types, another plugin's). Hovering a box says its task, state, who started it and who provides it
+export function agentGraph(agents: Agent[]) {
+  const label = new Map<string, string>()
+  const seen: Record<string, number> = {}
+  for (const a of agents) {
+    const outside = a.provider ? a.provider !== 'cockpit' : !a.type.startsWith('cockpit:')
+    const base = `${outside ? '↗ ' : ''}${a.name}`
+    seen[base] = (seen[base] ?? 0) + 1
+    label.set(a.id, seen[base] > 1 ? `${base} #${seen[base]}` : base)
+  }
+  const by = (a: Agent) => (a.by === 'agent' && a.parent && label.has(a.parent) ? label.get(a.parent)! : a.by === 'you' ? 'You' : a.by === 'pipeline' || (a.by === undefined && a.for) ? 'Cockpit' : 'Claude')
+  const nodes = new Map<string, { name: string; uses: string[]; what: string; files: string[]; usedBy: string[] }>()
+  const node = (n: string, what = '') => nodes.get(n) ?? (nodes.set(n, { name: n, uses: [], what, files: [], usedBy: [] }), nodes.get(n)!)
+  for (const a of agents) {
+    const me = node(label.get(a.id)!, [a.task, a.status, `started by ${a.by === 'agent' ? 'an agent' : (a.by ?? 'Claude, outside Cockpit\'s view')}`, `provided by ${a.provider ?? (a.type.includes(':') ? a.type.split(':')[0] : 'Claude Code')}`].filter(Boolean).join('\n'))
+    const from = a.for && label.has(a.for) ? null : by(a)
+    if (from) node(from).uses.push(me.name)
+    if (a.for && label.has(a.for)) me.uses.push(label.get(a.for)!)
+  }
+  const marks: Record<string, FeatureMark> = {}
+  for (const a of agents) marks[label.get(a.id)!] = a.status === 'running' ? 'now' : a.status === 'done' ? 'touched' : 'reached'
+  return { nodes: [...nodes.values()], marks }
+}
+
+function AgentMap($: $, v: V, agents: Agent[]) {
+  const { Box, Button, Text, Svg } = v.ui
+  const { s, t, w } = v
+  if (agents.length < 1) return null
+  const { nodes, marks } = agentGraph(agents)
+  const open = !s.ui.collapsed['ag-map']
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+        <Button key="ag-map" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-map': open } } }))}>
+          <Text size="footnote" bold>
+            <Text color={t.faint}>{open ? '⌄ ' : '› '}</Text>
+            <Text color={t.dim}>CONNECTIONS</Text>
+            <Text color={t.faint}>{` ${agents.length}`}</Text>
+          </Text>
+        </Button>
+        {open && (
+          <Text size="footnote">
+            <Text color={t.busy}>■</Text>
+            <Text color={t.faint}>{' running  '}</Text>
+            <Text color={t.accent}>□</Text>
+            <Text color={t.faint}>{' done  '}</Text>
+            <Text color={t.busy}>┅</Text>
+            <Text color={t.faint}>{' stopped or failed  ↗ outside Cockpit'}</Text>
+          </Text>
+        )}
+      </Box>
+      {open && (Svg ? (
+        <Svg source={featureMapSvg(nodes, marks, { accent: t.accent, busy: t.busy, text: t.text, dim: t.dim, track: t.divider, bg: /^#/.test(t.surface) ? t.surface : s.isDarkTerm ? '#262624' : '#f5f4ef' }, Math.max(320, w * 8))} alt={`Agent connections: ${agents.length} agents`} isInteractive />
+      ) : (
+        <MapText v={v} nodes={nodes} marks={marks} />
+      ))}
+    </Box>
+  )
+}
+
 function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
   const { Box, Button, Text, Svg } = v.ui
   const { s, t, w } = v
@@ -687,25 +849,7 @@ function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
       {open && (Svg ? (
         <Svg source={featureMapSvg(shown, marks, { accent: t.accent, busy: t.busy, text: t.text, dim: t.dim, track: t.divider, bg: /^#/.test(t.surface) ? t.surface : s.isDarkTerm ? '#262624' : '#f5f4ef' }, width)} alt={`Feature map: ${shown.length} features`} isInteractive />
       ) : (
-        <Box flexDirection="column">
-          {featureLayers(shown).map((layer, i) => (
-            <Box key={`ml-${i}`} flexDirection="column">
-              {layer.map(n => {
-                const f = shown.find(x => x.name === n)!
-                const m = marks[n]
-                const uses = f.uses.filter(u => shown.some(x => x.name === u))
-                return (
-                  <Text key={`mn-${n}`} wrap="truncate-end">
-                    <Text color={t.faint}>{'  '.repeat(i)}</Text>
-                    <Text color={m === 'now' ? t.busy : m === 'touched' ? t.accent : m === 'reached' ? t.busy : t.faint}>{m === 'now' ? '■ ' : m === 'touched' ? '◆ ' : m === 'reached' ? '◇ ' : '· '}</Text>
-                    <Text color={m ? t.text : t.dim} bold={m === 'now'}>{n}</Text>
-                    {uses.length > 0 && <Text color={t.faint}>{` → ${uses.join(', ')}`}</Text>}
-                  </Text>
-                )
-              })}
-            </Box>
-          ))}
-        </Box>
+        <MapText v={v} nodes={shown} marks={marks} />
       ))}
       {open && (tests.length > 0 || fs.length > shown.length + tests.length) && (
         <Text color={t.faint} size="footnote" wrap="wrap">
@@ -1103,7 +1247,7 @@ export function Agents($: $, v: V) {
                   ))}
                   {open && (
                     <Box flexDirection="column" paddingLeft={2}>
-                      <Text color={t.faint} size="footnote">{a.type}</Text>
+                      <Text color={t.faint} size="footnote" wrap="wrap">{[a.type, `started by ${a.by === 'agent' ? `the ${s.agents.find(x => x.id === a.parent)?.name ?? 'agent'}` : a.by === 'you' ? 'you' : a.by === 'pipeline' ? 'a Cockpit pipeline' : a.by === 'claude' ? 'Claude' : 'Claude, outside Cockpit\'s view'}`, `provided by ${a.provider === 'engine' ? 'Claude Code' : a.provider ?? (a.type.includes(':') ? a.type.split(':')[0] : 'Claude Code')}`].join(' · ')}</Text>
                       {a.report !== '' && <Text color={t.dim} size="footnote" wrap="wrap">{a.report}</Text>}
                       {a.log.slice(-8).map((l, i) => (
                         <Text key={`log-${a.id}-${i}`} size="footnote" wrap="truncate-end">
@@ -1120,6 +1264,11 @@ export function Agents($: $, v: V) {
   const live_ = s.agents.filter(a => a.status === 'running' && a.id !== pipe?.agentId).slice().reverse()
   const done_ = s.agents.filter(a => a.status !== 'running').slice().reverse()
   const allDone = !!s.ui.collapsed['ag-finished']
+  const startFromForm = () => {
+    const goal = (s.ui.apGoal ?? '').trim()
+    if (!goal) return undefined
+    return Promise.all([startAutopilot($, goal, Number(s.ui.apBudget) || 0, Number(s.ui.apHours) || 0), set($, st => ({ tab: 'overview', ui: { ...st.ui, apOpen: false } }))])
+  }
   const section = (label: string, extra = '') => (
     <Text size="footnote">
       <Text color={t.dim} bold>{label.toUpperCase()}</Text>
@@ -1132,6 +1281,7 @@ export function Agents($: $, v: V) {
         <Box flexWrap="wrap" columnGap={sp(v, 1)}>
           {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, false, () => startPipeline($, p.name)))}
         </Box>
+        {pill('ap-toggle', s.ui.apOpen ? '✕ Close' : '⟳ Autopilot', false, () => set($, st => ({ ui: { ...st.ui, apOpen: !st.ui.apOpen } })))}
         {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', false, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
       </Box>
       {pipe && (
@@ -1174,6 +1324,17 @@ export function Agents($: $, v: V) {
               <Text color={t.dim}>{pipe.reports[pipe.reports.length - 1]?.split('\n').find(l => l.startsWith('HANDOFF:'))?.slice(8).trim() || 'report handed on'}</Text>
             </Text>
           )}
+        </Box>
+      )}
+      {s.ui.apOpen && (
+        <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+          <Input key="ap-goal" label="Goal" placeholder="Add offline sync, with tests, and keep the app fast" value={s.ui.apGoal ?? ''} onInput={val => set($, st => ({ ui: { ...st.ui, apGoal: val } }))} onSubmit={() => startFromForm()} />
+          <Box columnGap={sp(v, 2)} flexWrap="wrap" alignItems="center">
+            <Input key="ap-budget" label="Budget $" placeholder="none" value={s.ui.apBudget ?? ''} onInput={val => set($, st => ({ ui: { ...st.ui, apBudget: val } }))} onSubmit={() => startFromForm()} />
+            <Input key="ap-hours" label="Hours" placeholder="none" value={s.ui.apHours ?? ''} onInput={val => set($, st => ({ ui: { ...st.ui, apHours: val } }))} onSubmit={() => startFromForm()} />
+            <Button key="ap-go" label="Start autopilot" variant="primary" onPress={() => startFromForm()} />
+          </Box>
+          <Text color={t.dim} size="footnote" wrap="wrap">Claude works cycle after cycle from a roadmap in .cockpit/roadmap.md until the judges agree the goal is reached. Leave budget and hours empty to run until it is done; it pauses for you on anything hard to undo, and after three cycles that change nothing.</Text>
         </Box>
       )}
       {s.ui.spawnOpen && (
@@ -1237,6 +1398,7 @@ export function Agents($: $, v: V) {
           {live_.map(runRow)}
         </Box>
       )}
+      {AgentMap($, v, [...s.agents.filter(a => a.status === 'running'), ...done_.slice(0, 8)].filter(a => !s.cleared.includes(a.id)))}
       <Box flexDirection="column" gap={sp(v, 1)}>
         {section('Team', `${team.length} agents`)}
         {team.map(x => {

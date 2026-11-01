@@ -526,6 +526,73 @@ export function ringSvg(pct: number, step: string, c: { accent: string; track: s
     `<text x="60" y="82" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="${c.dim}">${esc(label)}</text></svg>`
 }
 
+// The neural view for surfaces that draw SVG: the task in the middle; above it the agents at work on it, each a neuron
+// joined to the task by a line a signal runs along while it works, its ring filling with its task list; below, the
+// runs remembered from similar tasks, faint, each joined to the agent of its kind at work now (else to the task); a
+// tester joined to the agent whose work it tests. Hovering a neuron says what it is doing or found
+export type Neuron = { id: string; name: string; line: string; state: 'running' | 'done' | 'failed' | 'memory'; pct?: number; link?: string }
+export function neuralSvg(task: string, ns: Neuron[], c: { accent: string; busy: string; ok: string; bad: string; text: string; dim: string; track: string; bg: string }, width = 560) {
+  const esc = (x: string) => x.replace(/[<>&"]/g, ch => `&#${ch.charCodeAt(0)};`)
+  const real = (x: string, tone: string) => (/^(#|rgb|hsl)/.test(x) ? x : tone)
+  c = { accent: real(c.accent, '#b4833a'), busy: real(c.busy, '#d9a441'), ok: real(c.ok, '#5cc98a'), bad: real(c.bad, '#ef6b6b'), text: real(c.text, '#d6d3ce'), dim: real(c.dim, '#8a8a8a'), track: real(c.track, 'rgba(128,128,128,0.35)'), bg: real(c.bg, '#262624') }
+  const cut = (x: string, n: number) => (x.length > n ? `${x.slice(0, n - 1).trimEnd()}…` : x)
+  const live = ns.filter(n => n.state !== 'memory').slice(0, 6)
+  const mem = ns.filter(n => n.state === 'memory').slice(0, 3)
+  const cx = width / 2
+  const cy = 0
+  // Wide ellipses, so a neuron's label (about 170px) clears the task in the middle
+  const RX = Math.max(120, Math.min(width / 2 - 85, 210))
+  const RY = 100
+  const at = new Map<string, { x: number; y: number }>()
+  // Above the task on one arc for the agents at work, below it on another for what is remembered
+  const place = (row: Neuron[], from: number, span: number, k: number) =>
+    row.forEach((n, i) => {
+      const deg = row.length === 1 ? from + span / 2 : from + (span * i) / (row.length - 1)
+      const rad = (deg * Math.PI) / 180
+      at.set(n.id, { x: cx + RX * k * Math.cos(rad), y: cy + RY * k * Math.sin(rad) })
+    })
+  place(live, 200, 140, 1)
+  place(mem, 40, 100, 0.85)
+  // Trimmed to what is drawn: the highest neuron's ring to the lowest label
+  const ys = [cy - 42, cy + 52, ...[...at.values()].flatMap(p => [p.y - 22, p.y + 52])]
+  const top = Math.min(...ys) - 6
+  const height = Math.round(Math.max(...ys) - top + 6)
+  const col = (n: Neuron) => (n.state === 'running' ? c.busy : n.state === 'done' ? c.ok : n.state === 'failed' ? c.bad : c.dim)
+  const curve = (a: { x: number; y: number }, b: { x: number; y: number }, bend = 0.18) => {
+    const mx = (a.x + b.x) / 2 + (b.y - a.y) * bend
+    const my = (a.y + b.y) / 2 - (b.x - a.x) * bend
+    return `M${a.x.toFixed(1)} ${a.y.toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`
+  }
+  const centre = { x: cx, y: cy }
+  const lines = [...live, ...mem].map(n => {
+    const p = at.get(n.id)!
+    const to = n.link && at.has(n.link) ? at.get(n.link)! : centre
+    const d = curve(to, p)
+    if (n.state === 'running') return `<path d="${d}" fill="none" stroke="${c.busy}" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"><animate attributeName="stroke-dashoffset" values="20;0" dur="0.9s" repeatCount="indefinite"/></path>`
+    if (n.state === 'memory') return `<path d="${d}" fill="none" stroke="${c.dim}" stroke-width="1.2" stroke-dasharray="2 5" opacity="0.7"/>`
+    return `<path d="${d}" fill="none" stroke="${col(n)}" stroke-width="1.5" opacity="0.65"/>`
+  })
+  const nodes = [...live, ...mem].map(n => {
+    const p = at.get(n.id)!
+    const k = col(n)
+    const ring = n.state === 'running' && n.pct !== undefined ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="20" fill="none" stroke="${c.busy}" stroke-width="2.5" stroke-dasharray="${(125.7 * n.pct).toFixed(1)} 125.7" transform="rotate(-90 ${p.x.toFixed(1)} ${p.y.toFixed(1)})"/>` : ''
+    const pulse = n.state === 'running' ? `<animate attributeName="r" values="14;16.5;14" dur="1.6s" repeatCount="indefinite"/>` : ''
+    return `<g opacity="${n.state === 'memory' ? 0.75 : 1}"><title>${esc(`${n.name}\n${n.line}`)}</title>` +
+      `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="14" fill="${c.bg}" stroke="${k}" stroke-width="2"${n.state === 'memory' ? ' stroke-dasharray="3 3"' : ''}>${pulse}</circle>${ring}` +
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + 4.5).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${k}">${esc(n.name.replace(/^\W+/, '').slice(0, 1).toUpperCase())}</text>` +
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + 34).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="${n.state === 'memory' ? c.dim : c.text}">${esc(cut(n.name, 18))}</text>` +
+      `<text x="${p.x.toFixed(1)}" y="${(p.y + 48).toFixed(1)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10.5" fill="${c.dim}">${esc(cut(n.line, 28))}</text></g>`
+  })
+  // The task: two lines of it inside the core
+  const t1 = cut(task || 'No task yet', 34)
+  const split = t1.length > 17 ? t1.lastIndexOf(' ', 17) : -1
+  const [a1, a2] = split > 0 ? [t1.slice(0, split), t1.slice(split + 1)] : [t1, '']
+  const core = `<g><title>${esc(task)}</title><circle cx="${cx}" cy="${cy}" r="40" fill="${c.bg}" stroke="${c.accent}" stroke-width="2.5"/>` +
+    `<text x="${cx}" y="${cy + (a2 ? -3 : 4)}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="${c.text}">${esc(a1)}</text>` +
+    (a2 ? `<text x="${cx}" y="${cy + 11}" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="${c.text}">${esc(cut(a2, 17))}</text>` : '') + `</g>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${top.toFixed(0)} ${width} ${height}" width="${width}" height="${height}">${lines.join('')}${core}${nodes.join('')}</svg>`
+}
+
 // Agent icons for surfaces that draw SVG: line icons in a tinted tile, coloured by state. A running one turns an arc
 // around its tile and breathes (SMIL, drawn in an interactive frame); a finished one wears a badge
 export type IconState = 'idle' | 'running' | 'done' | 'failed' | 'stopped' | 'pending'
@@ -659,6 +726,37 @@ export function graphCheck() {
 }
 
 // An agent's last step, as its log line says it ("Bash cd /x && npm test", "Edit /a/b.ts"), in plain words
+// Agent memory: earlier runs on a task like this one, by the words the two tasks share (Jaccard over the words that
+// carry meaning), best first; only runs that left something to learn from (a report or test cases) count
+// ponytail: word overlap, no embeddings; enough to find "fix the login bug" from "login bug again"
+const STOP = new Set('the a an and or of to in on for with is it this that be as at by from fix add make update change please can you i we my our me it\'s do does into also then them its'.split(' '))
+const words = (x: string) => new Set(x.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !STOP.has(w)))
+export function similarRuns(task: string, runs: Agent[], n = 3) {
+  const a = words(task)
+  if (!a.size) return []
+  const seen = new Set<string>()
+  return runs
+    .filter(r => r.status !== 'running' && r.task && (r.report || r.cases.length))
+    .map(r => {
+      const b = words(r.task)
+      const both = [...a].filter(w => b.has(w)).length
+      return { run: r, score: both / (a.size + b.size - both || 1) }
+    })
+    .filter(x => x.score >= 0.2 && x.run.task.trim() !== task.trim())
+    .sort((x, y) => y.score - x.score || (y.run.endedAt ?? 0) - (x.run.endedAt ?? 0))
+    .filter(x => {
+      const k = `${x.run.type}|${x.run.task}`
+      return !seen.has(k) && (seen.add(k), true)
+    })
+    .slice(0, n)
+}
+// What a remembered run found, in a line: its REPORT, or its cases' tally
+export const recallOf = (r: Agent) => {
+  const rep = r.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice(7).trim()
+  const fail = r.cases.filter(c => c.st === 'fail').length
+  return rep || (r.cases.length ? `${r.cases.length - fail}/${r.cases.length} cases passed${fail ? `, failing: ${r.cases.filter(c => c.st === 'fail').map(c => c.n).slice(0, 3).join(', ')}` : ''}` : '')
+}
+
 // An agent's progress from its own task list: done of all, and the task it is on (the next one when none is started)
 export function planProgress(plan: PlanItem[] = []) {
   const done = plan.filter(p => p.st === 'completed').length

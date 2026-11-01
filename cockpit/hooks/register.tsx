@@ -17,6 +17,10 @@ import {
   runMany,
   handoffs,
   earlyPlans,
+  startAutopilot,
+  stopAutopilot,
+  resumeAutopilot,
+  autopilotTurnEnd,
   judgeNext,
   personSpoke,
   RISKY,
@@ -123,6 +127,19 @@ export const register: Register = on => {
 
   on('command.run', { command: 'cockpit' }, async ($, e) => {
     const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
+    if (verb === 'autopilot') {
+      const rest = e.args.trim().split(/\s+/).slice(1)
+      if (rest[0] === 'stop') return (await stopAutopilot($, 'stopped', 'you stopped it'), { text: 'Autopilot stopped.' })
+      if (rest[0] === 'resume') return (await resumeAutopilot($), { text: 'Autopilot resumed.' })
+      const budget = Number(rest.find(w => /^\$\d+(\.\d+)?$/.test(w))?.slice(1) ?? 0)
+      const hours = Number(rest.find(w => /^\d+(\.\d+)?h$/.test(w))?.slice(0, -1) ?? 0)
+      const goal = rest.filter(w => !/^\$\d+(\.\d+)?$/.test(w) && !/^\d+(\.\d+)?h$/.test(w)).join(' ').trim()
+      if (!goal) return { text: 'Usage: /cockpit autopilot [$budget] [hours h] <goal>, e.g. /cockpit autopilot $20 4h add offline sync. Leave out the budget and hours to run until it is done. /cockpit autopilot stop · resume' }
+      await startAutopilot($, goal, budget, hours)
+      await set($, { tab: 'overview' })
+      await openPane($)
+      return { text: `Autopilot: ${goal}${budget ? ` · $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}` }
+    }
     if (verb === 'theme') {
       if (!THEME_IDS.includes(arg as ThemeId)) return { text: `Themes: ${THEME_IDS.join(', ')}` }
       await setTheme($, arg as ThemeId)
@@ -398,7 +415,10 @@ export const register: Register = on => {
       const note = (await read($, S)).starting
       const own = note && (!e.subagentType || e.subagentType === note.type) ? note : null
       const type = e.subagentType || own?.type || 'general-purpose'
-      await trackAgent($, { id, name: own?.name ?? (expertName(type) !== type ? expertName(type) : e.description || type), type, task: own?.task ?? e.description, prompt: e.prompt })
+      // Who started it: Cockpit's own start is a pipeline's step or yours (a press, a command); else another agent or Claude
+      const s0 = await read($, S)
+      const by = own ? (s0.pipeline && !s0.pipeline.agentId && s0.pipeline.steps[s0.pipeline.index] === type ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
+      await trackAgent($, { id, name: own?.name ?? (expertName(type) !== type ? expertName(type) : e.description || type), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}) })
       // A pipeline's expert whose start hands no id back: the id is known here
       await set($, s => ({
         agentTypes: s.agentTypes.includes(type) ? s.agentTypes : [...s.agentTypes, type],
@@ -456,6 +476,8 @@ export const register: Register = on => {
     await syncAgents($)
     const s = await read($, S)
     const didChange = changed || (atStart !== null && s.repo.changed.length > 0 && changesOf(s.repo.changed) !== atStart)
+    // The autopilot's next cycle, once this turn's figures are in (cost for its budget, changes for its stall count)
+    await autopilotTurnEnd($, e.answer ?? '', didChange, !!e.isAborted, s.turnStart).catch(() => null)
     // Files a shell command or script changed reach the memory here
     if (didChange) for (const c of s.repo.changed.slice(0, 40)) await updateMemory($, `${await repoRootOf($)}/${c.path}`)
     // The flow's +/− counts what changed in the repository this turn, a shell command's edits too: the lines each file
