@@ -20,6 +20,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- The Activity tab no longer says "No files found here yet" over a feed of agents' events, and the feed's count
+  is of the rows it shows ("6 events · 3 agents").
 - The judges no longer answer a question about what only you can do ("Will you…", "Can you…", "Could you…"):
   it comes to you.
 - ui-template validates cleanly: its manifest names its author, licence and repository, and a failed model lookup

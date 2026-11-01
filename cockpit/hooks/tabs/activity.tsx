@@ -328,7 +328,7 @@ export function Files($: $, v: V) {
       </Box>
       {FeatureMap($, v, marks)}
       {Memory($, v, marks)}
-      {rows_.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
+      {rows_.length === 0 && feed.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
       {rows_.length > 0 && (
         <Box flexDirection="column">
           <Button key="fold-tree" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'act-tree': !st.ui.collapsed['act-tree'] } } }))}>
@@ -370,7 +370,7 @@ export function Files($: $, v: V) {
           {filter ? (
             <Button key="feed-all" label="show all" plain dimColor onPress={() => set($, st => ({ ui: { ...st.ui, treeSel: '' } }))} />
           ) : (
-            <Text color={t.dim} size="footnote">{`${s.ops.length} operations · ${s.agents.length} agents`}</Text>
+            <Text color={t.dim} size="footnote">{`${feed.length} event${feed.length === 1 ? '' : 's'} · ${s.agents.length} agent${s.agents.length === 1 ? '' : 's'}`}</Text>
           )}
         </Box>
       )}
