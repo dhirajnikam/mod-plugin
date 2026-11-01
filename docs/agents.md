@@ -41,7 +41,7 @@ folder and name any test they leave in the repository.
   `cockpit:<name>` and keeps it for later sessions. Claude Code dispatches a new type from the next turn on, so if ▶
   right after making one says the type is unknown, send any prompt first. The same form runs a one-off task with any
   agent type: the built-ins, the experts, `.claude/agents/*.md` in the project and in `~/.claude`, each installed
-  plugin's agents, and any other name you type.
+  plugin's agents as `plugin:name`, any type that has started this session, and any other name you type.
 - **Several at once**: tick agents and press ▶ Run selected, or type `/cockpit run planner reviewer -- the task`. ▶
   always starts another run; ■ stops every running copy.
 - The subagents Claude starts show here as they work, read from Claude Code's own list of agents, so they appear even
