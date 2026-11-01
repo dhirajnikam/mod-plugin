@@ -42,7 +42,8 @@ through the code.
 
 | Path | What it holds |
 |---|---|
-| `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges, and every drawing outside the pane |
+| `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges |
+| `cockpit/hooks/drawings.tsx` | every drawing outside the tabs: the band, the spinner, the chat's cards and rows, and the pane's frame |
 | `cockpit/hooks/tabs/` | the pane: one file per tab, `header.tsx` for its header and tabs, `shared.tsx` for the pieces they share |
 | `cockpit/hooks/ops/` | what the views and hooks do: `core.ts` (state, history), `git.ts`, `agents.ts`, `decisions.ts` (judges and autopilot), `memory-io.ts`, `rules-io.ts` |
 | `cockpit/hooks/logic.ts` | pure helpers: flows and progress, diffs, the file tree, SVG drawings |

@@ -14,7 +14,7 @@ Cockpit almost always calls `next(e)` and records what happened; it seldom chang
 Claude Code events ──▶ register.tsx (hooks) ──▶ ops/ (what to do) ──▶ set(): the state ──▶ ui.render hooks redraw
                                                     │                        │
                                                git, gh, models,         tabs/ (the pane),
-                                               agents, files            register.tsx (band, spinner, chat cards)
+                                               agents, files            drawings.tsx (band, spinner, chat cards)
 ```
 
 - **What Cockpit does** is in `hooks/ops/`, one file per concern: `core.ts` (the state, `set()`, notes, paths,
@@ -33,7 +33,7 @@ Claude Code events ──▶ register.tsx (hooks) ──▶ ops/ (what to do) �
 
 ## Events and where they are handled
 
-All hooks are registered in `register.tsx`.
+All hooks are registered from `register.tsx`; the `ui.render` hooks are in `drawings.tsx`, which it calls.
 
 | Event | What Cockpit does |
 |---|---|

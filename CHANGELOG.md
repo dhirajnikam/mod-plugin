@@ -15,6 +15,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - The source is split for newcomers: the pane in `hooks/tabs/`, one file per tab, and what Cockpit does in
   `hooks/ops/`, one file per concern; no source file is over 900 lines.
+- Everything Cockpit draws outside the tabs (the band, the spinner, the chat's cards, the pane's frame) moved from
+  `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
 - Slow presses no longer run past Claude Code's 10 s budget for a press: Push, Pull, Commit, Add token, Map

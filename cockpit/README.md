@@ -29,7 +29,8 @@ Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit
 
 | File | Holds |
 |---|---|
-| `hooks/register.tsx` | event hooks: prompts, tool calls, judges, turn ends, agents, and every drawing outside the pane |
+| `hooks/register.tsx` | event hooks: prompts, tool calls, judges, turn ends, agents |
+| `hooks/drawings.tsx` | every drawing outside the tabs: the band, the spinner, the chat's cards, the pane's frame |
 | `hooks/tabs/` | the pane, one file per tab (`views.tsx` re-exports them) |
 | `hooks/ops/` | what Cockpit does: state and history, git, agents, judges and the autopilot, memory, rules files (`actions.ts` re-exports them) |
 | `hooks/logic.ts` | pure helpers: flows and progress, diffs, the tree, the ring and other SVG drawings |
