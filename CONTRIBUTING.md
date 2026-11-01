@@ -1,0 +1,78 @@
+# Contributing to mod-plugin
+
+Thank you for helping. This repository holds Claude Code mods: plugins built from a hooks module. The main one is
+[Cockpit](cockpit/README.md). Bug reports, ideas and pull requests are all welcome.
+
+By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems go through the
+[security policy](SECURITY.md), not public issues.
+
+## Set up
+
+You need Claude Code 2.1.275 or later and Node.js (for the type-check). Clone the repository, then start Claude Code
+with Cockpit loaded from your checkout:
+
+```sh
+./dev.sh        # macOS and Linux
+dev.cmd         # Windows
+```
+
+Saving a file under `cockpit/hooks/` reloads the mod when the current turn ends. Open the pane with `/cockpit`.
+
+## The checks
+
+Every change must pass all four, run from the repository root:
+
+```sh
+claude plugin test ./cockpit                 # the tests
+npx -p typescript tsc -p cockpit             # the type-check: no output means clean
+claude plugin validate ./cockpit             # what the engine would refuse
+python3 scripts/check_links.py               # every relative link in the Markdown resolves
+```
+
+## Where things are
+
+| Path | What it holds |
+|---|---|
+| `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges, and every drawing outside the pane |
+| `cockpit/hooks/views.tsx` | the pane: its header, tabs and each tab's view |
+| `cockpit/hooks/actions.ts` | what the views and hooks do: git, agents and pipelines, judges, the autopilot, history |
+| `cockpit/hooks/logic.ts` | pure helpers: flows and progress, diffs, the file tree, SVG drawings |
+| `cockpit/hooks/memory.ts` | the codebase memory: imports, features, impact, the feature map |
+| `cockpit/hooks/rules.ts` | the Rules tab's reading and changing of settings and `CLAUDE.md` |
+| `cockpit/types/index.d.ts` | the state contract: every value Cockpit keeps |
+| `cockpit/agents/*.md` | the six experts' definitions |
+| `cockpit/tests/` | the tests |
+
+## Writing a change
+
+- **Match the code around it.** Comments say why, in plain sentences; names say what. Keep diffs small.
+- **Draw for every surface.** The pane draws in a terminal and in the desktop app. Use `v.ui`'s elements, the theme's
+  colours (`t.text`, `t.dim`, `t.accent`, …) and `sp(v, n)` for spacing; give a desktop-only drawing (SVG) a text
+  fallback. The tests render every tab on both surfaces at every width from 28 to 160 columns.
+- **Never break the user's files.** Anything that writes outside `.cockpit/` reads the file again first, keeps what it
+  does not change, and refuses to write a file it cannot parse.
+- **Ask before it costs or publishes.** A new model call, push or other outward action is off by default, or behind
+  the judges' rules for what is hard to undo.
+- **Keep the state contract.** A new value in the state is declared in `cockpit/types/index.d.ts`; make it optional
+  so a session saved by an older version still loads.
+
+## Writing a test
+
+Tests use the engine's test kit, `claude-code/testing`, with the engine stood in: see `stand()` at the top of
+`cockpit/tests/features.test.tsx`. A good test drives a feature end to end the way a person or Claude would (a prompt,
+tool calls, a press in the pane) and checks what is drawn or written. Every new feature or fix gets one; a bug fix's
+test fails without the fix.
+
+## Pull requests
+
+1. Fork the repository and branch from its default branch.
+2. Make the change, with its test, and run the checks.
+3. Update `cockpit/README.md` if what a person sees changes, and add a line to `CHANGELOG.md` under Unreleased.
+4. Open the pull request with the template filled in. Small pull requests are reviewed fastest.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`,
+`test:`, `refactor:`, `chore:`.
+
+## License
+
+By contributing you agree that your contribution is licensed under the [MIT License](LICENSE).
