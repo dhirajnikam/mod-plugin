@@ -6,6 +6,7 @@ import {
   advancePipeline,
   commit,
   confirmPending,
+  inBackground,
   decideCommit,
   discoverAgentTypes,
   finishAgent,
@@ -86,11 +87,13 @@ export const register: Register = on => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <name>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
-      argumentHint: '[focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
+      description: 'Open the Cockpit pane; or: autopilot [$budget] [hours h] <goal> (stop, resume), focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[autopilot [$budget] [hours h] <goal> | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []
+    // Background work does not outlive a load of the mod (its promises went with the old module): its names go too
+    await set($, { busy: {} })
     // Live figures: a redraw a few times a second while anything runs; the repo and usage read again every 15 s while the pane is shown
     timers.push($.clock.every(400, async () => {
       const s = await read($, S)
@@ -574,7 +577,7 @@ export const register: Register = on => {
           <Text color={t.dim}>{` → ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
         </Text>
         <Box gap={1}>
-          <Button key="ph-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
+          <Button key="ph-commit" label="Commit" variant="primary" onPress={() => inBackground($, 'commit', 'Committing', () => confirmPending($))} />
           <Button key="ph-skip" label="Skip" onPress={() => skipPending($)} />
         </Box>
       </Box>

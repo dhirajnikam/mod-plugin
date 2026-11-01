@@ -2,6 +2,7 @@ import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
 import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
 import {
+  inBackground,
   applyAccount,
   commit,
   confirmPending,
@@ -367,10 +368,10 @@ export function Agents($: $, v: V) {
             placeholder="Checks every API change for breaking changes and missing docs"
             value={s.ui.describe}
             onInput={val => set($, st => ({ ui: { ...st.ui, describe: val } }))}
-            onSubmit={val => val.trim() && createAgent($, val.trim())}
+            onSubmit={val => (val.trim() ? inBackground($, 'agent', 'Making the agent', () => createAgent($, val.trim())) : undefined)}
           />
           <Box columnGap={sp(v, 2)} flexWrap="wrap" alignItems="center">
-            <Button key="describe-go" label={s.creating ? 'Making the agent…' : 'Create agent'} variant="primary" onPress={() => (s.ui.describe.trim() && !s.creating ? createAgent($, s.ui.describe.trim()) : undefined)} />
+            <Button key="describe-go" label={s.creating ? 'Making the agent…' : 'Create agent'} variant="primary" onPress={() => (s.ui.describe.trim() && !s.creating ? inBackground($, 'agent', 'Making the agent', () => createAgent($, s.ui.describe.trim())) : undefined)} />
             <Text color={t.dim} size="footnote" wrap="wrap">{s.creating ? `${spin} writing its definition` : 'Joins the team, kept for later sessions'}</Text>
           </Box>
           <Rule v={{ ...v, w: v.w - 4 }} />

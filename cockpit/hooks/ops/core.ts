@@ -147,3 +147,26 @@ export async function setTheme($: $, theme: ThemeId) {
   await openPane($)
   await toast($, `Theme: ${theme}`)
 }
+
+// Slow work from a press (a push, a model call, a compaction): Claude Code gives a press 10 s, and a press that waits
+// past it is dropped, so the work runs on after the press returns. One of each kind at a time, a second press says it
+// is still running; the pane's header names what runs, and a failure says why
+const running = new Set<string>()
+export function inBackground($: $, kind: string, label: string, work: () => Promise<unknown>) {
+  if (running.has(kind)) return void toast($, `${label}: still running`)
+  running.add(kind)
+  void (async () => {
+    await set($, st => ({ busy: { ...st.busy, [kind]: label } })).catch(() => null)
+    try {
+      await work()
+    } catch (e) {
+      await toast($, `${label} failed: ${String((e as Error)?.message ?? e)}`).catch(() => null)
+    } finally {
+      running.delete(kind)
+      await set($, st => {
+        const { [kind]: _, ...rest } = st.busy ?? {}
+        return { busy: rest }
+      }).catch(() => null)
+    }
+  })()
+}

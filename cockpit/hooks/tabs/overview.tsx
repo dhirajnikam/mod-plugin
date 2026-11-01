@@ -2,6 +2,7 @@ import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
 import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
 import {
+  inBackground,
   applyAccount,
   commit,
   confirmPending,
@@ -135,7 +136,7 @@ export function Overview($: $, v: V) {
           </Box>
           {s.pending && (
             <Box gap={sp(v, 1)}>
-              <Button key="needs-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
+              <Button key="needs-commit" label="Commit" variant="primary" onPress={() => inBackground($, 'commit', 'Committing', () => confirmPending($))} />
               <Button key="needs-skip" label="Skip" onPress={() => skipPending($)} />
             </Box>
           )}
@@ -423,7 +424,7 @@ export function Overview($: $, v: V) {
           </Box>
           {!s.ui.confirmClear && (
             <Box columnGap={sp(v, 1)}>
-              <Button key="ctx-compact" plain onPress={() => compactNow($)}>
+              <Button key="ctx-compact" plain onPress={() => inBackground($, 'compact', 'Compacting', () => compactNow($))}>
                 <Text color={t.dim} size="footnote">Compact</Text>
               </Button>
               <Button key="ctx-clear" plain onPress={() => set($, st => ({ ui: { ...st.ui, confirmClear: true } }))}>

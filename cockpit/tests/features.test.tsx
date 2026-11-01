@@ -9,7 +9,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
-type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean; cost?: () => number }
+type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean; cost?: () => number; hold?: Promise<void> }
 function stand($: unknown, on: any, st: Stubs = {}) {
   const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], notes: [] as string[], commands: [] as string[], compacted: 0, scored: 0, asked: 0, theme: 'dark' }
   let seat = 0
@@ -70,7 +70,8 @@ function stand($: unknown, on: any, st: Stubs = {}) {
     if (st.clearFails && e.command === 'clear') throw new Error('a turn is running')
     return (log.commands.push(String(e.command)), { text: '' })
   })
-  on('session.compact', async () => (log.compacted++, { skip: 'the stand keeps the conversation' }) as never)
+  // A compaction held back until the test lets it go, as a long one would be
+  on('session.compact', async () => (st.hold && (await st.hold), log.compacted++, { skip: 'the stand keeps the conversation' }) as never)
   on('prompt.submit', async (_: unknown, e: any) => (e.origin?.kind === 'plugin' && log.submitted.push(String(e.text)), { text: e.text }))
   on('session.append', async (_: unknown, e: any, next: any) => (log.notes.push(JSON.stringify(e.message?.content ?? '')), next(e)))
   return log
@@ -851,4 +852,28 @@ test('the connection map says who started each agent, and an agent from outside 
   expect(uses('Prover')).toEqual(['Reviewer'])
   expect(uses('↗ Explore')).toEqual(['↗ helper'])
   expect(g.marks.Reviewer).toBe('now')
+})
+
+test('slow work a press starts runs on after it: the press returns at once, one of each kind runs at a time, and the header names it', { timeoutMs: 20_000 }, async ($, on) => {
+  let release = () => {}
+  const hold = new Promise<void>(res => (release = res))
+  const log = stand($, on, { hold })
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ui = await $.ui.mount(pane('overview') as never)
+  // Compact with the compaction held back: the press settles well inside the engine's 10 s budget
+  const started = Date.now()
+  const first = await Promise.race([ui.press({ key: 'ctx-compact' }).then(() => 'press'), new Promise(res => (globalThis as any).setTimeout(() => res('timer'), 2000))])
+  expect(first).toBe('press')
+  expect(Date.now() - started).toBeLessThan(2000)
+  // It runs on, named in the header; a second press while it runs is refused, not a second compaction
+  expect(JSON.stringify(await ui.drawn())).toContain('⟳ Compacting')
+  await ui.press({ key: 'ctx-compact' })
+  expect(log.toasts).toContain('◆ Compacting: still running')
+  // Let it go: it ends once, says so, and leaves the header
+  release()
+  await settle()
+  expect(log.compacted).toBe(1)
+  expect(log.toasts.some(t => t.includes('Not compacted'))).toBe(true)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('⟳ Compacting')
+  await ui.unmount()
 })

@@ -166,6 +166,8 @@ export type Ph = {
   autopilot?: Autopilot
   // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
   rules?: { repo: RuleFiles; user: RuleFiles }
+  // Slow work a press started, running past the press: its kind and the words that say it ("Pushing")
+  busy?: Record<string, string>
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current
   lastError?: { tool: string; text: string; at: number }
   turnStart: number

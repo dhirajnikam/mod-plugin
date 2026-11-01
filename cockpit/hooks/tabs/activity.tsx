@@ -2,6 +2,7 @@ import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
 import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
 import {
+  inBackground,
   applyAccount,
   commit,
   confirmPending,
@@ -198,7 +199,7 @@ function Memory($: $, v: V, marks: Record<string, FeatureMark>) {
             <Text color={t.faint} bold={false}>{`  ·  ${state}`}</Text>
           </Text>
         </Button>
-        <Button key="mem-rebuild" plain onPress={() => buildMemory($, true)}>
+        <Button key="mem-rebuild" plain onPress={() => inBackground($, 'memory', 'Mapping the codebase', () => buildMemory($, true))}>
           <Text color={t.dim} size="footnote">↻ Map again</Text>
         </Button>
       </Box>

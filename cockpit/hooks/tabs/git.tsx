@@ -2,6 +2,7 @@ import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
 import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
 import {
+  inBackground,
   applyAccount,
   commit,
   confirmPending,
@@ -117,8 +118,8 @@ export function Git($: $, v: V) {
           {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
         </Text>
         <Box gap={sp(v, 1)} flexWrap="wrap">
-          {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => pullNow($)} />}
-          {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => pushNow($)} />}
+          {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => inBackground($, 'pull', 'Pulling', () => pullNow($))} />}
+          {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => inBackground($, 'push', 'Pushing', () => pushNow($))} />}
           <Button key="git-refresh" label="↻" plain onPress={() => refreshRepo($)} />
           <Button key="git-setup" label="⚙" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
         </Box>
@@ -130,7 +131,7 @@ export function Git($: $, v: V) {
           <Text color={t.hi} mono wrap="truncate-end">{s.pending.msg}</Text>
           <Text color={t.dim} size="footnote">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
           <Box gap={sp(v, 1)}>
-            <Button key="pend-commit" label="Commit" variant="primary" onPress={() => confirmPending($)} />
+            <Button key="pend-commit" label="Commit" variant="primary" onPress={() => inBackground($, 'commit', 'Committing', () => confirmPending($))} />
             <Button key="pend-skip" label="Skip" onPress={() => skipPending($)} />
           </Box>
         </Box>
@@ -158,7 +159,7 @@ export function Git($: $, v: V) {
           <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : ''}`}</Text>
         </Text>
         <Box justifyContent="flex-end">
-          {staged > 0 ? <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => commit($, false)} /> : <Text color={t.dim} size="footnote">Tick a file to commit it</Text>}
+          {staged > 0 ? <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => inBackground($, 'commit', g.push ? 'Committing and pushing' : 'Committing', () => commit($, false))} /> : <Text color={t.dim} size="footnote">Tick a file to commit it</Text>}
         </Box>
       </Box>
       )}
@@ -326,7 +327,7 @@ function AccountBox($: $, v: V) {
           <Text color={t.dim} size="footnote">Add a GitHub login to this machine's gh: paste a classic token (scopes repo, read:org), or log in with gh in your browser.</Text>
           <Box columnGap={sp(v, 1)} flexWrap="wrap">
             <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => ghLoginToken($, val)} />
-            <Button key="gh-token-go" label="Add token" onPress={() => ghLoginToken($, s.ui.ghToken)} />
+            <Button key="gh-token-go" label="Add token" onPress={() => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, s.ui.ghToken))} />
             <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
           </Box>
         </Box>

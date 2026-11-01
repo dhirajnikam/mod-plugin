@@ -114,6 +114,8 @@ export function Header($: $, v: V) {
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 2)}>
         <Text color={t.dim} wrap="truncate-start">{v.root.replace(/\\/g, '/').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/')}</Text>
         <Text>
+          {/* Slow work a press started, running on after it: "⟳ Pushing" */}
+          {Object.values(s.busy ?? {}).length > 0 && <Text color={t.busy}>{`⟳ ${Object.values(s.busy ?? {}).join(' · ')}  `}</Text>}
           <Text color={t.accent}>{s.repo.isRepo ? `⎇ ${s.repo.current}  ` : ''}</Text>
           <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
         </Text>
