@@ -7,6 +7,13 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - CI on every push and pull request: the tests, validation and the link check.
+- `docs/privacy.md` lists every model call Cockpit makes, what it sends and how to turn it off; a check in CI fails
+  when a call goes undocumented.
+- A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
+
+### Fixed
+- A GitHub token typed into the account box but not added is dropped when the box closes, instead of staying in the
+  session's state.
 
 ## [0.5.0] - 2026-11-01
 

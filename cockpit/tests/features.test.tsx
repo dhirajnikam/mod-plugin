@@ -545,6 +545,13 @@ test('accounts are detected, a token logs in through gh, and the choice is kept 
   expect(drawn).not.toContain('ghp_secret')
   // Logged in: the controls are hidden again
   expect(drawn).not.toContain('gh-token')
+  // A token typed and left: closing the box without Add token drops it, so it is not kept in the session
+  await ui.press({ key: 'acct-modify' })
+  await (ui as any).input({ key: 'gh-token', text: 'ghp_abandoned', kind: 'change' })
+  expect(JSON.stringify(await ui.drawn())).toContain('ghp_abandoned')
+  await ui.press({ key: 'acct-modify' })
+  await ui.press({ key: 'acct-modify' })
+  expect(JSON.stringify(await ui.drawn())).not.toContain('ghp_abandoned')
   await ui.unmount()
 })
 

@@ -7,7 +7,7 @@ A short description, and the issue it closes if there is one (`Closes #…`).
 - [ ] `claude plugin test ./cockpit` passes, with a test for this change
 - [ ] `npx -p typescript tsc -p cockpit` prints nothing
 - [ ] `claude plugin validate ./cockpit` passes
-- [ ] `python3 scripts/check_links.py` passes
+- [ ] `python3 scripts/check_links.py` and `python3 scripts/check_privacy.py` pass
 - [ ] Tried in a real session (terminal, desktop app, or both): which?
 
 ## Notes for the reviewer

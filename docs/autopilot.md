@@ -7,4 +7,4 @@
 - **It pauses for you** on a decision it must not make (anything that publishes, pushes, deletes, merges, or touches settings, permissions or credentials, and a question only you can answer), after three cycles in a row that change nothing, and when you interrupt a turn. While it runs, the judges answer Claude's questions and next steps without the usual three-in-a-row limit.
 - It never pushes, publishes or deploys; commits follow your Git settings.
 
-[All docs](README.md) · [Cockpit README](../README.md)
+[All docs](README.md) · [Project README](../README.md)

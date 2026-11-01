@@ -23,4 +23,4 @@ The **Account** box shows the saved login; **Modify** opens the choices and the 
 - **Remove** takes it off this machine, after you confirm: `gh auth logout` for its login, and for the global identity `git config --global --unset user.name` and `user.email` as well. ↻ Detect does not bring it back. (Logging out does not revoke the token on GitHub.)
 - Commits use the chosen account's name and email. With push on, and for ↑ Push, Cockpit first runs `gh auth switch` to that account's login (which changes the active GitHub account for the whole machine) and `gh auth setup-git`, so git asks gh for github.com's credentials instead of a helper such as Windows' credential manager that would push as whoever it remembers. **Use for this repo** writes the identity into the repository's own git config.
 
-[All docs](README.md) · [Cockpit README](../README.md)
+[All docs](README.md) · [Project README](../README.md)

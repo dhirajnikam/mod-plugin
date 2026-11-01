@@ -20,17 +20,18 @@ Saving a file under `cockpit/hooks/` reloads the mod when the current turn ends.
 
 ## The checks
 
-Every change must pass all four, run from the repository root:
+Every change must pass all five, run from the repository root:
 
 ```sh
 claude plugin test ./cockpit                 # the tests
 npx -p typescript tsc -p cockpit             # the type-check: no output means clean
 claude plugin validate ./cockpit             # what the engine would refuse
 python3 scripts/check_links.py               # every relative link in the Markdown resolves
+python3 scripts/check_privacy.py             # every model call is documented in docs/privacy.md
 ```
 
 The type-check needs the types Claude Code writes into `cockpit/.claude-plugin/types/` (git-ignored) when it loads the
-mod, so run `./dev.sh` once before it. CI runs the other three on every push and pull request
+mod, so run `./dev.sh` once before it. CI runs the other four on every push and pull request
 ([.github/workflows/ci.yml](.github/workflows/ci.yml)); it cannot load the mod in a session, so the type-check is yours
 to run before you open a pull request.
 
@@ -56,6 +57,8 @@ to run before you open a pull request.
   fallback. The tests render every tab on both surfaces at every width from 28 to 160 columns.
 - **Never break the user's files.** Anything that writes outside `.cockpit/` reads the file again first, keeps what it
   does not change, and refuses to write a file it cannot parse.
+- **Say what it sends.** A new model call gets a `// privacy: <id>` comment and a row in
+  [docs/privacy.md](docs/privacy.md); the privacy check fails without them.
 - **Ask before it costs or publishes.** A new model call, push or other outward action is off by default, or behind
   the judges' rules for what is hard to undo.
 - **Keep the state contract.** A new value in the state is declared in `cockpit/types/index.d.ts`; make it optional

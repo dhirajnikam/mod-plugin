@@ -1,6 +1,7 @@
 # Activity tab and codebase memory
 
-What is happening, live, and how the codebase fits together.
+What is happening, live, and how the codebase fits together. Every section has the Overview's small capitalised
+heading.
 
 ## The tab, from top to bottom
 
@@ -34,4 +35,4 @@ folders.
   lists the files that import the changed ones.
 - **It is kept in the repository** as `.cockpit/memory.json` and a readable `.cockpit/MEMORY.md` (git-ignored).
 
-[All docs](README.md) · [Cockpit README](../README.md)
+[All docs](README.md) · [Project README](../README.md)

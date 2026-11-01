@@ -41,3 +41,6 @@ jobs:
 
       - name: Links in the Markdown
         run: python3 scripts/check_links.py
+
+      - name: Every model call is documented
+        run: python3 scripts/check_privacy.py

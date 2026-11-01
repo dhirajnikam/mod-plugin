@@ -10,4 +10,4 @@ Every prompt opens a flow, and its steps come from the work itself, in this orde
 
 `/cockpit flow <plan|task|build|docs|check|answer>`, or the **Flow** picker under the step chips, puts the current prompt on another flow; the choice stands.
 
-[All docs](README.md) · [Cockpit README](../README.md)
+[All docs](README.md) · [Project README](../README.md)

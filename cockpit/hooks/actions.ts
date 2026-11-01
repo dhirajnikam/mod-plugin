@@ -20,6 +20,9 @@ export async function set($: $, patch: Patch) {
   let saved: Record<string, unknown> | null = null
   await update($, S, s => {
     const n = { ...s, ...(typeof patch === 'function' ? patch(s) : patch) }
+    // A token typed into the account box lives only while the box is shown (open, or no account saved yet, as the Git
+    // tab draws it): once it is not, however it closed, the token is gone
+    if (n.ui.ghToken && !n.ui.acctOpen && n.accounts.some(a => a.id === n.accountId)) n.ui = { ...n.ui, ghToken: '' }
     if (PREFS.some(k => n[k] !== s[k])) saved = Object.fromEntries(PREFS.map(k => [k, n[k]]))
     return n
   })
@@ -69,6 +72,7 @@ export async function loadHistory($: $) {
 
 // The steps of this prompt's task, written by a quick model in the background; the template stands until they come
 export async function writeSteps($: $, flowId: string, task: string) {
+  // privacy: flow-steps (docs/privacy.md lists what it sends)
   const r = await $.model
     .complete({
       model: 'haiku',
@@ -119,6 +123,7 @@ export async function buildMemory($: $, rename = false) {
 // A model names the product's features from each file's exports, first comment and imports, in the background
 export async function nameFeatures($: $, files: Record<string, string[]>, facts: Record<string, { exports: string[]; note: string }>, sig: string) {
   await set($, s => ({ memory: { ...s.memory, naming: true } }))
+  // privacy: feature-names (docs/privacy.md lists what it sends)
   const r = await $.model.complete({ model: 'sonnet', maxTokens: 6000, system: 'You map codebases. Answer with JSON only.', prompt: featurePrompt(files, facts) }).catch(() => null)
   const named = r && r.isAnswered ? parseFeatures(r.text, files) : []
   await set($, s => ({ memory: { ...s.memory, naming: false, ...(named.length ? { features: named, sig } : {}) } }))
@@ -224,6 +229,7 @@ async function writeCommit($: $, s: Ph, sig: string) {
       .slice(0, 10)
       .map(async f => `new file ${f.path}\n${(await $.fs.read(`${root}/${f.path}`).catch(() => '')).split('\n').slice(0, 60).join('\n')}`),
   )
+  // privacy: commit-message (docs/privacy.md lists what it sends)
   const r = await $.model
     .complete({
       model: 'haiku',
@@ -502,6 +508,7 @@ export async function ghLoginWeb($: $) {
 const PERSONAS = ['a pragmatic senior engineer', 'a security reviewer', 'a long-term maintainer', 'the end user', 'a sceptic who prefers the safest option', 'a performance engineer', 'a test engineer', 'a software architect', 'a minimalist who prefers less code']
 
 async function recentContext($: $, s: Ph, q: string) {
+  // privacy: judge-context (docs/privacy.md lists what it sends)
   const r = await $.model.fork({ prompt: `In at most 120 words, state the task and the facts that matter for this decision: "${q}". No preamble.` }).catch(() => null)
   return r?.isAnswered ? r.text : s.task
 }
@@ -521,6 +528,7 @@ export const OPEN = /^other\b|\b(tweak|something else|adjust|change (it|somethin
 // act false: the judges only advise (their pick is kept as advice, the decision stays the person's)
 export async function judge($: $, id: string, q: string, opts: { label: string; description?: string }[], act = true) {
   const s0 = await read($, S)
+  // privacy: judge-complexity (docs/privacy.md lists what it sends)
   const scoreR = await $.model
     .complete({
       model: 'haiku',
@@ -544,6 +552,7 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
   const menu = opts.map((o, i) => `${i + 1}. ${o.label}${o.description ? ` — ${o.description}` : ''}`).join('\n')
   await Promise.all(
     Array.from({ length: n }, async (_, seat) => {
+      // privacy: judge-votes (docs/privacy.md lists what it sends)
       const r = await $.model
         .complete({
           model: 'haiku',
@@ -675,6 +684,7 @@ export async function createAgent($: $, describe: string) {
   if ((await read($, S)).creating) return toast($, 'Still making the last agent')
   await set($, { creating: describe })
   try {
+    // privacy: agent-definition (docs/privacy.md lists what it sends)
     const r = await $.model.complete({
       model: 'sonnet',
       maxTokens: 3000,

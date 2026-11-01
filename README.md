@@ -3,7 +3,7 @@
 [![CI](https://github.com/dhirajnikam/mod-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/dhirajnikam/mod-plugin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**See what Claude Code is doing, and steer it.** Cockpit is a Claude Code mod: a side pane and a band around the
+**See what Claude Code is doing, and steer it.** Cockpit is a Claude Code mod (a plugin that adds its own interface): a side pane and a band around the
 prompt that show each task's progress, the agents at work and what they found, your codebase as a map, and git, with
 the controls to act on all of it. It can also work on a goal by itself, cycle after cycle, until a panel of judges
 agrees it is done.
@@ -48,12 +48,12 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 | Command | Does |
 |---|---|
 | `/cockpit` | open the pane |
-| `/cockpit tab <overview\|files\|agents\|git\|rules>` | open a tab |
+| `/cockpit tab <overview\|files\|agents\|git\|rules>` | open a tab (`files` is Activity) |
 | `/cockpit autopilot [$budget] [hours h] <goal>` | work on a goal until the judges agree it is done; `stop`, `resume` |
-| `/cockpit run <agents> [-- task]` | run those agents at once |
+| `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |
 | `/cockpit test` | run the Verify pipeline now |
 | `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
-| `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current task on another flow |
+| `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current task on another [flow](docs/flows.md) (where its steps come from) |
 | `/cockpit focus [on\|off]` | hide or show Claude's tool activity in the chat |
 | `/cockpit theme <auto\|paper\|white\|black\|solarized\|nord>` | switch the theme |
 
@@ -66,9 +66,11 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
   changes files (off in the Agents tab).
 - Push, pull requests and Verify after each turn are off until you turn them on. Before a push it switches gh to the
   account you chose, which changes the active GitHub account on your machine.
-- Plugins your organization manages may run before Cockpit and skip some of its hooks; the rest keeps working.
+- The autopilot runs until it is done unless you give it a budget or a time limit, spending as it goes.
+- Plugins your organization manages (installed by an admin) may run before Cockpit and skip some of its hooks; the
+  rest keeps working.
 
-The details: [Privacy and cost](docs/privacy.md) and the [security policy](SECURITY.md).
+The details: [Privacy and cost](docs/privacy.md) and the [security policy](SECURITY.md). Everything else: [all docs](docs/README.md).
 
 ## Develop
 
@@ -80,7 +82,7 @@ Saving a file under `cockpit/hooks/` reloads the mod when the turn ends. The che
 a test are in [CONTRIBUTING.md](CONTRIBUTING.md); every change is listed in [CHANGELOG.md](CHANGELOG.md).
 
 Also here: [`ui-template/`](ui-template), a small earlier mod (a clean spinner and a mode · model · effort line; load
-only one of it and Cockpit at a time), and [`design/`](design), the "Powerhouse Mod v2" design Cockpit is built from.
+only one of ui-template and Cockpit at a time, as both replace the spinner), and [`design/`](design), the "Powerhouse Mod v2" design Cockpit is built from.
 
 ## License
 

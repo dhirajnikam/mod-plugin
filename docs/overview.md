@@ -9,8 +9,8 @@ with an arrow only where it folds.
 
 ## From top to bottom
 
-- **Needs you**: the only boxed card, for a question Claude is waiting on or a commit Cockpit proposes (Commit, Skip).
-- **Autopilot**, while one runs: its cycle, the milestones ticked, the spend and the time, with ■ Stop and ▶ Resume.
+- **Needs you**: the attention card, for a question Claude is waiting on or a commit Cockpit proposes (Commit, Skip).
+- **Autopilot**, once one has started and until you clear it (×): its cycle, the milestones ticked, the spend and the time, with ■ Stop and ▶ Resume.
   See [Autopilot](autopilot.md).
 - **The current flow**: a progress ring, the task, the goal while one stands (`/goal`), elapsed and cost, then the
   step chips with the flow they follow; pressing the flow's name opens the flow picker. See [Flows](flows.md).
@@ -20,7 +20,8 @@ with an arrow only where it folds.
   joined by a line a signal runs along while it works, its ring filling with its own task list; below it, faint, the
   runs remembered from similar earlier tasks, each joined to the agent of its kind at work now; a tester joined to the
   agent whose work it tests. Hovering a node says what it is doing or found. In a terminal each agent is a tracker
-  (a bar, done of all, the task it is on) and each memory a line. See [Agents](agents.md).
+  (a bar, done of all, the task it is on) and each memory a line. Its heading counts what finished this flow and
+  what is remembered, with **Open Agents ›**. See [Agents](agents.md).
 - **Changed files**: the first five, each with its kind beside it and its +/−, and Open Git.
 - **Earlier flows**: the three newest (pressing one opens its details), the session's total on the heading.
 - **Context**: the percentage used, the bar, **Compact** (keeps a summary, as `/compact`) and **Clear** (starts the
@@ -45,11 +46,11 @@ with an arrow only where it folds.
   show), the band shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with **◉ Focus**
   on the band or `/cockpit focus [on|off]`.
 - **Colours**: the **Auto** theme (the default) uses Claude Code's own theme colours, so it follows your light or dark
-  theme, with a gold accent. Paper, White, Black, Solarized and Nord can be picked by hand (the dots in the pane's
+  theme, with a gold accent; the status colours (green, red, amber) are the theme's too. Paper, White, Black, Solarized and Nord can be picked by hand (the dots in the pane's
   header, or `/cockpit theme <name>`).
 - **Live figures**: timers, bars and the context window redraw every second while work runs. While the pane is shown,
   the repository and usage are read again every 15 seconds, so a commit made in a terminal shows up without a turn.
 - **Drawing**: where the surface draws SVG (the desktop app, the editor extension, mobile), the ring, the maps and the
   icons are SVG; in a terminal they are drawn with characters.
 
-[All docs](README.md) · [Cockpit README](../README.md)
+[All docs](README.md) · [Project README](../README.md)

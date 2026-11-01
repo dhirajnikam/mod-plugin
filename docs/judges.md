@@ -10,4 +10,4 @@ Claude asks you things two ways: its question box in the middle of a turn, and t
 
 Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; the choice is kept across sessions.
 
-[All docs](README.md) · [Cockpit README](../README.md)
+[All docs](README.md) · [Project README](../README.md)
