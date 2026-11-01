@@ -77,7 +77,7 @@ export const register: Register = on => {
   on('config.set', async ($, e, next) => {
     const r = await next(e)
     if (e.key === 'model') {
-      model = shortModel(await $.session.model())
+      model = shortModel(await $.session.model().catch(() => model))
       $.ui.invalidate('ui.render')
     }
     return r
@@ -85,7 +85,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'model' }, async ($, e, next) => {
     const r = await next(e)
-    model = shortModel(await $.session.model())
+    model = shortModel(await $.session.model().catch(() => model))
     $.ui.invalidate('ui.render')
     return r
   })

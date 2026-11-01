@@ -1,5 +1,11 @@
 {
   "name": "ui-template",
   "version": "0.2.0",
-  "description": "UI mod: clean spinner and status line (mode · model · effort)"
+  "description": "UI mod: clean spinner and status line (mode \u00b7 model \u00b7 effort)",
+  "author": {
+    "name": "Dhiraj Nikam"
+  },
+  "homepage": "https://github.com/dhirajnikam/mod-plugin",
+  "repository": "https://github.com/dhirajnikam/mod-plugin",
+  "license": "MIT"
 }
