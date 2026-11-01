@@ -16,6 +16,7 @@ import {
   syncAgents,
   runMany,
   handoffs,
+  earlyPlans,
   judgeNext,
   personSpoke,
   RISKY,
@@ -828,7 +829,13 @@ async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknow
   // A refused or failed plan call changed no list: a failed TaskCreate has no id, and would leave a ghost task
   if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny) || ('isError' in r && (r as { isError?: unknown }).isError)) return
   const result = 'result' in r ? (r as { result?: unknown }).result : undefined
-  if (agentId) return set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, plan: applyPlan(a.plan ?? [], tool, e as Record<string, unknown>, result) } : a)) }))
+  if (agentId) {
+    const known = (await read($, S)).agents.some(a => a.id === agentId)
+    // ponytail: ids that never get a row are held to the last 40
+    if (!known && earlyPlans.size >= 40 && !earlyPlans.has(agentId)) earlyPlans.delete(earlyPlans.keys().next().value!)
+    if (!known) return void earlyPlans.set(agentId, applyPlan(earlyPlans.get(agentId) ?? [], tool, e as Record<string, unknown>, result))
+    return set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, plan: applyPlan(a.plan ?? [], tool, e as Record<string, unknown>, result) } : a)) }))
+  }
   await set($, s => ({
     flows: s.flows.map((f, i) => (i === s.flows.length - 1 ? { ...f, plan: applyPlan(f.plan ?? [], tool, e as Record<string, unknown>, result, s.flows.slice(0, -1).map(x => x.plan ?? [])) } : f)),
   }))

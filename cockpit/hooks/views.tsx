@@ -411,9 +411,12 @@ export function Overview($: $, v: V) {
             </Box>
             {busy.slice(0, 4).map(a => (
               <Box key={`ova-${a.id}`} columnGap={sp(v, 1)} alignItems="center">
-                <Text color={t.busy}>{expertGlyph(a.type)}</Text>
-                <Box flexShrink={0}>
-                  <Text color={t.text}>{a.name}</Text>
+                {/* One width for the glyph and name, so the trackers' bars start in one column */}
+                <Box width="28%" flexShrink={0}>
+                  <Text wrap="truncate-end">
+                    <Text color={t.busy}>{`${expertGlyph(a.type)} `}</Text>
+                    <Text color={t.text}>{a.name}</Text>
+                  </Text>
                 </Box>
                 <Box flexGrow={1} flexShrink={1}>
                   <Tracker v={v} a={a} />

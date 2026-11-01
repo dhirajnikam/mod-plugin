@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId } from '../types'
+import type { Account, Agent, Changed, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../types'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from './memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from './logic'
 import { INITIAL, PANE } from './state'
@@ -512,7 +512,7 @@ export const RISKY = /\b(public|publish|push|pushed|delete|remove|merge|deploy|r
 // Questions only the person can answer, about what they saw, did or want: the judges never take these. What to do
 // next among things the person asked for ("Which … should I build first?"), and anything about the judges themselves,
 // are theirs too
-export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you|should i|shall i|would you like|want me to)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call)|do you want|judges?)\b|\bwhich\b[^?]*\b(should i|first|next)\b/i
+export const PERSONAL = /^(did|does|do you|have you|has it|is it|are you|was it|were you|should i|shall i|would you like|want|wants)\b|\b(did|you see|you saw|in your (pane|terminal|screen|app|session|browser)|look right|work for you|for you now|your (preference|choice|call)|do you want|do you prefer|you'?d (like|prefer)|is (this|that|it) the right|right (size|amount|look|level)|judges?)\b|\bwhich\b[^?]*\b(should i|first|next)\b/i
 // A reply that needs the person's own words ("Tweak it first", "Something else"): no judge can say what they would
 export const OPEN = /^other\b|\b(tweak|something else|adjust|change (it|something)|let me|my own|explain)\b/i
 
@@ -864,6 +864,14 @@ export async function finishAgent($: $, agentId: string, answer: string, aborted
   }
 }
 
+// A subagent's task list that came before its row (its first plan call can beat the spawn's record): the row takes it
+export const earlyPlans = new Map<string, PlanItem[]>()
+const takeEarly = (id: string) => {
+  const p = earlyPlans.get(id)
+  earlyPlans.delete(id)
+  return p ? { plan: p } : {}
+}
+
 export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'>) {
   const at = await $.clock.now()
   // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count.
@@ -872,7 +880,7 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
     const was = s.agents.find(x => x.id === a.id)
     const p = s.pipeline
     const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
-    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...was, ...a, status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
+    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...takeEarly(a.id), ...was, ...a, status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
   })
 }
 
@@ -963,7 +971,7 @@ export async function syncAgents($: $) {
       const st = a.status === 'completed' ? 'done' : a.status === 'failed' ? 'failed' : a.status === 'killed' ? 'stopped' : 'running'
       const was = agents.find(x => x.id === a.id)
       const name = expertName(a.type) !== a.type ? expertName(a.type) : a.description || a.type
-      if (!was) agents = [...agents, { id: a.id, name, type: a.type, task: a.description, prompt: '', status: st, startedAt: at, ...(st !== 'running' ? { endedAt: at } : {}), tools: 0, log: [], cases: [], report: '' }]
+      if (!was) agents = [...agents, { ...takeEarly(a.id), id: a.id, name, type: a.type, task: a.description, prompt: '', status: st, startedAt: at, ...(st !== 'running' ? { endedAt: at } : {}), tools: 0, log: [], cases: [], report: '' }]
       else if (was.status === 'running' && st !== 'running') agents = agents.map(x => (x.id === a.id ? { ...x, status: st, endedAt: at } : x))
     }
     return agents === s.agents ? {} : { agents: agents.slice(-40) }

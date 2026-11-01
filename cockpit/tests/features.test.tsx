@@ -158,6 +158,8 @@ test('the judges leave settings, questions only you can answer, and late answers
   await nextStep($, 'Which Overview improvement should I build first?', [{ label: 'Name judges on votes' }, { label: 'Tests and errors line' }])
   await nextStep($, 'Should the judges stop picking between options you asked to choose?', [{ label: 'Yes, fix the judges' }, { label: 'Leave them' }])
   await nextStep($, 'Commit the decluttered Overview?', [{ label: 'Commit it' }, { label: 'Tweak it first' }])
+  // A preference: what size you want is yours to say
+  await nextStep($, 'Want it bigger still, or is this the right size?', [{ label: 'This size is good' }, { label: 'Bigger still' }])
   await settle()
   expect(log.scored).toBe(scored)
   expect(log.submitted).toEqual([])
@@ -717,5 +719,23 @@ test('a plan call that errors adds no task, to a subagent or to the flow', async
   const d = JSON.stringify(await ov.drawn())
   expect(d).not.toContain('Ghost from the agent')
   expect(d).not.toContain('Ghost from the flow')
+  await ov.unmount()
+})
+
+test("a subagent's task list that comes before its row is kept, and the row takes it", async ($, on) => {
+  // Found by the Breaker: the first plan call can beat the record of the agent's start
+  stand($, on, { tick: true })
+  await $.prompt.submit({ text: 'tidy the auth module', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  await $.tool.call({ tool: 'TodoWrite', agentId: 'ag1', tool_use_id: 'td0', todos: [
+    { content: 'Read auth.ts', status: 'completed', activeForm: 'Reading' },
+    { content: 'Split the early handler', status: 'in_progress', activeForm: 'Splitting' },
+  ] } as never)
+  // The start is recorded only now: the stand hands this one the id ag1
+  await $.command.run({ command: 'cockpit', args: 'run builder -- tidy auth' } as never)
+  const ov = await $.ui.mount(pane('overview') as never)
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const d = JSON.stringify(await ov.drawn())
+  expect(d).toContain('1/2  ')
+  expect(d).toContain('Split the early handler')
   await ov.unmount()
 })
