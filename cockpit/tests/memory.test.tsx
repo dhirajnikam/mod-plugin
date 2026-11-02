@@ -61,8 +61,10 @@ test('the feature map layers what uses above what it uses, survives a cycle, and
   expect(svg).not.toContain('<script')
   // Cropped to its boxes, so the surface draws it at its own size rather than shrinking a wide, mostly empty canvas
   expect(Number(/width="(\d+)"/.exec(svg)?.[1])).toBeLessThan(640)
+  // Arrows are the curves; the two arrowhead markers are paths too
+  const curves = (x: string) => (x.match(/<path d="M[\d.]+ [\d.]+ C/g) ?? []).length
   // The loop between a and b doesn't make ui → state look implied
-  expect((svg.match(/<path d=/g) ?? []).length).toBeGreaterThanOrEqual(2)
+  expect(curves(svg)).toBeGreaterThanOrEqual(2)
   // The terminal's map in characters: a box per feature, a line down to what it uses ending in ▼, the feature being
   // worked on in a heavy box, one reached dashed, and the a ↔ b loop drawn one way only
   const text = featureMapText(fs, { ui: 'now', types: 'reached' }, 60).map(l => l.map(r => r.text).join(''))
@@ -76,6 +78,9 @@ test('the feature map layers what uses above what it uses, survives a cycle, and
   expect(text.every(l => l.length <= 60)).toBe(true)
   // ui → types is implied by ui → state → types, so the line from ui runs only to state
   expect(text[row('state') - 2]).toContain('▼')
+  // A loop's closing use is left out on both surfaces even when both its ends are marked, so the count under the map holds
+  const loop = featureMapSvg(features({ 'a/x.ts': ['b/y.ts'], 'b/y.ts': ['a/x.ts'] }), { a: 'touched', b: 'touched' }, { accent: '#b4833a', busy: '#d9a441', text: '#eee', dim: '#999', track: '#444', bg: '#222' })
+  expect(curves(loop)).toBe(1)
   expect(isTestFeature({ files: ['tests/a.test.ts', 'tests/b.ts'] })).toBe(true)
   expect(isTestFeature({ files: ['src/a.ts', 'tests/a.test.ts'] })).toBe(false)
   expect(isTestFeature({ files: ['src/a.spec.ts'] })).toBe(true)

@@ -339,8 +339,8 @@ export function featureMapSvg(fs: Feature[], marks: Record<string, FeatureMark>,
       const y2 = down ? b.y - 3 : b.y + H + 3
       const bend = Math.max(24, Math.abs(y2 - y1) / 2)
       const lit = (hot(f.name) || marks[f.name] === 'reached') && (hot(u) || marks[u] === 'reached')
-      // A use back up a loop is left out too (loopUses counts them, under the map)
-      if (!lit && (via(f.name, u) || !kept.get(f.name)?.includes(u))) return ''
+      // A use back up a loop is always left out, lit or not, as the terminal leaves it (loopUses counts them, under the map)
+      if (!kept.get(f.name)?.includes(u) || (!lit && via(f.name, u))) return ''
       return `<path d="M${x1.toFixed(1)} ${y1} C${x1.toFixed(1)} ${y1 + (down ? bend : -bend)} ${x2.toFixed(1)} ${y2 + (down ? -bend : bend)} ${x2.toFixed(1)} ${y2}" fill="none" stroke="${lit ? c.accent : c.track}" stroke-width="${lit ? 2.2 : 1.3}" stroke-opacity="${lit ? 1 : 0.55}" marker-end="url(#${lit ? 'ah' : 'a'})"/>`
     }),
   )
