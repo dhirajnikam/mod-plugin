@@ -349,11 +349,14 @@ export function Overview($: $, v: V) {
                   <Text color={kindColor(t, c.meta)} size="footnote">{`  ${c.meta.startsWith('+') ? 'edited' : c.meta.split(' · ')[0]}`}</Text>
                 </Text>
               </Box>
+              {/* The figures keep their line; the path gives way, cut from its start */}
               {(c.add || c.del) > 0 && (
-                <Text size="footnote">
-                  <Text color={t.ok}>{`+${c.add}`}</Text>
-                  <Text color={t.bad}>{` −${c.del}`}</Text>
-                </Text>
+                <Box flexShrink={0}>
+                  <Text size="footnote">
+                    <Text color={t.ok}>{`+${c.add}`}</Text>
+                    <Text color={t.bad}>{` −${c.del}`}</Text>
+                  </Text>
+                </Box>
               )}
             </Box>
           ))}
@@ -386,9 +389,11 @@ export function Overview($: $, v: V) {
                       <Text color={live ? t.text : t.text} bold={live} wrap="truncate-end">{f.task}</Text>
                     </Button>
                   </Box>
-                  {(f.turns ?? 1) > 1 && <Text color={t.dim} size="footnote">{`×${f.turns}`}</Text>}
-                  {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
-                  {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+                  <Box flexShrink={0} columnGap={sp(v, 1)}>
+                    {(f.turns ?? 1) > 1 && <Text color={t.dim} size="footnote">{`×${f.turns}`}</Text>}
+                    {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
+                    {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+                  </Box>
                 </Box>
                 {open && (
                   <Box flexDirection="column" paddingLeft={2}>
@@ -414,8 +419,10 @@ export function Overview($: $, v: V) {
               <Box flexGrow={1} flexShrink={1}>
                 <Text color={t.dim} wrap="truncate-end">{f.task}</Text>
               </Box>
-              {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
-              {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+              <Box flexShrink={0} columnGap={sp(v, 1)}>
+                {(f.add || f.del) > 0 && <Text color={t.faint} size="footnote">{`+${f.add} −${f.del}`}</Text>}
+                {f.commit !== '' && w >= 60 && <Text color={t.accent} size="footnote" mono>{f.commit}</Text>}
+              </Box>
             </Box>
           ))}
         </Box>

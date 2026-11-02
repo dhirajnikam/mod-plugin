@@ -178,10 +178,13 @@ export function Git($: $, v: V) {
             <Text color={s.staged[c.path] !== false ? t.accent : t.faint}>{s.staged[c.path] !== false ? '▣' : '□'}</Text>
             <Box flexGrow={1} flexShrink={1}>
               <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } })).then(() => suggestCommit($))}>
-                <Text color={s.staged[c.path] !== false ? t.text : t.dim} wrap="truncate-end">{c.path}</Text>
+                {/* Cut from its start, so the file's name stays in view */}
+                <Text color={s.staged[c.path] !== false ? t.text : t.dim} wrap="truncate-start">{c.path}</Text>
               </Button>
             </Box>
-            <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
+            <Box flexShrink={0}>
+              <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
+            </Box>
           </Box>
         ))}
       </Box>
