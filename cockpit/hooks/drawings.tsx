@@ -2,17 +2,17 @@ import { atom, read } from 'claude-code'
 import type { Register } from 'claude-code'
 import { commit, confirmPending, inBackground, judge, set, skipPending } from './actions'
 import { PIPELINES, base, expertName, fmt, kTok, progress, tally, toOp, verifyState } from './logic'
-import { PANE, INITIAL } from './state'
+import { INITIAL } from './state'
 import { chatThemeOf, ctxShades, themeOf } from './theme'
-import { Agents, Card, Files, Git, Header, Overview, Rules, Tabs, seatDots } from './views'
+import { Card, seatDots } from './views'
 import type { UI } from './views'
 
-// Everything Cockpit draws: the spinner, the band above the prompt, the chat's cards and rows, the line under the
-// prompt, and the side pane. register.tsx calls this; root is the session's working directory, known once it starts.
+// Everything Cockpit draws around the chat: the spinner, the band above the prompt, the chat's cards and rows, and the
+// line under the prompt (the side pane is pane.tsx). register.tsx calls this.
 // The state atom is declared here too: the engine reads it from the module that names it
 const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
 
-export function drawings(on: Parameters<Register>[0], rootOf: () => string) {
+export function drawings(on: Parameters<Register>[0]) {
   // Activity line in place of the spinner: ✻ what is happening · elapsed
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     const s = await read($, S)
@@ -324,32 +324,6 @@ export function drawings(on: Parameters<Register>[0], rootOf: () => string) {
         <Text color={t.accent}>{`$${s.cost.toFixed(2)}`}</Text>
         <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
         {e.props.isWorking && <Text color={t.faint}>esc to interrupt</Text>}
-      </Box>
-    )
-  })
-
-  // The side pane: header, tabs, and the open tab
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const table = $.ui.resolve(e)
-    const s = await read($, S)
-    const t = themeOf(s)
-    if (!('Input' in table) || !('Select' in table)) {
-      return <table.Text color={t.dim}>Cockpit needs a surface with fields.</table.Text>
-    }
-    const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Svg' in table && e.surface !== 'terminal' ? { Svg: table.Svg } : {}) }
-    const v = { ui, s, t, w: Math.max(16, e.props.bodyColumns - 2), now: await $.clock.now(), root: rootOf(), desk: e.surface !== 'terminal' }
-    const { Box } = ui
-    // A palette paints its own background over the whole pane, so its text reads on any terminal
-    const rows = (e.props as { scroll?: { bodyRows?: number } }).scroll?.bodyRows
-    return (
-      <Box flexDirection="column" paddingX={1} backgroundColor={t.bg || undefined} {...(t.bg && rows ? { minHeight: rows } : {})}>
-        {Header($, v)}
-        {Tabs($, v)}
-        {s.tab === 'overview' && Overview($, v)}
-        {s.tab === 'files' && Files($, v)}
-        {s.tab === 'agents' && Agents($, v)}
-        {s.tab === 'git' && Git($, v)}
-        {s.tab === 'rules' && Rules($, v)}
       </Box>
     )
   })

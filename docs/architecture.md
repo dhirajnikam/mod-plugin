@@ -33,7 +33,7 @@ Claude Code events ──▶ register.tsx (hooks) ──▶ ops/ (what to do) �
 
 ## Events and where they are handled
 
-All hooks are registered from `register.tsx`; the `ui.render` hooks are in `drawings.tsx`, which it calls.
+All hooks are registered from `register.tsx`; the `ui.render` hooks are in `drawings.tsx` and `full-pane.tsx`, which it calls.
 
 | Event | What Cockpit does |
 |---|---|
@@ -58,7 +58,7 @@ All hooks are registered from `register.tsx`; the `ui.render` hooks are in `draw
 
 ## Where each tab lives
 
-Each tab is a file in `hooks/tabs/`, its function called from the `Pane` hook (`hooks/views.tsx` re-exports them):
+Each tab is a file in `hooks/tabs/`, its function called from the `Pane` hook in `hooks/full-pane.tsx` (`hooks/views.tsx` re-exports them):
 
 | Tab | Function | Uses |
 |---|---|---|
@@ -70,6 +70,34 @@ Each tab is a file in `hooks/tabs/`, its function called from the `Pane` hook (`
 
 Shared drawing pieces in `tabs/shared.tsx`: `Bar`, `Segs`, `Seg` (a segmented choice), `Check`, `Head` (a section heading),
 `MapText` (a map drawn as text where there is no SVG), `Card` (a chat card).
+
+## The parts: cockpit-core and its add-ons
+
+`cockpit/` is also built into parts, in `plugins/`, by `python3 scripts/split.py`, for people who want only some
+tabs. Run it after a change to `cockpit/`; `--check` (in CI) fails when `plugins/` is out of date. Never edit
+`plugins/` by hand.
+
+- **`cockpit-core`** is `cockpit/` less the tab views and `drawings.tsx`: every event hook, the state, the actions, the
+  experts, `/cockpit` and the pane's header and tabs (`paneFrame` in `hooks/pane.tsx`).
+- **An add-on per tab** (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`) and **`cockpit-chat`** (the
+  band, spinner and chat cards) each hold copies of the files they need: a plugin cannot import a file outside its
+  folder.
+
+How the parts work together, since only a value's owner writes it:
+
+- **Reading:** an add-on reads core's state as `cockpit` itself does (its copies name `plugin: 'cockpit-core'`).
+- **Writing:** an add-on changes the state through `$.cockpit`, which `register.tsx` adds in `engine.create` and
+  answers: `set` (a patch; a function patch is applied to the state first, in the add-on's `ops/core.ts`), `act`
+  (one of the actions in the generated `hooks/acts.ts`, run by name in core) and `tab` (an add-on says it is here, so
+  the header shows its tab). The add-on's `actions.ts` replaces each action its views call with a call to `act`, so
+  the actions run where they always did, with their locks and agent tracking. The few that take a function
+  (`inBackground`, `writeSettings`, `writeInstructions`) run in the add-on.
+- **Drawing:** core and each add-on hook the same pane. Each draws its part around what the parts beneath it drew,
+  core's header above and the open tab's view below, so the pane reads the same whichever plugin is asked first.
+
+Each part has a small test of its own, made by `split.py`, with a stand-in for core: an add-on's test cannot load core
+from another folder. Agent types follow the plugin's name, so the parts' experts are `cockpit-core:prover` and the
+rest.
 
 ## The main paths through the code
 

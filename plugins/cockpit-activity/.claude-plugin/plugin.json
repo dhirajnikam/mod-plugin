@@ -1,0 +1,14 @@
+{
+  "name": "cockpit-activity",
+  "version": "0.5.0",
+  "description": "Cockpit's Activity tab: a live feed of every file read, edited or searched, the codebase's features as a map, and the impact of a change",
+  "dependencies": [
+    "cockpit-core"
+  ],
+  "author": {
+    "name": "Dhiraj Nikam"
+  },
+  "homepage": "https://github.com/dhirajnikam/mod-plugin",
+  "repository": "https://github.com/dhirajnikam/mod-plugin",
+  "license": "MIT"
+}
