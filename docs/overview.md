@@ -37,18 +37,23 @@ with an arrow only where it folds.
 - **Spinner**: `✻ Editing login.ts … 1:23`. The desktop app keeps its own row and shows Cockpit's words in it.
 - **Under the prompt** (terminal only): `[cockpit] ⎇ branch ↑ahead @account +add −del tests $cost mode`.
 - **In the chat**: your prompts as `›` rows, Claude's replies with a `●`, and tool activity as cards (file edits,
-  searches, judge votes, subagents, commits) that open the matching tab when clicked. The latest turn ends with
-  `✻ Done · ready to commit … Done in m:ss`.
+  searches, judge votes, subagents, commits) that open the pane on the matching tab when clicked. A file card names the
+  file by its folder and name; a subagent's card shows its tool calls and time while it runs, then what its tests found
+  (`✓ 3/3 passed`, `✗ 1 failed · 2/3`). Each turn ends with a line saying what it came to:
+  `✻ Done · ready to commit  ·  3 files +40 −12  ·  tests 3/3  ·  $0.21 … 0:10`.
+- **The activity line** says what Claude is doing, and which of the task's steps it is on (`Implement 3/5`).
+- **The band** names the agents at work (`⧉ 2 agents`) and the autopilot's cycle and spend, and offers **Compact** once
+  the context is 80% full.
 
 ## Focus, colours and live figures
 
 - **Focus** is on by default, and your choice is kept across sessions and updates. While it is on, the chat shows
-  only your prompts, Claude's replies and the activity line; tool cards and "Done in" lines are hidden (errors still
-  show), the band shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with **◉ Focus**
+  only your prompts, Claude's replies, the activity line and each turn's closing line; tool cards are hidden (errors
+  still show), the band shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with **◉ Focus**
   on the band or `/cockpit focus [on|off]`.
 - **Colours**: the **Auto** theme (the default) uses Claude Code's own theme colours, so it follows your light or dark
-  theme, with a gold accent; the status colours (green, red, amber) are the theme's too. Paper, White, Black, Solarized and Nord can be picked by hand (the dots in the pane's
-  header, or `/cockpit theme <name>`).
+  theme, with a gold accent; the status colours (green, red, amber) are the theme's too. Paper, White, Black, Solarized and Nord can be picked by hand (the theme menu in the
+  pane's header, or its mark in a terminal, which steps to the next; or `/cockpit theme <name>`).
 - **Live figures**: timers, bars and the context window redraw every second while work runs. While the pane is shown,
   the repository and usage are read again every 15 seconds, so a commit made in a terminal shows up without a turn.
 - **Drawing**: where the surface draws SVG (the desktop app, the editor extension, mobile), the ring, the maps and the

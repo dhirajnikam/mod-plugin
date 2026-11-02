@@ -563,7 +563,7 @@ async function openFlow($: EngineInterface, text: string, now: number) {
     activity: 'Reading the request',
     reached: ['Understand'],
     // The previous flow closes if it was still open; this prompt opens a new one
-    flows: [...s.flows.map(f => (f.status === 'running' ? { ...f, status: 'aborted' as const, endedAt: now } : f)), { id: `f${now}`, task, startedAt: now, status: 'running' as const, reached: ['Understand'], ops: 0, add: 0, del: 0, decisions: 0, commit: '' }].slice(-30),
+    flows: [...s.flows.map(f => (f.status === 'running' ? { ...f, status: 'aborted' as const, endedAt: now } : f)), { id: `f${now}`, task, startedAt: now, status: 'running' as const, reached: ['Understand'], ops: 0, add: 0, del: 0, decisions: 0, commit: '', costAt: s.cost }].slice(-30),
   }))
   return changes
 }

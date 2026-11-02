@@ -377,7 +377,8 @@ test('file operations build the Files tab, the chat cards and the progress steps
   await ov.press({ key: `flb-${(await ov.find({ text: 'add rate limiting' }))?.key?.replace('flb-', '') ?? ''}` }).catch(() => null)
   await ov.unmount()
   const card = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'ToolUse', requestId: 'e1', props: { tool_use_id: 'e1', tool: 'Edit', input: {}, isRunning: false, isErrored: false, isInterrupted: false } } as never)
-  expect(JSON.stringify(await card.drawn())).toContain('Edit app.ts')
+  // By its folder and name
+  expect(JSON.stringify(await card.drawn())).toContain('Edit src/app.ts')
   await card.unmount()
 })
 

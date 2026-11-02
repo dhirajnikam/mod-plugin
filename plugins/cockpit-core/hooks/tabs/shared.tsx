@@ -220,17 +220,20 @@ export function MapText({ v, nodes, marks }: { v: V; nodes: { name: string; uses
 }
 
 // A card in the chat, as the design draws tool activity: icon, text, figures on the right
-export function Card({ ui, t, w, id, dashed, icon, left, right, onPress }: { ui: UI; t: Theme; w: number; id: string; dashed: boolean; icon: string; left: RenderNode | RenderNode[]; right: string; onPress: () => unknown }) {
+// tone: the colour of the right-hand words, by what they say (a pass, a failure, work still running)
+export function Card({ ui, t, w, id, dashed, icon, left, right, onPress, tone }: { ui: UI; t: Theme; w: number; id: string; dashed: boolean; icon: string; left: RenderNode | RenderNode[]; right: string; onPress: () => unknown; tone?: string }) {
   const { Box, Button, Text } = ui
   return (
     <Box borderStyle={dashed ? 'dashed' : 'round'} borderColor={t.lo} paddingX={1} marginTop="md" width={w} justifyContent="space-between" columnGap={2}>
-      <Box>
+      <Box flexShrink={1}>
         <Text color={t.hi}>{`${icon} `}</Text>
         <Button key={`card-${id}`} plain onPress={onPress}>
           {left}
         </Button>
       </Box>
-      <Text color={t.hi}>{right}</Text>
+      <Box flexShrink={0}>
+        <Text color={tone ?? t.hi}>{right}</Text>
+      </Box>
     </Box>
   )
 }

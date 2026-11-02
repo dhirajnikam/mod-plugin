@@ -142,6 +142,8 @@ export type Flow = {
   steps?: { name: string; kind: string }[]
   // Turns this flow ran: more than one when a /goal, a background task or another plugin carried it on
   turns?: number
+  // The session's cost when it opened, so the chat's turn line says what this flow spent
+  costAt?: number
 }
 
 export type PlanItem = { id: string; text: string; st: 'pending' | 'in_progress' | 'completed' }

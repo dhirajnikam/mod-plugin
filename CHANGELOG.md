@@ -18,6 +18,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- The chat (cockpit-chat): each turn's closing line says what it came to (files, +/−, tests, what it cost) and stays
+  with Focus on; a subagent's card shows its tool calls and time while it runs, then what its tests found, and names
+  Cockpit's experts by name; file cards show the folder; the activity line says which step the task is on; the band
+  names the agents at work and the autopilot's cycle and spend, and offers Compact once the context is 80% full; a
+  card's press opens the pane on its tab.
 - The pane's header keeps to one line in a narrow terminal: one mark for the theme in use, a press stepping to the
   next, in place of a dot for each theme. Tabs too wide for the pane draw tight, without the space around each name,
   and keep their underline instead of wrapping.
