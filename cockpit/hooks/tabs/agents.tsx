@@ -82,7 +82,7 @@ import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
 import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
-import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
+import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
 // The agents and who started them, as a diagram: you, Claude and Cockpit on top, an arrow from each to the agents it
 // started (a pipeline's steps under Cockpit), a tester's arrow to the agent whose work it tests, an agent's to the ones
@@ -205,6 +205,8 @@ export function Agents($: $, v: V) {
         label="Instructions"
         placeholder={hint}
         value={s.ui.rerunText}
+        rows={grow(v, s.ui.rerunText, 'Instructions')}
+        submitLabel="run"
         onInput={val => set($, st => ({ ui: { ...st.ui, rerunText: val } }))}
         onSubmit={val => rerun($, target, val)}
       />
@@ -232,7 +234,7 @@ export function Agents($: $, v: V) {
               const failing = a.cases.filter(c => c.st === 'fail')
               return (
                 <Box key={`ag-${a.id}`} flexDirection="column">
-                  <Box alignItems="center" columnGap={sp(v, 1)}>
+                  <Box alignItems={v.desk ? 'center' : 'flex-start'} columnGap={sp(v, 1)}>
                     <Box flexShrink={0}>{icon(a.type, st, 28)}</Box>
                     <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                       <Button key={`agb-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, openAgent: open ? '' : a.id } }))}>
@@ -353,10 +355,10 @@ export function Agents($: $, v: V) {
       )}
       {s.ui.apOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
-          <Input key="ap-goal" label="Goal" placeholder="Add offline sync, with tests, and keep the app fast" value={s.ui.apGoal ?? ''} onInput={val => set($, st => ({ ui: { ...st.ui, apGoal: val } }))} onSubmit={() => startFromForm()} />
+          <Input key="ap-goal" label="Goal" placeholder="Add offline sync, with tests, and keep the app fast" value={s.ui.apGoal ?? ''} rows={grow(v, s.ui.apGoal, 'Goal')} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apGoal: val } }))} onSubmit={() => startFromForm()} />
           <Box columnGap={sp(v, 2)} flexWrap="wrap" alignItems="center">
-            <Input key="ap-budget" label="Budget $" placeholder="none" value={s.ui.apBudget ?? ''} onInput={val => set($, st => ({ ui: { ...st.ui, apBudget: val } }))} onSubmit={() => startFromForm()} />
-            <Input key="ap-hours" label="Hours" placeholder="none" value={s.ui.apHours ?? ''} onInput={val => set($, st => ({ ui: { ...st.ui, apHours: val } }))} onSubmit={() => startFromForm()} />
+            <Input key="ap-budget" label="Budget $" placeholder="none" value={s.ui.apBudget ?? ''} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apBudget: val } }))} onSubmit={() => startFromForm()} />
+            <Input key="ap-hours" label="Hours" placeholder="none" value={s.ui.apHours ?? ''} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apHours: val } }))} onSubmit={() => startFromForm()} />
             <Button key="ap-go" label="Start autopilot" variant="primary" onPress={() => startFromForm()} />
           </Box>
           <Text color={t.dim} size="footnote" wrap="wrap">Claude works cycle after cycle from a roadmap in .cockpit/roadmap.md until the judges agree the goal is reached. Leave budget and hours empty to run until it is done; it pauses for you on anything hard to undo, and after three cycles that change nothing.</Text>
@@ -369,6 +371,8 @@ export function Agents($: $, v: V) {
             label="Describe the agent"
             placeholder="Checks every API change for breaking changes and missing docs"
             value={s.ui.describe}
+            rows={grow(v, s.ui.describe, 'Describe the agent')}
+            submitLabel="create"
             onInput={val => set($, st => ({ ui: { ...st.ui, describe: val } }))}
             onSubmit={val => (val.trim() ? inBackground($, 'agent', 'Making the agent', () => createAgent($, val.trim())) : undefined)}
           />
@@ -383,12 +387,14 @@ export function Agents($: $, v: V) {
             label="Task"
             placeholder="Document the 429 response in the API guide"
             value={s.ui.spawnTask}
+            rows={grow(v, s.ui.spawnTask, 'Task')}
+            submitLabel="start"
             onInput={val => set($, st => ({ ui: { ...st.ui, spawnTask: val } }))}
             onSubmit={val => val.trim() && spawnAgent($, val.trim(), s.ui.spawnType)}
           />
           <Box columnGap={sp(v, 2)} flexWrap="wrap">
-            <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={[...types, ...(types.includes(s.ui.spawnType) ? [] : [s.ui.spawnType])].map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val } }))} />
-            <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={types.includes(s.ui.spawnType) ? '' : s.ui.spawnType} onInput={val => set($, st => ({ ui: { ...st.ui, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} onSubmit={val => set($, st => ({ ui: { ...st.ui, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} />
+            <Select key="spawn-type" label="Type" value={s.ui.spawnType} options={[...types, ...(types.includes(s.ui.spawnType) ? [] : [s.ui.spawnType])].map(a => ({ value: a, label: a }))} onSelect={val => set($, st => ({ ui: { ...st.ui, spawnType: val, spawnTypeText: '' } }))} />
+            <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={s.ui.spawnTypeText ?? ''} submitLabel="use" onInput={val => set($, st => ({ ui: { ...st.ui, spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} onSubmit={val => set($, st => ({ ui: { ...st.ui, spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} />
             <Button key="spawn-go" label="Start" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
           </Box>
         </Box>
@@ -407,6 +413,8 @@ export function Agents($: $, v: V) {
             label="Task for them"
             placeholder={s.task ? `the current task: ${s.task.slice(0, 60)}` : 'what they should work on'}
             value={s.ui.runTask}
+            rows={grow(v, s.ui.runTask, 'Task for them')}
+            submitLabel="run"
             onInput={val => set($, st => ({ ui: { ...st.ui, runTask: val } }))}
             onSubmit={val => runMany($, Object.keys(s.ui.selected).filter(k => s.ui.selected[k]), val.trim())}
           />
@@ -436,14 +444,14 @@ export function Agents($: $, v: V) {
           const right = !a || live ? '' : `${st === 'failed' ? 'failed' : a.status === 'done' ? 'done' : word(a).toLowerCase()} ↓`
           const ticked = !!s.ui.selected[x.type]
           const rowEl = (
-            <Box key={`ex-${x.type}`} alignItems="center" columnGap={sp(v, 1)}>
+            <Box key={`ex-${x.type}`} alignItems={v.desk ? 'center' : 'flex-start'} columnGap={sp(v, 1)}>
               <Box flexShrink={0}>{icon(x.type, st, 28)}</Box>
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Text color={t.text} bold wrap="truncate-end">{x.name}</Text>
                 <Text color={t.dim} size="footnote" wrap="truncate-end">{x.what}</Text>
               </Box>
-              {right !== '' && <Text color={colorOf(st)} size="footnote">{right}</Text>}
-              {live && <Text color={t.faint} size="footnote">{`running${copies.length > 1 ? ` ×${copies.length}` : ''} ↑`}</Text>}
+              {right !== '' && <Box flexShrink={0}><Text color={colorOf(st)} size="footnote">{right}</Text></Box>}
+              {live && <Box flexShrink={0}><Text color={t.faint} size="footnote">{`running${copies.length > 1 ? ` ×${copies.length}` : ''} ↑`}</Text></Box>}
               <Button key={`run-${x.type}`} plain onPress={() => runExpert($, x.type)}>
                 <Text color={live ? t.faint : t.dim}>▶</Text>
               </Button>

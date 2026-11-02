@@ -81,7 +81,7 @@ import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
 import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
-import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
+import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
 // Rules: the hooks, permission rules and instructions Claude Code follows, for this repository or for you everywhere.
 // Each is a row to edit in place or delete (after you confirm); each section has an add form. Every change is written
@@ -95,7 +95,7 @@ export function Rules($: $, v: V) {
   const clear = { ruleEdit: '', ruleDel: '', ruleAdd: '', ruleA: '', ruleB: '', ruleC: '' }
   // Enter submits with the text as typed: the drawing it was typed into may not have it yet
   const field = (key: 'ruleA' | 'ruleB' | 'ruleC', label: string, placeholder: string, onSubmit: (val: string) => unknown) => (
-    <Input key={`rf-${key}`} label={label} placeholder={placeholder} value={s.ui[key] ?? ''} onInput={val => ui({ [key]: val })} onSubmit={val => onSubmit(val)} />
+    <Input key={`rf-${key}`} label={label} placeholder={placeholder} value={s.ui[key] ?? ''} rows={grow(v, s.ui[key], label)} submitLabel={s.ui.ruleEdit ? 'save' : 'add'} onInput={val => ui({ [key]: val })} onSubmit={val => onSubmit(val)} />
   )
   const actions = (key: string, onEdit: () => unknown) =>
     s.ui.ruleDel === key ? (

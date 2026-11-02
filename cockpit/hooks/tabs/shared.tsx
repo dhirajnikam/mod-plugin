@@ -87,6 +87,11 @@ export type UI = Pick<T, 'Box' | 'Text' | 'Button' | 'Input' | 'Select'> & { Svg
 // Spacing: cells on the terminal, the surface's own steps on a graphical one
 export const sp = (v: V, n: number) => (v.desk ? (n >= 3 ? 'lg' : n === 2 ? 'md' : 'sm') : n)
 
+// A field's height for what it holds: a row per line and per wrap at the pane's width, up to six, so long text stays
+// in view instead of scrolling sideways. The label is drawn beside the field and takes its share of the row
+export const grow = (v: V, text: string | undefined, label = '', least = 1) =>
+  Math.min(6, Math.max(least, (text ?? '').split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / Math.max(12, v.w - label.length - 8))), 0)))
+
 // desk: a graphical surface, whose native buttons draw their label in their own colour, so coloured marks sit beside them
 export type V = { ui: UI; s: Ph; t: Theme; w: number; now: number; root: string; desk: boolean }
 
@@ -218,7 +223,7 @@ export function MapText({ v, nodes, marks }: { v: V; nodes: { name: string; uses
 export function Card({ ui, t, w, id, dashed, icon, left, right, onPress }: { ui: UI; t: Theme; w: number; id: string; dashed: boolean; icon: string; left: RenderNode | RenderNode[]; right: string; onPress: () => unknown }) {
   const { Box, Button, Text } = ui
   return (
-    <Box borderStyle={dashed ? 'dashed' : 'round'} borderColor={t.lo} paddingX={1} width={w} justifyContent="space-between" columnGap={2}>
+    <Box borderStyle={dashed ? 'dashed' : 'round'} borderColor={t.lo} paddingX={1} marginTop="md" width={w} justifyContent="space-between" columnGap={2}>
       <Box>
         <Text color={t.hi}>{`${icon} `}</Text>
         <Button key={`card-${id}`} plain onPress={onPress}>

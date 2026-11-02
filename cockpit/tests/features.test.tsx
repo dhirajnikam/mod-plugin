@@ -286,6 +286,38 @@ test('subagents show in the Agents tab with their tool calls, and Stop stops the
   await ui.unmount()
 })
 
+test('the any-type field keeps a listed name as typed, and fields say what Enter does', async ($, on) => {
+  stand($, on)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane('agents') as never)
+  await ui.press({ key: 'spawn-toggle' })
+  const listed = String(((await ui.find({ key: 'spawn-type' }))?.props.options as { value: string }[])[0]?.value)
+  await (ui as any).input({ key: 'spawn-type-custom', text: listed, kind: 'change' })
+  expect((await ui.find({ key: 'spawn-type-custom' }))?.props.value).toBe(listed)
+  expect((await ui.find({ key: 'spawn-type' }))?.props.value).toBe(listed)
+  expect((await ui.find({ key: 'spawn-task' }))?.props.submitLabel).toBe('start')
+  // A long task grows the field a row at a time instead of scrolling it sideways
+  expect((await ui.find({ key: 'spawn-task' }))?.props.rows).toBe(1)
+  await (ui as any).input({ key: 'spawn-task', text: 'Document the 429 response in the API guide, with an example of the retry header and a note on backoff for clients', kind: 'change' })
+  expect(Number((await ui.find({ key: 'spawn-task' }))?.props.rows)).toBeGreaterThan(1)
+  await ui.unmount()
+})
+
+test('a reply opens a row apart from what is above it, and a summary keeps the engine\'s marked row', async ($, on) => {
+  stand($, on)
+  on('ui.render', async (_, e) => {
+    const { Text } = _.ui.resolve(e)
+    return <Text>ENGINE</Text>
+  })
+  const site = (props: object) => ({ plugin: 'cockpit', surface: 'terminal', component: 'AssistantMessage', requestId: 'am', props })
+  const first = await $.ui.mount(site({ text: 'Done', isFirstOfReply: true }) as never)
+  expect((await first.drawn()).props?.marginTop).toBe('md')
+  await first.unmount()
+  const summary = await $.ui.mount(site({ text: 'Read two files', isFirstOfReply: true, isSummary: true }) as never)
+  expect(JSON.stringify(await summary.drawn())).toContain('ENGINE')
+  await summary.unmount()
+})
+
 test('file operations build the Files tab, the chat cards and the progress steps', async ($, on) => {
   stand($, on)
   await $.prompt.submit({ text: 'add rate limiting', command: null, isMeta: false, origin: { kind: 'composer' } } as never)

@@ -246,6 +246,8 @@ export type Ph = {
     spawnOpen: boolean
     spawnTask: string
     spawnType: string
+    // Any agent type, as typed: kept apart from spawnType so typing a listed name does not empty the field
+    spawnTypeText?: string
     describe: string
     // Agents ticked on the team list, and the task to run them with ('' is the current one)
     selected: Record<string, boolean>

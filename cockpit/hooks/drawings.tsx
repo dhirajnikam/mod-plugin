@@ -255,7 +255,7 @@ export function drawings(on: Parameters<Register>[0], rootOf: () => string) {
     // ponytail: the latest turn is told by its duration matching the one turn.complete measured; two equal turns both match
     const isLatest = Math.abs(e.props.durationMs - s.lastTurnMs) < 2500
     return (
-      <Box justifyContent="space-between" width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
+      <Box justifyContent="space-between" marginTop="md" width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
         <Text>
           <Text color={t.accent}>✻ </Text>
           <Text color={t.text}>{isLatest && s.repo.changed.length ? 'Done · ready to commit' : 'Done'}</Text>
@@ -271,7 +271,7 @@ export function drawings(on: Parameters<Register>[0], rootOf: () => string) {
     const { Box, Text } = $.ui.resolve(e)
     const t = chatThemeOf(await read($, S))
     return (
-      <Box backgroundColor={t.surface || undefined} paddingX={1} width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
+      <Box backgroundColor={t.surface || undefined} paddingX={1} marginTop="md" width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
         <Text color={t.hi}>{'› '}</Text>
         <Text color={t.text}>{e.props.text}</Text>
       </Box>
@@ -281,11 +281,13 @@ export function drawings(on: Parameters<Register>[0], rootOf: () => string) {
   // Claude's replies with the design's "●" mark, markdown kept
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const table = $.ui.resolve(e)
-    if (!('Markdown' in table)) return next(e)
+    // A summary of the text between tool calls keeps the engine's row, which marks it as one
+    if (!('Markdown' in table) || e.props.isSummary) return next(e)
     const { Box, Markdown, Text } = table
     const t = chatThemeOf(await read($, S))
+    // A reply opens a row apart from the prompt or card above it, as the engine's own does
     return (
-      <Box>
+      <Box marginTop={e.props.isFirstOfReply ? 'md' : 0}>
         <Text color={t.accent}>{e.props.isFirstOfReply ? '● ' : '  '}</Text>
         <Box flexGrow={1}>
           <Markdown key="reply" text={e.props.text} />

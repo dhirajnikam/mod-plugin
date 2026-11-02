@@ -82,7 +82,7 @@ import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
 import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
-import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
+import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
 export function Git($: $, v: V) {
   const { Box, Button, Input, Select, Text } = v.ui
@@ -326,7 +326,7 @@ function AccountBox($: $, v: V) {
           <Rule v={{ ...v, w: v.w - 4 }} />
           <Text color={t.dim} size="footnote">Add a GitHub login to this machine's gh: paste a classic token (scopes repo, read:org), or log in with gh in your browser.</Text>
           <Box columnGap={sp(v, 1)} flexWrap="wrap">
-            <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, val))} />
+            <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} submitLabel="add" onInput={val => set($, st => ({ ui: { ...st.ui, ghToken: val } }))} onSubmit={val => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, val))} />
             <Button key="gh-token-go" label="Add token" onPress={() => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, s.ui.ghToken))} />
             <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
           </Box>
@@ -441,7 +441,7 @@ function Options($: $, v: V) {
         <Input key="git-ticket" label="Ticket" value={g.ticket} onInput={val => setGit({ ticket: val })} onSubmit={val => setGit({ ticket: val })} />
         <Input key="git-user" label="User" value={g.user} onInput={val => setGit({ user: val })} onSubmit={val => setGit({ user: val })} />
       </Box>
-      <Input key="git-body" label="Body" rows={2} value={g.body} onInput={val => setGit({ body: val })} onSubmit={val => setGit({ body: val })} />
+      <Input key="git-body" label="Body" rows={grow(v, g.body, 'Body', 2)} value={g.body} onInput={val => setGit({ body: val })} onSubmit={val => setGit({ body: val })} />
       <Box flexWrap="wrap" columnGap={sp(v, 3)}>
         {GIT_OPTS.map(([key, label]) => (
           <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit({ [key]: !g[key] } as Partial<GitForm>)} />
