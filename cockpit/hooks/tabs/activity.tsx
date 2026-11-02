@@ -74,7 +74,7 @@ import {
   tree,
 } from '../logic'
 import type { IconState, Neuron } from '../logic'
-import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
+import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, loopUses, memberOf, memoryKey } from '../memory'
 import type { FeatureMark } from '../memory'
 import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeSettings } from '../actions'
 import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
@@ -113,6 +113,7 @@ function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
   const tests = fs.filter(f => isTestFeature(f))
   const shown = fs.filter(f => !isTestFeature(f)).filter((f, i) => i < 16 || marks[f.name])
   const open = !s.ui.collapsed['act-map']
+  const loops = loopUses(shown)
   const legend = (
     <Text size="footnote">
       <Text color={t.busy}>■</Text>
@@ -142,9 +143,9 @@ function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
       ) : (
         <MapText v={v} nodes={shown} marks={marks} />
       ))}
-      {open && (tests.length > 0 || fs.length > shown.length + tests.length) && (
+      {open && (tests.length > 0 || fs.length > shown.length + tests.length || loops > 0) && (
         <Text color={t.faint} size="footnote" wrap="wrap">
-          {[tests.length ? `${tests.length} test feature${tests.length === 1 ? '' : 's'} not drawn` : '', fs.length > shown.length + tests.length ? `${fs.length - shown.length - tests.length} smaller left out` : ''].filter(Boolean).join(' · ')}
+          {[tests.length ? `${tests.length} test feature${tests.length === 1 ? '' : 's'} not drawn` : '', fs.length > shown.length + tests.length ? `${fs.length - shown.length - tests.length} smaller left out` : '', loops ? `↺ ${loops} use${loops === 1 ? '' : 's'} back up a loop not drawn` : ''].filter(Boolean).join(' · ')}
         </Text>
       )}
     </Box>

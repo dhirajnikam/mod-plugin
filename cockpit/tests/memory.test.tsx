@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { factsOf, featureLayers, featureMapSvg, features, filesSig, impactOf, isTestFeature, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
+import { factsOf, featureLayers, featureMapSvg, featureMapText, features, filesSig, impactOf, isTestFeature, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
   const repo = new Set(['src/a.ts', 'src/b.tsx', 'types/index.d.ts', 'app/models.py', 'app/__init__.py', 'app/views.py', 'styles/base.css'])
@@ -59,6 +59,23 @@ test('the feature map layers what uses above what it uses, survives a cycle, and
   expect(svg).toContain('url(#ah)')
   expect(svg).toContain('<title>ui')
   expect(svg).not.toContain('<script')
+  // Cropped to its boxes, so the surface draws it at its own size rather than shrinking a wide, mostly empty canvas
+  expect(Number(/width="(\d+)"/.exec(svg)?.[1])).toBeLessThan(640)
+  // The loop between a and b doesn't make ui → state look implied
+  expect((svg.match(/<path d=/g) ?? []).length).toBeGreaterThanOrEqual(2)
+  // The terminal's map in characters: a box per feature, a line down to what it uses ending in ▼, the feature being
+  // worked on in a heavy box, one reached dashed, and the a ↔ b loop drawn one way only
+  const text = featureMapText(fs, { ui: 'now', types: 'reached' }, 60).map(l => l.map(r => r.text).join(''))
+  const row = (n: string) => text.findIndex(l => l.includes(` ${n} `))
+  expect(row('ui')).toBeLessThan(row('state'))
+  expect(row('state')).toBeLessThan(row('types'))
+  expect(text[row('ui')]).toMatch(/┃ +ui +┃/)
+  expect(text[row('types')]).toMatch(/┆ +types +┆/)
+  expect(text.join('\n')).toContain('▼')
+  expect(text[row('a')] !== undefined && text[row('b')] !== undefined && row('a') !== row('b')).toBe(true)
+  expect(text.every(l => l.length <= 60)).toBe(true)
+  // ui → types is implied by ui → state → types, so the line from ui runs only to state
+  expect(text[row('state') - 2]).toContain('▼')
   expect(isTestFeature({ files: ['tests/a.test.ts', 'tests/b.ts'] })).toBe(true)
   expect(isTestFeature({ files: ['src/a.ts', 'tests/a.test.ts'] })).toBe(false)
   expect(isTestFeature({ files: ['src/a.spec.ts'] })).toBe(true)

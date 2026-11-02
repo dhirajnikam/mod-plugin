@@ -8,6 +8,8 @@ heading.
 - **What is happening**: the current action and the feature it is in ("Editing views.tsx in Cockpit views"), with a
   turning glyph and a light running along a bar while work runs.
 - **Feature map**: the codebase's features as a diagram. What uses another feature sits above it, with an arrow to it.
+  In the terminal it is drawn in characters: boxes and lines ending in ▼, the feature being worked on in a heavy box, one a
+  change reaches dashed. A use that loops back up is counted under the map instead of drawn.
   The feature being worked on this moment is filled and breathes, the ones changed this flow are outlined in gold, the
   ones the last change reaches are dashed, and the arrows between them are lit; the rest are faint, and an arrow
   another path already implies is left out. Hovering a box says what the feature does. Test-only features are counted

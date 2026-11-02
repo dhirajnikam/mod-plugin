@@ -9,13 +9,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Cockpit in parts: `cockpit-core` and an add-on for each tab (`cockpit-overview`, `-activity`, `-agents`, `-git`,
   `-rules`) and for the chat (`cockpit-chat`), to install only what you want. The pane shows a tab for each add-on
   installed. The parts are built from `cockpit/` by `scripts/split.py`; the all-in-one `cockpit` stays as it was.
-- Fields say what Enter does (start, run, create, add, save), and grow a row at a time as their text wraps.
-- An icon (`cockpit/.claude-plugin/icon.png`): the Overview's progress ring in the Black theme's gold.
-- CI on every push and pull request: the tests, validation and the link check.
-- `docs/privacy.md` lists every model call Cockpit makes, what it sends and how to turn it off; a check in CI fails
-  when a call goes undocumented.
-- An architecture guide for contributors (`docs/architecture.md`).
-- A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
+- The feature map and agent connections in the terminal are drawn as boxes and arrows in characters, each feature with
+  its file count, instead of a list of names.
 
 ### Changed
 - The chat (cockpit-chat): each turn's closing line says what it came to (files, +/−, tests, what it cost) and stays
@@ -45,6 +40,17 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- The feature map on the desktop is drawn at full size: it was laid out on a canvas far wider than its boxes, so the
+  pane shrank it until the names were unreadable.
+- A loop between features no longer pulls the rest of the map onto one layer or hides nearly every arrow. Uses back up
+  a loop are counted under the map instead of drawn.
+- Fields say what Enter does (start, run, create, add, save), and grow a row at a time as their text wraps.
+- An icon (`cockpit/.claude-plugin/icon.png`): the Overview's progress ring in the Black theme's gold.
+- CI on every push and pull request: the tests, validation and the link check.
+- `docs/privacy.md` lists every model call Cockpit makes, what it sends and how to turn it off; a check in CI fails
+  when a call goes undocumented.
+- An architecture guide for contributors (`docs/architecture.md`).
+- A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 - A stopped or failed tester's Finished row says so before its count ("Stopped · 2/2 passed"), and the count is of
   cases that passed, not of every case that did not fail.
 - The Overview's checks say what each mark counts ("✓ 3 passed · more running" instead of "✓3 running"), and a

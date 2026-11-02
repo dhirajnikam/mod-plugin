@@ -73,8 +73,8 @@ import {
   tree,
 } from '../logic'
 import type { IconState, Neuron } from '../logic'
-import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
-import type { FeatureMark } from '../memory'
+import { featureLayers, featureMapSvg, featureMapText, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
+import type { FeatureMark, MapTone } from '../memory'
 import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeSettings } from '../actions'
 import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
 import type { PermKind } from '../rules'
@@ -192,28 +192,17 @@ export function Head({ v, label, n, color, note }: { v: V; label: string; n?: nu
   )
 }
 
-// A map where no SVG is drawn (the terminal): its layers as indented lines, each node with what it points to
-export function MapText({ v, nodes, marks }: { v: V; nodes: { name: string; uses: string[] }[]; marks: Record<string, FeatureMark> }) {
+// A map where no SVG is drawn (the terminal): its boxes and arrows in characters (featureMapText)
+export function MapText({ v, nodes, marks }: { v: V; nodes: { name: string; uses: string[]; files?: string[] }[]; marks: Record<string, FeatureMark> }) {
   const { Box, Text } = v.ui
   const { t } = v
+  const color: Record<MapTone, string> = { line: t.faint, lit: t.accent, box: t.faint, name: t.dim, 'name-now': t.text, 'name-marked': t.text, note: t.faint, now: t.busy, touched: t.accent, reached: t.busy }
   return (
     <Box flexDirection="column">
-      {featureLayers(nodes.map(n => ({ ...n, what: '', files: [], usedBy: [] }))).map((layer, i) => (
-        <Box key={`ml-${i}`} flexDirection="column">
-          {layer.map(n => {
-            const f = nodes.find(x => x.name === n)!
-            const m = marks[n]
-            const uses = f.uses.filter(u => nodes.some(x => x.name === u))
-            return (
-              <Text key={`mn-${n}`} wrap="truncate-end">
-                <Text color={t.faint}>{'  '.repeat(i)}</Text>
-                <Text color={m === 'now' ? t.busy : m === 'touched' ? t.accent : m === 'reached' ? t.busy : t.faint}>{m === 'now' ? '■ ' : m === 'touched' ? '◆ ' : m === 'reached' ? '◇ ' : '· '}</Text>
-                <Text color={m ? t.text : t.dim} bold={m === 'now'}>{n}</Text>
-                {uses.length > 0 && <Text color={t.faint}>{` → ${uses.join(', ')}`}</Text>}
-              </Text>
-            )
-          })}
-        </Box>
+      {featureMapText(nodes, marks, v.w).map((line, i) => (
+        <Text key={`ml-${i}`} wrap="truncate-end">
+          {line.length ? line.map((r, j) => <Text key={`mr-${j}`} color={color[r.tone]} bold={r.tone === 'name-now'}>{r.text}</Text>) : ' '}
+        </Text>
       ))}
     </Box>
   )
