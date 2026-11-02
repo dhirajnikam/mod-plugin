@@ -1,7 +1,7 @@
 import { atom, read } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Changed, Decision, Tab, ThemeId } from '../types'
+import type { Changed, Decision, Ph, Tab, ThemeId } from '../types'
 import {
   advancePipeline,
   commit,
@@ -47,11 +47,13 @@ import {
   setTheme,
   trackAgent,
 } from './actions'
+import { ACTS, act } from './acts'
 import { EXPERTS, FLOWS, activityOf, applyPlan, expertName, flowOf, progress, selfCheck, stepOf, toOp } from './logic'
 import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
 import { drawings } from './drawings'
+import { fullPane } from './full-pane'
 
 // The session's Cockpit state (see state.ts)
 const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
@@ -506,9 +508,29 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The band, spinner, chat cards and pane: drawings.tsx
-  drawings(on, () => root)
-
+  // What the plugins split from Cockpit call: they read the state and change it through these, answered here, where
+  // the state is written; `act` runs an action of ./actions by name, its result handed back as plain data
+  on('engine.create', async (_$, e, next) => ({ ...(await next(e)), cockpit: { set: async () => true, act: async () => null, tab: async () => true } }))
+  on('cockpit.set', async ($, e) => {
+    await set($, e.patch as Partial<Ph>)
+    return { value: true }
+  })
+  on('cockpit.act', async ($, e) => {
+    if (!(ACTS as readonly string[]).includes(e.name)) return { deny: `Cockpit has no action ${e.name}` }
+    const r = await act($, e.name, e.args)
+    return { value: r === undefined ? null : JSON.parse(JSON.stringify(r)) }
+  })
+  // An add-on says which tab it draws; the pane shows only those, and opens on one of them
+  on('cockpit.tab', async ($, e) => {
+    await set($, st => {
+      const tabs = [...new Set([...(st.tabsAvailable ?? []), e.id])]
+      return { tabsAvailable: tabs, tab: tabs.includes(st.tab) ? st.tab : (tabs[0] ?? st.tab) }
+    })
+    return { value: true }
+  })
+  // The band, spinner and chat cards (drawings.tsx), and the pane (full-pane.tsx)
+  drawings(on)
+  fullPane(on, () => root)
 }
 
 // The current flow's plan after one of Claude's plan tools ran (a refused call changes nothing)

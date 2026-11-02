@@ -1,0 +1,14 @@
+{
+  "name": "cockpit-chat",
+  "version": "0.5.0",
+  "description": "Cockpit around the chat: the band above the prompt with progress and context, the spinner's words, tool calls as cards, and the line under the prompt",
+  "dependencies": [
+    "cockpit-core"
+  ],
+  "author": {
+    "name": "Dhiraj Nikam"
+  },
+  "homepage": "https://github.com/dhirajnikam/mod-plugin",
+  "repository": "https://github.com/dhirajnikam/mod-plugin",
+  "license": "MIT"
+}

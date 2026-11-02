@@ -28,6 +28,7 @@ npx -p typescript tsc -p cockpit             # the type-check: no output means c
 claude plugin validate ./cockpit             # what the engine would refuse
 python3 scripts/check_links.py               # every relative link in the Markdown resolves
 python3 scripts/check_privacy.py             # every model call is documented in docs/privacy.md
+python3 scripts/split.py --check             # plugins/ is built from the current cockpit/
 ```
 
 The type-check needs the types Claude Code writes into `cockpit/.claude-plugin/types/` (git-ignored) when it loads the
@@ -43,7 +44,8 @@ through the code.
 | Path | What it holds |
 |---|---|
 | `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges |
-| `cockpit/hooks/drawings.tsx` | every drawing outside the tabs: the band, the spinner, the chat's cards and rows, and the pane's frame |
+| `cockpit/hooks/drawings.tsx` | every drawing around the chat: the band, the spinner, the chat's cards and rows |
+| `cockpit/hooks/pane.tsx`, `full-pane.tsx` | the side pane: what it draws with, its header and tabs, and the whole pane with the open tab |
 | `cockpit/hooks/tabs/` | the pane: one file per tab, `header.tsx` for its header and tabs, `shared.tsx` for the pieces they share |
 | `cockpit/hooks/ops/` | what the views and hooks do: `core.ts` (state, history), `git.ts`, `agents.ts`, `decisions.ts` (judges and autopilot), `memory-io.ts`, `rules-io.ts` |
 | `cockpit/hooks/logic.ts` | pure helpers: flows and progress, diffs, the file tree, SVG drawings |
@@ -52,6 +54,7 @@ through the code.
 | `cockpit/types/index.d.ts` | the state contract: every value Cockpit keeps |
 | `cockpit/agents/*.md` | the six experts' definitions |
 | `cockpit/tests/` | the tests |
+| `cockpit/hooks/acts.ts`, `plugins/` | built by `scripts/split.py`, never edited by hand: the actions the parts send to `cockpit-core`, and the parts themselves (see [the architecture guide](docs/architecture.md#the-parts-cockpit-core-and-its-add-ons)) |
 
 ## Writing a change
 

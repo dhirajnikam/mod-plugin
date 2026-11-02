@@ -311,7 +311,7 @@ test('a reply opens a row apart from what is above it, and a summary keeps the e
   })
   const site = (props: object) => ({ plugin: 'cockpit', surface: 'terminal', component: 'AssistantMessage', requestId: 'am', props })
   const first = await $.ui.mount(site({ text: 'Done', isFirstOfReply: true }) as never)
-  expect((await first.drawn()).props?.marginTop).toBe('md')
+  expect(((await first.drawn()) as { props?: { marginTop?: unknown } }).props?.marginTop).toBe('md')
   await first.unmount()
   const summary = await $.ui.mount(site({ text: 'Read two files', isFirstOfReply: true, isSummary: true }) as never)
   expect(JSON.stringify(await summary.drawn())).toContain('ENGINE')

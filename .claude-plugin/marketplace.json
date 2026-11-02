@@ -10,6 +10,48 @@
       "source": "./cockpit",
       "description": "Progress, an autopilot that works on a goal until the judges agree it is done, agents with trackers, memory and testers, a feature map of your codebase, a Rules tab for hooks, permissions and instructions, and a git graph, around the prompt and in a side pane",
       "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-core",
+      "source": "./plugins/cockpit-core",
+      "description": "Cockpit's core: the state, the events, the experts, /cockpit and the pane's header; add the tabs you want as cockpit-overview, -activity, -agents, -git and -rules, and the chat's band and cards as cockpit-chat",
+      "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-overview",
+      "source": "./plugins/cockpit-overview",
+      "description": "Cockpit's Overview tab: the task's progress ring and steps, checks, the agents as a neural view, changed files, context, and the judges' decisions",
+      "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-activity",
+      "source": "./plugins/cockpit-activity",
+      "description": "Cockpit's Activity tab: a live feed of every file read, edited or searched, the codebase's features as a map, and the impact of a change",
+      "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-agents",
+      "source": "./plugins/cockpit-agents",
+      "description": "Cockpit's Agents tab: the Build, Verify and Review pipelines, the six experts, agents you describe, their trackers and two testers on every change",
+      "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-git",
+      "source": "./plugins/cockpit-git",
+      "description": "Cockpit's Git tab: the next commit written from the diff, commit modes from manual to automatic, accounts, and a git graph of every branch",
+      "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-rules",
+      "source": "./plugins/cockpit-rules",
+      "description": "Cockpit's Rules tab: the hooks, permission rules and CLAUDE.md instructions of the repository or of you, to add, edit and delete",
+      "version": "0.5.0"
+    },
+    {
+      "name": "cockpit-chat",
+      "source": "./plugins/cockpit-chat",
+      "description": "Cockpit around the chat: the band above the prompt with progress and context, the spinner's words, tool calls as cards, and the line under the prompt",
+      "version": "0.5.0"
     }
   ]
 }

@@ -125,13 +125,23 @@ export function Tabs($: $, v: V) {
   const { s, t } = v
   const vs = verifyState(s.agents)
   const running = s.agents.filter(a => a.status === 'running').length
-  const tabs: [Tab, string, string][] = [
+  const all: [Tab, string, string][] = [
     ['overview', 'Overview', s.waiting ? '!' : ''],
     ['files', 'Activity', s.ops.length ? String(s.ops.length) : ''],
     ['agents', 'Agents', running ? String(running) : vs.fail ? `✗${vs.fail}` : ''],
     ['git', 'Git', s.repo.changed.length ? String(s.repo.changed.length) : ''],
     ['rules', 'Rules', ''],
   ]
+  // Split into cockpit-core and its add-ons, the tabs of the add-ons installed; with none, how to add one
+  const tabs = s.tabsAvailable ? all.filter(([id]) => s.tabsAvailable?.includes(id)) : all
+  if (!tabs.length) {
+    return (
+      <Box flexDirection="column">
+        <Rule v={v} />
+        <Text color={t.dim} wrap="wrap">No tabs yet: install cockpit-overview, cockpit-activity, cockpit-agents, cockpit-git or cockpit-rules, and its tab shows here.</Text>
+      </Box>
+    )
+  }
   // The underline follows the tab row: each tab's width, and the one-cell gap between tabs
   const total = tabs.reduce((a, [, l, b]) => a + l.length + (b ? b.length + 2 : 0) + 2, 0) + tabs.length - 1
   const fits = total <= v.w

@@ -1,0 +1,3 @@
+# Built by scripts/split.py from cockpit/
+plugins/** linguist-generated=true
+cockpit/hooks/acts.ts linguist-generated=true

@@ -1,0 +1,12 @@
+{
+  "name": "cockpit-core",
+  "version": "0.5.0",
+  "description": "Cockpit's core: the state, the events, the experts, /cockpit and the pane's header; add the tabs you want as cockpit-overview, -activity, -agents, -git and -rules, and the chat's band and cards as cockpit-chat",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Dhiraj Nikam"
+  },
+  "homepage": "https://github.com/dhirajnikam/mod-plugin",
+  "repository": "https://github.com/dhirajnikam/mod-plugin",
+  "license": "MIT"
+}

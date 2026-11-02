@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Cockpit in parts: `cockpit-core` and an add-on for each tab (`cockpit-overview`, `-activity`, `-agents`, `-git`,
+  `-rules`) and for the chat (`cockpit-chat`), to install only what you want. The pane shows a tab for each add-on
+  installed. The parts are built from `cockpit/` by `scripts/split.py`; the all-in-one `cockpit` stays as it was.
+- Fields say what Enter does (start, run, create, add, save), and grow a row at a time as their text wraps.
 - An icon (`cockpit/.claude-plugin/icon.png`): the Overview's progress ring in the Black theme's gold.
 - CI on every push and pull request: the tests, validation and the link check.
 - `docs/privacy.md` lists every model call Cockpit makes, what it sends and how to turn it off; a check in CI fails
@@ -14,6 +18,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- Claude's replies, your prompts, tool cards and the Done line each open a row apart, as Claude Code's own do; a
+  summary of what Claude wrote between tool calls keeps Claude Code's row, which marks it as one.
 - The previews of the Overview, Agents and Rules tabs in the docs are redrawn from the new layout.
 - The Overview's neural view keeps its lines off the labels: each agent's name and work sit on the side its lines
   do not come from, and every line stops at the circles' rims.

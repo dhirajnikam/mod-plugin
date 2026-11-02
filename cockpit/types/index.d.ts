@@ -213,6 +213,8 @@ export type Ph = {
   starting: { name: string; type: string; task: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
+  // The tabs the installed add-ons draw, split into cockpit-core and its add-ons; absent, Cockpit draws every tab
+  tabsAvailable?: Tab[]
   // Agents made from a description in the pane, as cockpit:<name>; their definitions are kept in the store
   custom: { type: string; name: string; what: string }[]
   // A description being turned into an agent right now
@@ -283,7 +285,18 @@ export type Ph = {
   }
 }
 
+// What Cockpit gives the plugins split from it (cockpit-core's add-ons): each reads the state and changes it through
+// these, which Cockpit answers, as only the state's owner writes it. `act` runs one of Cockpit's actions by name
+export type Cockpit = {
+  set: (e: { patch: Partial<Ph> }) => Promise<boolean>
+  act: (e: { name: string; args: unknown[] }) => Promise<unknown>
+  tab: (e: { id: Tab }) => Promise<boolean>
+}
+
 declare module 'claude-code' {
+  interface EngineInterface {
+    cockpit: Cockpit
+  }
   interface PluginState {
     cockpit: { s: Shaped<Ph> }
   }
