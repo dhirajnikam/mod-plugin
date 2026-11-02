@@ -471,7 +471,7 @@ export const register: Register = on => {
         // The engine's own figure, the one the TurnDuration row is matched against
         lastTurnMs: e.durationMs,
         reached,
-        flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached } : f)),
+        flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached, ms: e.durationMs } : f)),
       }
     })
     await refreshRepo($)

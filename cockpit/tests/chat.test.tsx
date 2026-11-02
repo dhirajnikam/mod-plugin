@@ -62,6 +62,16 @@ for (const surface of ['terminal', 'desktop'] as const) {
       expect(d).toContain('0:09')
       await line.unmount()
     }
+    // The next turn's spending is its own: the finished turn's line keeps what it cost
+    await prompt($, 'add a test')
+    usd = 0.9
+    await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't2', isAborted: false, durationMs: 30000 } as never)
+    await prompt($, 'and the docs')
+    usd = 1.4
+    await $.turn.complete({ agentId: 'ag9', answer: 'x', reason: 'answer', turnId: 'a', isAborted: false, durationMs: 1 } as never)
+    const earlier = await $.ui.mount(site('TurnDuration', 'td', { word: 'Done', durationMs: 9000 }, surface) as never)
+    expect(await drawn(earlier)).toContain('$0.21')
+    await earlier.unmount()
   })
 
   test(`an agent's card shows its tool calls and time while it runs, then what its CASE lines found, on ${surface}`, async ($, on) => {
