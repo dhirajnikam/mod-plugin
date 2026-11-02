@@ -371,7 +371,9 @@ test('file operations build the Files tab, the chat cards and the progress steps
   expect(od).toContain('add rate limiting')
   expect(od).toContain('second task')
   expect(od).toContain('"✓"')
-  expect(od).toContain('"●"')
+  // The current flow's steps, each marked by its state
+  expect(od).toContain('" ○"')
+  expect(od).toContain('Read the limiter code')
   await ov.press({ key: `flb-${(await ov.find({ text: 'add rate limiting' }))?.key?.replace('flb-', '') ?? ''}` }).catch(() => null)
   await ov.unmount()
   const card = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'ToolUse', requestId: 'e1', props: { tool_use_id: 'e1', tool: 'Edit', input: {}, isRunning: false, isErrored: false, isInterrupted: false } } as never)
@@ -547,14 +549,16 @@ test('Clear that the engine refuses says why and does not claim success', async 
   await ui.unmount()
 })
 
-test('themes switch by command and by the header dots; Auto uses the theme keys', async ($, on) => {
+test('themes switch by command and by the header\'s theme mark, a press stepping to the next; Auto uses the theme keys', async ($, on) => {
   stand($, on)
   await $.command.run({ command: 'cockpit', args: 'theme nord' } as never)
   let ui = await $.ui.mount(pane('overview') as never)
   expect(JSON.stringify(await ui.drawn())).toContain('#88c0d0')
-  await ui.press({ key: 'theme-paper' })
+  // Nord is the last theme: the next is Auto, then Paper
+  await ui.press({ key: 'theme' })
+  await ui.press({ key: 'theme' })
   expect(JSON.stringify(await ui.drawn())).toContain('#b68235')
-  await ui.press({ key: 'theme-auto' })
+  await $.command.run({ command: 'cockpit', args: 'theme auto' } as never)
   const auto = JSON.stringify(await ui.drawn())
   expect(auto).toContain('#b4833a')
   expect(auto).toContain('"color":"text"')

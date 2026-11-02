@@ -404,8 +404,10 @@ export function Files($: $, v: V) {
                   <Text color={t.dim}>{o.lines.length ? (open ? ' ⌄' : ' ›') : ''}</Text>
                 </Button>
               </Box>
-              <Text color={o.add || o.del ? (o.add >= o.del ? t.ok : t.bad) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
-              <Text color={t.dim} size="footnote">{ago(o.at)}</Text>
+              <Box flexShrink={0} columnGap={sp(v, 1)}>
+                <Text color={o.add || o.del ? (o.add >= o.del ? t.ok : t.bad) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
+                <Text color={t.dim} size="footnote">{ago(o.at)}</Text>
+              </Box>
             </Box>
             {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={2}>{diffLines(o.id, o.lines)}</Box>}
           </Box>

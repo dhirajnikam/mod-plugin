@@ -104,15 +104,10 @@ export function Header($: $, v: V) {
         {v.desk ? (
           <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
         ) : (
-          THEME_IDS.map(id => (
-            <Button key={`theme-${id}`} plain onPress={() => setTheme($, id as ThemeId)}>
-              {id === 'auto' ? (
-                <Text color={id === s.theme ? t.accent : t.dim}>{id === s.theme ? '[◐ auto]' : '◐'}</Text>
-              ) : (
-                <Text color={THEMES[id].accent} backgroundColor={THEMES[id].bg}>{id === s.theme ? '◉' : '●'}</Text>
-              )}
-            </Button>
-          ))
+          // One mark for the theme in use, a press stepping to the next, so the header keeps to one line in a narrow pane
+          <Button key="theme" plain onPress={() => setTheme($, THEME_IDS[(THEME_IDS.indexOf(s.theme) + 1) % THEME_IDS.length] as ThemeId)}>
+            {s.theme === 'auto' ? <Text color={t.dim}>◐</Text> : <Text color={THEMES[s.theme].accent} backgroundColor={THEMES[s.theme].bg}>●</Text>}
+          </Button>
         )}
         <Text backgroundColor={s.waiting ? t.busy : s.isWorking ? t.accent : t.text} color={t.bg || 'inverseText'}>{` ${run} `}</Text>
       </Box>
@@ -142,11 +137,15 @@ export function Tabs($: $, v: V) {
       </Box>
     )
   }
-  // The underline follows the tab row: each tab's width, and the one-cell gap between tabs
-  const total = tabs.reduce((a, [, l, b]) => a + l.length + (b ? b.length + 2 : 0) + 2, 0) + tabs.length - 1
+  // The underline follows the tab row: each tab's width, and the one-cell gap between tabs. A pane too narrow for the
+  // padded tabs draws them tight, without the space around each name, before it lets the row wrap
+  const widthOf = (label: string, badge: string, tight: boolean) => (tight ? label.length + (badge ? badge.length + 1 : 0) : label.length + (badge ? badge.length + 2 : 0) + 2)
+  const totalOf = (tight: boolean) => tabs.reduce((a, [, l, b]) => a + widthOf(l, b, tight), 0) + tabs.length - 1
+  const tight = totalOf(false) > v.w
+  const total = totalOf(tight)
   const fits = total <= v.w
   const under = tabs.map(([id, label, badge], i) => {
-    const n = label.length + (badge ? badge.length + 2 : 0) + 2
+    const n = widthOf(label, badge, tight)
     return (
       <Text key={`u-${id}`} color={id === s.tab ? t.accent : t.divider}>
         {(id === s.tab ? '━' : '─').repeat(n)}
@@ -163,9 +162,9 @@ export function Tabs($: $, v: V) {
             <Button key={`tab-${id}`} label={badge ? `${label} ${badge}` : label} variant={id === s.tab ? 'primary' : 'secondary'} onPress={open} />
           ) : (
             <Button key={`tab-${id}`} plain onPress={open}>
-              <Text color={id === s.tab ? t.text : t.dim} bold={id === s.tab} backgroundColor={!fits && id === s.tab ? t.wash || undefined : undefined}>{` ${label}`}</Text>
-              {badge ? <Text backgroundColor={t.wash || undefined} color={t.deep}>{` ${badge} `}</Text> : <Text> </Text>}
-              {badge ? <Text> </Text> : <Text />}
+              <Text color={id === s.tab ? t.text : t.dim} bold={id === s.tab} backgroundColor={!fits && id === s.tab ? t.wash || undefined : undefined}>{tight ? label : ` ${label}`}</Text>
+              {badge ? <Text backgroundColor={t.wash || undefined} color={t.deep}>{tight ? ` ${badge}` : ` ${badge} `}</Text> : <Text>{tight ? '' : ' '}</Text>}
+              {badge && !tight ? <Text> </Text> : <Text />}
             </Button>
           )
         })}

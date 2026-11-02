@@ -18,6 +18,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A short README for newcomers, with the details moved to `docs/`, one page per tab and topic.
 
 ### Changed
+- The pane's header keeps to one line in a narrow terminal: one mark for the theme in use, a press stepping to the
+  next, in place of a dot for each theme. Tabs too wide for the pane draw tight, without the space around each name,
+  and keep their underline instead of wrapping.
+- File rows keep their +/− figures on one line: a long path gives way, cut from its start so its name stays in view
+  (the Git tab cut it from its end).
 - Claude's replies, your prompts, tool cards and the Done line each open a row apart, as Claude Code's own do; a
   summary of what Claude wrote between tool calls keeps Claude Code's row, which marks it as one.
 - The previews of the Overview, Agents and Rules tabs in the docs are redrawn from the new layout.
