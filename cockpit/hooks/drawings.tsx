@@ -311,14 +311,15 @@ export function drawings(on: Parameters<Register>[0]) {
     const { Box, Text } = $.ui.resolve(e)
     const s = await read($, S)
     const t = chatThemeOf(s)
-    // ponytail: a turn's flow is told by its duration matching the one turn.complete measured, or the flow's own; two
-    // equal turns both match
+    // A turn's flow is the one whose last turn the engine measured at this row's duration; one saved before flows kept
+    // it is told by its clock times
+    // ponytail: two turns of the same duration to the millisecond would both match
     const isLatest = Math.abs(e.props.durationMs - s.lastTurnMs) < 2500
     const ended = s.flows.filter(f => f.endedAt !== undefined)
-    const i = isLatest ? ended.length - 1 : ended.findIndex(f => Math.abs((f.endedAt ?? 0) - f.startedAt - e.props.durationMs) < 2500)
-    const f = ended[i]
-    // What the flow spent: the cost from its start to the next flow's start, or to now for the latest
-    const spent = f?.costAt !== undefined ? (ended[i + 1]?.costAt ?? s.cost) - f.costAt : 0
+    const f = ended.find(x => x.ms === e.props.durationMs) ?? ended.find(x => x.ms === undefined && Math.abs((x.endedAt ?? 0) - x.startedAt - e.props.durationMs) < 2500) ?? (isLatest ? ended[ended.length - 1] : undefined)
+    // What the flow spent: the cost from its start to the next flow's start (one still running included), or to now
+    const after = f ? s.flows[s.flows.indexOf(f) + 1] : undefined
+    const spent = f?.costAt !== undefined ? (after?.costAt ?? s.cost) - f.costAt : 0
     const files = f ? new Set(s.ops.filter(o => o.at >= f.startedAt && o.at <= (f.endedAt ?? 0) && o.op !== 'Read' && o.op !== 'Search').map(o => o.path)).size : 0
     const vs = verifyState(s.agents)
     const word = f?.status === 'aborted' ? 'Stopped' : isLatest && s.repo.changed.length ? 'Done · ready to commit' : 'Done'

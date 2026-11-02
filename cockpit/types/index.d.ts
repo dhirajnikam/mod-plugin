@@ -144,6 +144,8 @@ export type Flow = {
   turns?: number
   // The session's cost when it opened, so the chat's turn line says what this flow spent
   costAt?: number
+  // Its last turn's duration as the engine measured it: the TurnDuration row that ends it carries the same figure
+  ms?: number
 }
 
 export type PlanItem = { id: string; text: string; st: 'pending' | 'in_progress' | 'completed' }
