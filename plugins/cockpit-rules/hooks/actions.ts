@@ -50,14 +50,14 @@ export function ghLoginWeb($: $, ...args: unknown[]): ReturnType<typeof git.ghLo
 export function gitInit($: $, ...args: unknown[]): ReturnType<typeof git.gitInit> {
   return $.cockpit.act({ name: 'gitInit', args }) as never
 }
-export function judge($: $, ...args: unknown[]): ReturnType<typeof decisions.judge> {
-  return $.cockpit.act({ name: 'judge', args }) as never
-}
 export function loadAccounts($: $, ...args: unknown[]): ReturnType<typeof git.loadAccounts> {
   return $.cockpit.act({ name: 'loadAccounts', args }) as never
 }
 export function loadProject($: $, ...args: unknown[]): ReturnType<typeof git.loadProject> {
   return $.cockpit.act({ name: 'loadProject', args }) as never
+}
+export function openPane($: $, ...args: unknown[]): ReturnType<typeof core.openPane> {
+  return $.cockpit.act({ name: 'openPane', args }) as never
 }
 export function pullNow($: $, ...args: unknown[]): ReturnType<typeof git.pullNow> {
   return $.cockpit.act({ name: 'pullNow', args }) as never

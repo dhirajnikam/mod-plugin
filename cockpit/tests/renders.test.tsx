@@ -50,8 +50,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
         const ui = await $.ui.mount({ plugin: 'cockpit', surface, ...site } as never)
         expect(labelled(await ui.drawn())).toEqual([])
         const drawn = JSON.stringify(await ui.drawn())
-        // Focus on hides tool cards and turn lines; everything else is cockpit's own
-        const hidden = focus === 'on' && (site.component === 'ToolUse' || site.component === 'ToolGroup' || site.component === 'TurnDuration')
+        // Focus on hides tool cards; the turn's line stays, as its outcome; everything else is cockpit's own
+        const hidden = focus === 'on' && (site.component === 'ToolUse' || site.component === 'ToolGroup')
         // The desktop draws its own spinner row, with Cockpit's words
         const engineSpinner = surface !== 'terminal' && site.component === 'Spinner'
         if (engineSpinner) expect(messages.pop()).toBe('Editing a.ts')
