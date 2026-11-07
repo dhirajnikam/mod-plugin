@@ -57,9 +57,11 @@ Install either `cockpit` or the parts, not both: each registers `/cockpit` and f
 Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in
 the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 
-- **[Autopilot](docs/autopilot.md)**: give it a goal, and an optional budget and time limit. Claude writes a roadmap of
-  checkable milestones and works through them, testing each, until the judges agree every one is done. It pauses for
-  you on anything hard to undo.
+- **[Autopilot](docs/autopilot.md)**, in two roles. **Task**: give it a goal, and an optional budget and time limit.
+  Claude writes a roadmap of checkable milestones and works through them, testing each, each cycle told what the
+  earlier ones did, until the judges agree every one is done. **Product owner**: give it a vision; each round it
+  studies the product and where its field is going, the judges pick the next goal from its options, and the task
+  builds it. Both pause for you on anything hard to undo.
 - **[Judges](docs/judges.md)**: when Claude asks you something, a panel of 3 to 9 model judges, each with its own point
   of view, votes. In Auto mode a clear winner answers; anything that publishes, pushes, deletes or touches settings
   comes to you.
@@ -70,7 +72,8 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 |---|---|
 | `/cockpit` | open the pane |
 | `/cockpit tab <overview\|files\|agents\|git\|rules>` | open a tab (`files` is Activity) |
-| `/cockpit autopilot [$budget] [hours h] <goal>` | work on a goal until the judges agree it is done; `stop`, `resume` |
+| `/cockpit task [$budget] [hours h] <goal>` | work on a goal until the judges agree it is done (`autopilot` is the same); `stop`, `resume` |
+| `/cockpit product [$budget] [hours h] <vision>` | lead the product toward a vision, goal after goal, the judges choosing each; `stop`, `resume` |
 | `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |
 | `/cockpit test` | run the Verify pipeline now |
 | `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |

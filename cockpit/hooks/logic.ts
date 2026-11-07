@@ -91,6 +91,8 @@ export const AGENT_TYPES = ['general-purpose', 'Explore', 'Plan', ...EXPERTS.map
 
 // Judge seats by complexity, and the two-thirds bar
 export const nJ = (score: number) => (score <= 3 ? 3 : score <= 6 ? 6 : 9)
+// The judges' seats, in the order they are filled (their points of view are in ops/decisions.ts)
+export const SEAT_NAMES = ['Pragmatist', 'Security', 'Maintainer', 'End user', 'Sceptic', 'Performance', 'Tester', 'Architect', 'Minimalist']
 export const thrOf = (n: number) => Math.ceil((n * 2) / 3)
 
 export const fmt = (ms: number) => {

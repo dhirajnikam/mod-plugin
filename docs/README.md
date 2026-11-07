@@ -8,7 +8,7 @@
 - [Rules tab](rules.md): hooks, permission rules and instructions for the repository or for you
 - [Flows and progress](flows.md): where a flow's steps come from and how progress is counted
 - [Decisions by judges](judges.md): how the judges vote, and what always comes to you
-- [Autopilot](autopilot.md): working on a goal cycle after cycle until it is done
+- [Autopilot](autopilot.md): a task worked on cycle after cycle until it is done, and a product owner that picks each next goal
 - [Privacy and cost](privacy.md): what Cockpit keeps, spends and turns on by default
 - [Architecture](architecture.md): for contributors: the events Cockpit hooks, its state, and where each tab lives
 

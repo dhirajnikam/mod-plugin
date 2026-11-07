@@ -86,8 +86,8 @@ export const register: Register = on => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: autopilot [$budget] [hours h] <goal> (stop, resume), focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
-      argumentHint: '[autopilot [$budget] [hours h] <goal> | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
+      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []
@@ -134,18 +134,28 @@ export const register: Register = on => {
 
   on('command.run', { command: 'cockpit' }, async ($, e) => {
     const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
-    if (verb === 'autopilot') {
+    // The autopilot's two roles: task (also `autopilot`) works on one goal until it is achieved; product leads the
+    // product toward a vision, goal after goal, the judges choosing each
+    if (verb === 'autopilot' || verb === 'task' || verb === 'product') {
+      const product = verb === 'product'
+      const name = product ? 'Product owner' : 'Autopilot'
       const rest = e.args.trim().split(/\s+/).slice(1)
-      if (rest[0] === 'stop') return (await stopAutopilot($, 'stopped', 'you stopped it'), { text: 'Autopilot stopped.' })
-      if (rest[0] === 'resume') return (await resumeAutopilot($), { text: 'Autopilot resumed.' })
+      if (rest[0] === 'stop') return (await stopAutopilot($, 'stopped', 'you stopped it'), { text: `${name} stopped.` })
+      if (rest[0] === 'resume') return (await resumeAutopilot($), { text: `${name} resumed.` })
       const budget = Number(rest.find(w => /^\$\d+(\.\d+)?$/.test(w))?.slice(1) ?? 0)
       const hours = Number(rest.find(w => /^\d+(\.\d+)?h$/.test(w))?.slice(0, -1) ?? 0)
       const goal = rest.filter(w => !/^\$\d+(\.\d+)?$/.test(w) && !/^\d+(\.\d+)?h$/.test(w)).join(' ').trim()
-      if (!goal) return { text: 'Usage: /cockpit autopilot [$budget] [hours h] <goal>, e.g. /cockpit autopilot $20 4h add offline sync. Leave out the budget and hours to run until it is done. /cockpit autopilot stop · resume' }
-      await startAutopilot($, goal, budget, hours)
+      if (!goal)
+        return {
+          text: product
+            ? 'Usage: /cockpit product [$budget] [hours h] <vision>, e.g. /cockpit product $50 12h the fastest offline-first notes app. Each round it studies the product and its field, the judges pick the next goal, and the task builds it. /cockpit product stop · resume'
+            : `Usage: /cockpit ${verb} [$budget] [hours h] <goal>, e.g. /cockpit ${verb} $20 4h add offline sync. Leave out the budget and hours to run until it is done. /cockpit ${verb} stop · resume`,
+        }
+      const no = await startAutopilot($, goal, budget, hours, product ? 'product' : 'task')
+      if (no) return { text: no }
       await set($, { tab: 'overview' })
       await openPane($)
-      return { text: `Autopilot: ${goal}${budget ? ` · $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}` }
+      return { text: `${name}: ${goal}${budget ? ` · $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}` }
     }
     if (verb === 'theme') {
       if (!THEME_IDS.includes(arg as ThemeId)) return { text: `Themes: ${THEME_IDS.join(', ')}` }

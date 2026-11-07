@@ -26,7 +26,9 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
   its history, codebase memory and hand-off briefs. Outside it, only when you press a button in the Rules tab: the
   `settings.json` or `CLAUDE.md` you are looking at, which for **You, everywhere** are `~/.claude/settings.json` and
   `~/.claude/CLAUDE.md`. It re-reads a file before each change and refuses to overwrite a settings file it cannot parse.
-  The autopilot's roadmap, `.cockpit/roadmap.md`, is written by Claude at Cockpit's request; Cockpit only reads it.
+  The autopilot's roadmap, `.cockpit/roadmap.md`, and the product owner's `.cockpit/product.md` are written by Claude
+  at Cockpit's request; Cockpit writes only the roadmap's title when a goal starts, keeping the one before in
+  `.cockpit/roadmaps/`.
 - **Keeps preferences in Claude Code's plugin store**: theme, Focus, the judges' mode, Git settings, the accounts you
   saved (a name, an email and a gh login, never a token), and the agents you made with **+ New agent**, which it also
   registers with Claude Code.
@@ -42,7 +44,8 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
   next prompt, even while you are away. Questions worded as hard to undo (publishing, pushing, deleting, merging,
   settings, permissions, credentials), questions only you can answer, and splits come to you; this screening is by
   keywords, so read what the judges did in the Overview's Decisions. The autopilot sends each of its cycles as a
-  prompt, and while it runs the judges' three-in-a-row limit is lifted.
+  prompt, and while it runs the judges' three-in-a-row limit is lifted. The product owner's next goal is the judges'
+  choice, never yours, and its scouting turns search the web.
 
 Cockpit stores no credentials. A GitHub token you paste in the Git tab goes straight to `gh auth login` on standard
 input, and gh keeps it in its own credential store.

@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The autopilot in two roles. **Task** (`/cockpit task`, or `autopilot` as before) works on one goal until it is
+  achieved. **Product owner** (`/cockpit product <vision>`) leads the product: each round it studies the product and
+  where its field is going on the web, proposes two to four next goals, the judges pick one, and the task builds it;
+  then the next round. A stalled goal is set aside and another picked. The Agents tab's Autopilot form chooses the
+  role; the Overview's card shows the round, the vision and the goals built.
+- Judges give a one-line reason with each vote, shown under each seat in the Overview's Decisions.
 - Cockpit in parts: `cockpit-core` and an add-on for each tab (`cockpit-overview`, `-activity`, `-agents`, `-git`,
   `-rules`) and for the chat (`cockpit-chat`), to install only what you want. The pane shows a tab for each add-on
   installed. The parts are built from `cockpit/` by `scripts/split.py`; the all-in-one `cockpit` stays as it was.
@@ -40,6 +46,12 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- The autopilot no longer goes round the same work cycle after cycle. Each cycle is told what the earlier ones
+  changed and committed; after two cycles with no milestone ticked it is told to split the milestone or change
+  approach; a reworded next step no longer hides a stall. The judges decide a claim of done from the roadmap, the
+  commits and the diff instead of a summary of the chat, and their reasons for Not done go into the next cycle in
+  place of a generic "check everything again"; a second claim on a finished roadmap that took in none of them pauses
+  for you. Each goal starts on a roadmap of its own, the last one kept in `.cockpit/roadmaps/`.
 - The Git tab reads the accounts again each time it opens, on ↻, and every 15 s while the account box is shown, so a
   GitHub login added or removed outside Cockpit (`gh auth login` in a terminal) shows without pressing Detect. Before,
   they were read only when the session started.

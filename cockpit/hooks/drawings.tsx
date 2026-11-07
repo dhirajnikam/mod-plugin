@@ -33,8 +33,10 @@ function liveWords(s: Ph) {
   const ap = s.autopilot
   return [
     running ? `⧉ ${running} agent${running === 1 ? '' : 's'}` : '',
-    ap?.status === 'running' ? `⟳ cycle ${ap.cycle}${ap.total ? ` · ${ap.done}/${ap.total}` : ''}${ap.budget ? ` · $${(s.cost - ap.costAt).toFixed(2)}/$${ap.budget}` : ''}` : '',
-    ap?.status === 'paused' ? '⟳ autopilot paused' : '',
+    ap?.status === 'running'
+      ? `${ap.role === 'product' ? `◈ round ${ap.round ?? 1} · ` : '⟳ '}${ap.phase === 'scout' ? 'scouting' : `cycle ${ap.cycle}`}${ap.phase !== 'scout' && ap.total ? ` · ${ap.done}/${ap.total}` : ''}${ap.budget ? ` · $${(s.cost - ap.costAt).toFixed(2)}/$${ap.budget}` : ''}`
+      : '',
+    ap?.status === 'paused' ? (ap.role === 'product' ? '◈ product owner paused' : '⟳ autopilot paused') : '',
   ].filter(Boolean)
 }
 

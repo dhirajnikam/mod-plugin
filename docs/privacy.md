@@ -23,8 +23,8 @@ has no row here.
 | `commit-message` | when the files ticked for the next commit change | Haiku | the diff of the ticked files and the first 60 lines of each new file | (always on, in every commit mode) |
 | `feature-names` | a session start that finds files added or removed | Sonnet | each source file's path, exports, first comment and imports | (always on) |
 | `judge-complexity` | each question or next step Claude asks you | Haiku | the question and its options | `/cockpit mode off` |
-| `judge-context` | each judged decision | a fork of the session's model | the whole conversation so far, asked for a 120-word summary | `/cockpit mode off` |
-| `judge-votes` | each judged decision, 3, 6 or 9 times | Haiku | that summary, the question and its options | `/cockpit mode off` |
+| `judge-context` | each judged decision but the autopilot's | a fork of the session's model | the whole conversation so far, asked for a 120-word summary | `/cockpit mode off` |
+| `judge-votes` | each judged decision, 3, 6 or 9 times | Haiku | that summary, the question and its options; for the autopilot's claim of done, the roadmap, the commits since it began, the uncommitted diffstat and the end of Claude's answer; for the product owner's next goal, the vision, the goals built and its study | `/cockpit mode off` |
 | `agent-definition` | **+ New agent** | Sonnet | the description you typed | (only when you press it) |
 
 ## Every command it runs

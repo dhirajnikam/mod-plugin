@@ -30,6 +30,8 @@ export type Decision = {
   result: string
   // What the judges recommend where they only advise (Ask me mode, or a decision that is hard to undo)
   advice?: string
+  // Each seat's one-line reason for its vote, in seat order ('' while it has not voted)
+  reasons?: string[]
   // question: Claude's question tool; next: the app's next-step box at the end of a turn
   kind?: 'question' | 'next'
 }
@@ -82,6 +84,23 @@ export type Autopilot = {
   // Milestones ticked and in all, read from .cockpit/roadmap.md after each cycle
   done: number
   total: number
+  // Task: works on one goal until it is achieved. Product owner: picks each next goal from where the product and its
+  // field are going, by the judges' vote, and has Task build it, round after round (absent: task)
+  role?: 'task' | 'product'
+  // When the current goal started: its cycles' memory and the judges' evidence count from here (absent: at)
+  goalAt?: number
+  // Product owner: the vision it leads toward, its round, and whether it is scouting the next goal or building one
+  vision?: string
+  round?: number
+  phase?: 'scout' | 'build'
+  // Goals the product owner has had built, oldest first
+  shipped?: string[]
+  // Cycles in a row with no milestone ticked; past two the prompt asks for another approach, at four it pauses
+  stuck?: number
+  // What the judges said was missing at the last done-check, carried into the next cycle; and DONE claims in a row
+  // that added nothing new to the roadmap
+  gaps?: string
+  claims?: number
 }
 
 // A chain of experts on one task; each gets the reports of the ones before it
@@ -265,8 +284,9 @@ export type Ph = {
     // The run (an agent id) or team agent (type:<type>) being run again with your instructions, and those instructions
     rerunFor: string
     rerunText: string
-    // The autopilot form: open, and its goal, budget and hours as typed
+    // The autopilot form: open, its role (task or product owner), and its goal, budget and hours as typed
     apOpen?: boolean
+    apRole?: 'task' | 'product'
     apGoal?: string
     apBudget?: string
     apHours?: string

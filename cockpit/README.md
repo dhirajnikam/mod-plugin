@@ -20,7 +20,7 @@ Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session:
 - [**Agents**](../docs/agents.md): pipelines, six experts, agents made from a description, trackers, connections, memory
 - [**Git**](../docs/git.md): commits written from the diff, commit modes, a git graph, accounts
 - [**Rules**](../docs/rules.md): hooks, permission rules and instructions, for the repository or for you
-- [**Autopilot**](../docs/autopilot.md): work on a goal until the judges agree it is done
+- [**Autopilot**](../docs/autopilot.md): work on a goal until the judges agree it is done, or lead the product goal after goal
 - [**Judges**](../docs/judges.md) and [**flows**](../docs/flows.md): who answers Claude's questions, and how progress is counted
 
 Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit keeps, spends and turns on by default.

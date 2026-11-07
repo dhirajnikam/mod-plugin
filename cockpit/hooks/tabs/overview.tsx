@@ -57,6 +57,7 @@ import {
   PIPELINES,
   FLOWS,
   progressOf,
+  SEAT_NAMES,
   expertGlyph,
   expertName,
   verifyState,
@@ -148,11 +149,13 @@ export function Overview($: $, v: V) {
         const live = ap.status === 'running'
         const spent = Math.max(0, s.cost - ap.costAt)
         const col = live ? t.busy : ap.status === 'done' ? t.ok : ap.status === 'paused' ? t.accent : t.dim
+        const po = ap.role === 'product'
+        const scouting = po && ap.phase === 'scout'
         return (
           <Box flexDirection="column" borderStyle={live ? 'round' : undefined} borderColor={live ? t.busy : undefined} paddingX={live ? 1 : 0}>
             <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
               <Text size="footnote" bold>
-                <Text color={col}>{`⟳ AUTOPILOT · ${ap.status === 'running' ? `CYCLE ${ap.cycle}` : ap.status.toUpperCase()}`}</Text>
+                <Text color={col}>{`${po ? `◈ PRODUCT OWNER · ROUND ${ap.round ?? 1}` : '⟳ AUTOPILOT'} · ${ap.status !== 'running' ? ap.status.toUpperCase() : scouting ? 'SCOUTING' : `CYCLE ${ap.cycle}`}`}</Text>
               </Text>
               <Box columnGap={sp(v, 1)}>
                 {live ? (
@@ -171,8 +174,11 @@ export function Overview($: $, v: V) {
                 )}
               </Box>
             </Box>
-            <Text color={t.text} wrap="wrap">{ap.goal}</Text>
-            {ap.total > 0 && (
+            {po && <Text color={t.dim} size="footnote" wrap="wrap">{`Vision: ${ap.vision ?? ''}${ap.shipped?.length ? `  ·  ${ap.shipped.length} ${ap.shipped.length === 1 ? 'goal' : 'goals'} built` : ''}`}</Text>}
+            <Text color={t.text} wrap="wrap">{scouting ? 'Studying the product and its field for the next goal; the judges will pick it' : ap.goal}</Text>
+            {live && !scouting && (ap.stuck ?? 0) >= 2 && <Text color={t.accent} size="footnote" wrap="wrap">{`${ap.stuck} cycles without a milestone ticked: told to split it or try another way`}</Text>}
+            {live && !scouting && !!ap.gaps && <Text color={t.accent} size="footnote" wrap="wrap">{`Judges: not done yet · ${ap.gaps.replace(/^- /gm, '').split('\n').join(' · ')}`}</Text>}
+            {!scouting && ap.total > 0 && (
               <Box columnGap={sp(v, 1)} alignItems="center">
                 <Bar ui={v.ui} w={14} frac={ap.done / ap.total} fill={t.ok} track={t.track} />
                 <Text color={t.dim} size="footnote">{`${ap.done} of ${ap.total} milestones`}</Text>
@@ -513,6 +519,15 @@ export function Overview($: $, v: V) {
                     </Box>
                   )}
                   <Text color={t.dim}>{d.opts.map((o, i) => `${i + 1}. ${o} (${tl.counts[i] ?? 0})`).join('   ')}</Text>
+                  {/* Why each judge voted as it did */}
+                  {d.votes.map((vote, i) =>
+                    vote >= 0 && d.reasons?.[i] ? (
+                      <Text key={`why-${d.id}-${i}`} size="footnote" wrap="wrap">
+                        <Text color={vote === tl.top ? t.ok : t.bad}>{`${vote === tl.top ? '✓' : '×'} ${SEAT_NAMES[i % SEAT_NAMES.length]} · ${d.opts[vote] ?? ''}: `}</Text>
+                        <Text color={t.dim}>{d.reasons[i]}</Text>
+                      </Text>
+                    ) : null,
+                  )}
                 </Box>
               )}
             </Box>

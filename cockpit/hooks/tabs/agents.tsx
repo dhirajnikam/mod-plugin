@@ -294,7 +294,7 @@ export function Agents($: $, v: V) {
   const startFromForm = () => {
     const goal = (s.ui.apGoal ?? '').trim()
     if (!goal) return undefined
-    return Promise.all([startAutopilot($, goal, Number(s.ui.apBudget) || 0, Number(s.ui.apHours) || 0), set($, st => ({ tab: 'overview', ui: { ...st.ui, apOpen: false } }))])
+    return Promise.all([startAutopilot($, goal, Number(s.ui.apBudget) || 0, Number(s.ui.apHours) || 0, s.ui.apRole ?? 'task'), set($, st => ({ tab: 'overview', ui: { ...st.ui, apOpen: false } }))])
   }
   const section = (label: string, extra = '') => (
     <Text size="footnote">
@@ -355,13 +355,18 @@ export function Agents($: $, v: V) {
       )}
       {s.ui.apOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
-          <Input key="ap-goal" label="Goal" placeholder="Add offline sync, with tests, and keep the app fast" value={s.ui.apGoal ?? ''} rows={grow(v, s.ui.apGoal, 'Goal')} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apGoal: val } }))} onSubmit={() => startFromForm()} />
+          <Seg v={v} id="ap-role" value={s.ui.apRole ?? 'task'} items={[['task', '⟳ Task'], ['product', '◈ Product owner']]} onPick={k => set($, st => ({ ui: { ...st.ui, apRole: k as 'task' | 'product' } }))} />
+          <Input key="ap-goal" label={s.ui.apRole === 'product' ? 'Vision' : 'Goal'} placeholder={s.ui.apRole === 'product' ? 'The fastest offline-first notes app for teams' : 'Add offline sync, with tests, and keep the app fast'} value={s.ui.apGoal ?? ''} rows={grow(v, s.ui.apGoal, 'Goal')} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apGoal: val } }))} onSubmit={() => startFromForm()} />
           <Box columnGap={sp(v, 2)} flexWrap="wrap" alignItems="center">
             <Input key="ap-budget" label="Budget $" placeholder="none" value={s.ui.apBudget ?? ''} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apBudget: val } }))} onSubmit={() => startFromForm()} />
             <Input key="ap-hours" label="Hours" placeholder="none" value={s.ui.apHours ?? ''} submitLabel="start" onInput={val => set($, st => ({ ui: { ...st.ui, apHours: val } }))} onSubmit={() => startFromForm()} />
-            <Button key="ap-go" label="Start autopilot" variant="primary" onPress={() => startFromForm()} />
+            <Button key="ap-go" label={s.ui.apRole === 'product' ? 'Start product owner' : 'Start task'} variant="primary" onPress={() => startFromForm()} />
           </Box>
-          <Text color={t.dim} size="footnote" wrap="wrap">Claude works cycle after cycle from a roadmap in .cockpit/roadmap.md until the judges agree the goal is reached. Leave budget and hours empty to run until it is done; it pauses for you on anything hard to undo, and after three cycles that change nothing.</Text>
+          <Text color={t.dim} size="footnote" wrap="wrap">
+            {s.ui.apRole === 'product'
+              ? 'Each round the product owner studies the product and where its field is going, proposes the next goals, and the judges pick one; the task builds it, then the next round starts. It runs until you stop it or a limit is hit, and never pushes or publishes.'
+              : 'Claude works cycle after cycle from a roadmap in .cockpit/roadmap.md, each cycle told what the earlier ones did, until the judges agree the goal is reached. Leave budget and hours empty to run until it is done; it pauses for you on anything hard to undo, and after three cycles that change nothing.'}
+          </Text>
         </Box>
       )}
       {s.ui.spawnOpen && (

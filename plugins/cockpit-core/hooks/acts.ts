@@ -72,7 +72,7 @@ export async function act($: $, name: string, args: unknown[]): Promise<unknown>
     case 'spawnAgent':
       return spawnAgent($, a, b)
     case 'startAutopilot':
-      return startAutopilot($, a, b, c)
+      return startAutopilot($, a, b, c, d)
     case 'startPipeline':
       return startPipeline($, a, b)
     case 'stopAgent':

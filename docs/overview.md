@@ -10,7 +10,7 @@ with an arrow only where it folds.
 ## From top to bottom
 
 - **Needs you**: the attention card, for a question Claude is waiting on or a commit Cockpit proposes (Commit, Skip).
-- **Autopilot**, once one has started and until you clear it (×): its cycle, the milestones ticked, the spend and the time, with ■ Stop and ▶ Resume.
+- **Autopilot**, once one has started and until you clear it (×): its cycle (and for the product owner its round, vision and goals built), the milestones ticked, what the judges said is missing, the spend and the time, with ■ Stop and ▶ Resume.
   See [Autopilot](autopilot.md).
 - **The current flow**: a progress ring, the task, the goal while one stands (`/goal`), the cost and, once a turn ends, how long it took (while it runs, the
   header's badge counts it), then the
