@@ -207,7 +207,7 @@ export function parseOptions(text: string) {
       return { label: (m ? rest.slice(0, m.index) : rest).trim(), description: m ? rest.slice(m.index + m[0].length).trim() : '' }
     })
     .filter(o => o.label && !o.label.startsWith('::'))
-    .map(o => ({ label: o.label.slice(0, 200), description: o.description.slice(0, 300) }))
+    .map(o => ({ label: o.label.replace(/\s+/g, ' ').slice(0, 200), description: o.description.slice(0, 300) }))
     // The same goal twice is one option, so the judges never split their votes over a repeat
     .filter(o => !seen.has(o.label.toLowerCase()) && !!seen.add(o.label.toLowerCase()))
     .slice(0, 4)

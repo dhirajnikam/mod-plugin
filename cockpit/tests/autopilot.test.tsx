@@ -170,6 +170,8 @@ test('the product owner\'s options parse from decorated, CRLF and odd lines, and
     { label: 'bold', description: 'c' },
     { label: 'plain', description: '' },
   ])
+  // Labels differing only in spacing or case are one option
+  expect(parseOptions('PRODUCT: OPTION a b\nPRODUCT: OPTION A  b\nPRODUCT: OPTION c').map(x => x.label)).toEqual(['a b', 'c'])
   // A unicode line separator ends a line, and a line of spaces parses at once
   expect(parseOptions('PRODUCT: OPTION x\u2028PRODUCT: OPTION y :: r').map(x => x.label)).toEqual(['x', 'y'])
   const t = Date.now()
