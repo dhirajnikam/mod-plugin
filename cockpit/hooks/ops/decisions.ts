@@ -193,12 +193,20 @@ export function productPrompt(ap: Autopilot) {
 }
 
 // "PRODUCT: OPTION <goal> :: <why>" lines from the product owner's answer
+// The line may come quoted, bulleted or bold ("> ", "- ", "**…**") and end in \r; the goal ends at the first " :: ", so
+// a goal may hold "a::b"; a line with no goal before its reason is no option
 export function parseOptions(text: string) {
   return text
     .split('\n')
-    .map(l => l.match(/^\s*PRODUCT:\s*OPTION\s+(.+?)\s*(?:::\s*(.*))?$/i))
-    .filter((m): m is RegExpMatchArray => !!m && !!m[1]?.trim())
-    .map(m => ({ label: (m[1] ?? '').trim().slice(0, 200), description: (m[2] ?? '').trim().slice(0, 300) }))
+    .map(l => l.replace(/\r$/, '').replace(/^[\s>*#-]*/, '').replace(/\*\*/g, '').match(/^PRODUCT:\s*OPTION\s+(.*)$/i)?.[1] ?? '')
+    .map(rest => {
+      const cut = rest.search(/\s+::(\s|$)/)
+      return { label: (cut < 0 ? rest : rest.slice(0, cut)).trim(), description: cut < 0 ? '' : rest.slice(cut).replace(/^\s+::/, '').trim() }
+    })
+    .filter(o => o.label && !o.label.startsWith('::'))
+    .map(o => ({ label: o.label.slice(0, 200), description: o.description.slice(0, 300) }))
+    // The same goal twice is one option, so the judges never split their votes over a repeat
+    .filter((o, i, all) => all.findIndex(x => x.label.toLowerCase() === o.label.toLowerCase()) === i)
     .slice(0, 4)
 }
 

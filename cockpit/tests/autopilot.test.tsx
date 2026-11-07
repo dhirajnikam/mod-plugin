@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { parseOptions } from '../hooks/ops/decisions'
 
 // The autopilot's two roles end to end, with the engine stood in: a file system in memory, judges whose replies the
 // test writes, and the prompts Cockpit sends
@@ -133,7 +134,9 @@ test('the product owner scouts, the judges pick its next goal, the task builds i
   expect(await overview($)).toContain('PRODUCT OWNER · ROUND 1 · SCOUTING')
   // Its options go to the judges, who pick the second; the task starts on it, on a roadmap of its own
   log.vote = '2 - users ask for it most'
-  await cycle($, log, 'Studied the field.\nPRODUCT: OPTION add tags :: every rival has them\nPRODUCT: OPTION add offline sync :: the most asked-for feature\nPRODUCT: OPTION add themes :: cheap', false)
+  await cycle($, log, 'Studied the field.\nPRODUCT: OPTION add tags :: every rival has them\nPRODUCT: OPTION add offline sync :: the most asked-for feature\nPRODUCT: OPTION Add tags :: said twice\nPRODUCT: OPTION add themes :: cheap', false)
+  // A repeated option is listed once
+  expect(log.judged.at(-1)?.match(/^\d+\. add tags/gim)?.length).toBe(1)
   expect(log.judged.at(-1)).toContain('Vision: a great notes app')
   expect(log.submitted.at(-1)).toContain('Autopilot, cycle 1. Goal: add offline sync')
   expect(log.submitted.at(-1)).toContain("product owner's pick, toward the vision: a great notes app")
@@ -157,4 +160,14 @@ test('the product owner scouts, the judges pick its next goal, the task builds i
   await cycle($, log, 'AUTOPILOT: CONTINUE the index')
   expect(log.submitted.at(-1)).toContain('- cycle 1: +1 −1 lines')
   expect(log.submitted.at(-1)?.match(/- cycle \d+:/g)?.length).toBe(1)
+})
+
+test('the product owner\'s options parse from decorated, CRLF and odd lines, and a line with no goal is none', () => {
+  const o = parseOptions('> PRODUCT: OPTION quoted :: a\r\n- PRODUCT: OPTION use a::b namespace :: b\n**PRODUCT: OPTION bold** :: c\nPRODUCT: OPTION :: no goal\nPRODUCT: OPTION plain')
+  expect(o).toEqual([
+    { label: 'quoted', description: 'a' },
+    { label: 'use a::b namespace', description: 'b' },
+    { label: 'bold', description: 'c' },
+    { label: 'plain', description: '' },
+  ])
 })
