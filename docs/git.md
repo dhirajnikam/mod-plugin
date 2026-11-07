@@ -10,7 +10,7 @@ The first time you open the Git tab in a repository it asks five things, once: t
 - **Type, message and branch are written from the changes, not from your prompt.** A quick model reads the diff of the ticked files (and the start of each new file) and writes the commit type (feat, fix, docs, refactor, perf, test, chore) and the subject, again whenever the ticked files change; the branch kind (feature, fix, docs, …) and the branch's name follow them. When the work sits on a base branch (main, master, develop, trunk) a branch is cut by the pattern, e.g. `feature/add-login`; on any other branch the commit stays there. In Manual mode you pick the type.
 - The Next commit card shows the message before anything happens ("writing from the diff…" while the model works); Commit, Ask me and Auto-commit wait for it. If no model answers, the subject names the files changed.
 - **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
-- The tab reads the repository each time you open it (and after every turn); **↻ Refresh** reads it again.
+- The tab reads the repository and the accounts each time you open it (the repository after every turn too, the accounts every 15 s while the account box shows); **↻ Refresh** reads both again. A login whose token stopped working is named in the account box.
 - **Open pull request** needs a branch other than the base, which the pattern gives you.
 - Failed pushes, PRs and commits say why in the toast.
 - Git runs from the repository's top folder, and the settings and account are kept per repository, so a session working in a subfolder commits the right paths with the same settings.

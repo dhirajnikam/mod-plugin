@@ -65,6 +65,9 @@ export function pullNow($: $, ...args: unknown[]): ReturnType<typeof git.pullNow
 export function pushNow($: $, ...args: unknown[]): ReturnType<typeof git.pushNow> {
   return $.cockpit.act({ name: 'pushNow', args }) as never
 }
+export function refreshGit($: $, ...args: unknown[]): ReturnType<typeof git.refreshGit> {
+  return $.cockpit.act({ name: 'refreshGit', args }) as never
+}
 export function refreshRepo($: $, ...args: unknown[]): ReturnType<typeof git.refreshRepo> {
   return $.cockpit.act({ name: 'refreshRepo', args }) as never
 }

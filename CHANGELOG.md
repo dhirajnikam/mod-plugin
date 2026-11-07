@@ -40,6 +40,15 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `register.tsx` to `hooks/drawings.tsx`, leaving `register.tsx` at 559 lines.
 
 ### Fixed
+- The Git tab reads the accounts again each time it opens, on ↻, and every 15 s while the account box is shown, so a
+  GitHub login added or removed outside Cockpit (`gh auth login` in a terminal) shows without pressing Detect. Before,
+  they were read only when the session started.
+- A GitHub login whose token no longer works is named in the account box, with what to do, instead of disappearing
+  from the list; and it can no longer make another login look like gh's active one.
+- ↻ and Detect run in the background, as Push and Pull do: a slow `gh` no longer outlasts the press.
+- The Git setup says what it does: the commit type, subject and branch kind are written from the diff, not from the
+  task or your prompt. The new-branch option has one name in the setup and in the options.
+- `tsc -p cockpit` passes in a session without the desktop app's task-list tools connected.
 - The feature map on the desktop is drawn at full size: it was laid out on a canvas far wider than its boxes, so the
   pane shrank it until the names were unreadable.
 - A loop between features no longer pulls the rest of the map onto one layer or hides nearly every arrow. Uses back up

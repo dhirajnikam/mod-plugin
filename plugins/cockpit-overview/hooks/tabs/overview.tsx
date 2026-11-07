@@ -24,6 +24,7 @@ import {
   removeAccount,
   useAccount,
   refreshRepo,
+  refreshGit,
   set,
   startPipeline,
   setTheme,
@@ -337,7 +338,7 @@ export function Overview($: $, v: V) {
                 </Text>
               )}
             </Box>
-            <Button key="changed-git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshRepo($)])}>
+            <Button key="changed-git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshGit($)])}>
               <Text color={t.accent} size="footnote">Open Git ›</Text>
             </Button>
           </Box>

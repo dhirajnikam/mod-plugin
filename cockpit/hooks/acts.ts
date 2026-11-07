@@ -2,9 +2,9 @@
 // What $.cockpit.act runs, by name: the actions the pane's views and the chat's drawings call, which the plugins
 // split from Cockpit send here to run where the state is written
 import type { $ } from './ops/core'
-import { applyAccount, buildMemory, claim, clearFinished, clearNow, commit, compactNow, confirmPending, createAgent, discoverAgentTypes, ghLoginToken, ghLoginWeb, gitInit, loadAccounts, loadProject, openPane, pullNow, pushNow, refreshRepo, release, removeAccount, rerun, resumeAutopilot, runExpert, runMany, setGit, setTheme, showCommit, skipPending, spawnAgent, startAutopilot, startPipeline, stopAgent, stopAll, stopAutopilot, suggestCommit, testAgent, useAccount } from './actions'
+import { applyAccount, buildMemory, claim, clearFinished, clearNow, commit, compactNow, confirmPending, createAgent, discoverAgentTypes, ghLoginToken, ghLoginWeb, gitInit, loadAccounts, loadProject, openPane, pullNow, pushNow, refreshGit, refreshRepo, release, removeAccount, rerun, resumeAutopilot, runExpert, runMany, setGit, setTheme, showCommit, skipPending, spawnAgent, startAutopilot, startPipeline, stopAgent, stopAll, stopAutopilot, suggestCommit, testAgent, useAccount } from './actions'
 
-export const ACTS = ["applyAccount", "buildMemory", "claim", "clearFinished", "clearNow", "commit", "compactNow", "confirmPending", "createAgent", "discoverAgentTypes", "ghLoginToken", "ghLoginWeb", "gitInit", "loadAccounts", "loadProject", "openPane", "pullNow", "pushNow", "refreshRepo", "release", "removeAccount", "rerun", "resumeAutopilot", "runExpert", "runMany", "setGit", "setTheme", "showCommit", "skipPending", "spawnAgent", "startAutopilot", "startPipeline", "stopAgent", "stopAll", "stopAutopilot", "suggestCommit", "testAgent", "useAccount"] as const
+export const ACTS = ["applyAccount", "buildMemory", "claim", "clearFinished", "clearNow", "commit", "compactNow", "confirmPending", "createAgent", "discoverAgentTypes", "ghLoginToken", "ghLoginWeb", "gitInit", "loadAccounts", "loadProject", "openPane", "pullNow", "pushNow", "refreshGit", "refreshRepo", "release", "removeAccount", "rerun", "resumeAutopilot", "runExpert", "runMany", "setGit", "setTheme", "showCommit", "skipPending", "spawnAgent", "startAutopilot", "startPipeline", "stopAgent", "stopAll", "stopAutopilot", "suggestCommit", "testAgent", "useAccount"] as const
 
 export async function act($: $, name: string, args: unknown[]): Promise<unknown> {
   const [a, b, c, d] = args as [never, never, never, never]
@@ -45,6 +45,8 @@ export async function act($: $, name: string, args: unknown[]): Promise<unknown>
       return pullNow($)
     case 'pushNow':
       return pushNow($)
+    case 'refreshGit':
+      return refreshGit($)
     case 'refreshRepo':
       return refreshRepo($)
     case 'release':

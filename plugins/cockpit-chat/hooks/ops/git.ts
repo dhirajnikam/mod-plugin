@@ -340,10 +340,15 @@ export async function loadAccounts($: $) {
   const email = (await git($, ['config', '--global', 'user.email'])).stdout.trim()
   const st = await gh($, ['auth', 'status', '-h', 'github.com'])
   const out = `${st.stdout}${st.stderr}`
-  // One block per login: "Logged in to github.com account <login> ..." then its "- Active account: true|false"
-  const blocks = out.split(/Logged in to /).slice(1)
-  const logins = blocks.map(b => b.match(/account (\S+)/)?.[1] ?? '').filter(Boolean)
-  const active = blocks.find(b => /Active account: true/.test(b))?.match(/account (\S+)/)?.[1] ?? logins[0] ?? ''
+  // One block per login: "Logged in to github.com account <login> ..." then its "- Active account: true|false"; a
+  // login whose token gh can no longer use reads "Failed to log in to github.com account <login>" instead
+  const parts = out.split(/(Logged in to |Failed to log in to )/)
+  const blocks = parts.slice(1).flatMap((p, i, a) => (i % 2 === 0 ? [{ ok: p.startsWith('Logged'), text: a[i + 1] ?? '' }] : []))
+  const loginOf = (b: { text: string }) => b.text.match(/account (\S+)/)?.[1] ?? ''
+  const logins = blocks.filter(b => b.ok).map(loginOf).filter(Boolean)
+  const stale = blocks.filter(b => !b.ok).map(loginOf).filter(Boolean)
+  const act = blocks.find(b => b.ok && /Active account: true/.test(b.text))
+  const active = act ? loginOf(act) : (logins[0] ?? '')
   // The global identity pushes as the login of its own name when there is one, else as gh's active login
   const mine = logins.find(l => l.toLowerCase() === name.toLowerCase()) ?? active
   const found: Account[] = []
@@ -356,7 +361,19 @@ export async function loadAccounts($: $) {
     found.push({ id: `gh-${l}`, label: l, name: real || l, email: uid ? `${uid}+${l}@users.noreply.github.com` : `${l}@users.noreply.github.com`, gh: l })
   })
   const accounts = [...saved, ...found.filter(f => !saved.some(a => a.id === f.id))]
-  await set($, { accounts, accountId: accounts.some(a => a.id === chosen) ? chosen : (accounts[0]?.id ?? '') })
+  // A login whose token stopped working is named in the box, so it is not just missing; the note clears once it is fixed
+  const staleNote = stale.length ? `The GitHub token for ${stale.join(', ')} no longer works: add a new token, or log in with gh again.` : ''
+  await set($, st => ({
+    accounts,
+    accountId: accounts.some(a => a.id === chosen) ? chosen : (accounts[0]?.id ?? ''),
+    ui: st.ui.ghNote === '' || st.ui.ghNote.startsWith('The GitHub token for ') ? { ...st.ui, ghNote: staleNote } : st.ui,
+  }))
+}
+
+// The Git tab read again: the repository, and the accounts, so a login added or removed outside Cockpit (gh auth login
+// in a terminal, an expired token) shows without a press of Detect. Not every turn: gh auth status checks each token
+export async function refreshGit($: $) {
+  await Promise.all([refreshRepo($), loadAccounts($).catch(() => null)])
 }
 
 export async function saveAccount($: $, a: Account) {

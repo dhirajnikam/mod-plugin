@@ -24,6 +24,7 @@ import {
   removeAccount,
   useAccount,
   refreshRepo,
+  refreshGit,
   set,
   startPipeline,
   setTheme,
@@ -95,7 +96,7 @@ export function Git($: $, v: V) {
         <Text color={t.dim}>This folder is not a git repository.</Text>
         <Box gap={sp(v, 1)}>
           <Button key="git-init" label="git init" variant="primary" onPress={() => gitInit($)} />
-          <Button key="git-refresh" label="Refresh" onPress={() => refreshRepo($)} />
+          <Button key="git-refresh" label="Refresh" onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
         </Box>
       </Box>
     )
@@ -106,7 +107,7 @@ export function Git($: $, v: V) {
   const allOn = staged === s.repo.changed.length
   const acct = s.accounts.find(a => a.id === s.accountId)
   const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
-  const when = g.commitMode === 'manual' ? '' : ` · ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
+  const when = g.commitMode === 'manual' ? '' : `  ·  ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
   const newBranch = plan.branch !== s.repo.current
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
@@ -120,7 +121,7 @@ export function Git($: $, v: V) {
         <Box gap={sp(v, 1)} flexWrap="wrap">
           {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => inBackground($, 'pull', 'Pulling', () => pullNow($))} />}
           {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => inBackground($, 'push', 'Pushing', () => pushNow($))} />}
-          <Button key="git-refresh" label="↻" plain onPress={() => refreshRepo($)} />
+          <Button key="git-refresh" label="↻" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
           <Button key="git-setup" label="⚙" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
         </Box>
       </Box>
@@ -294,7 +295,7 @@ function AccountBox($: $, v: V) {
       <Box justifyContent="space-between" flexWrap="wrap">
         <Text color={t.text} weight="semibold">Account</Text>
         <Box gap={sp(v, 1)}>
-          {modify && <Button key="acct-detect" label="↻ Detect" plain onPress={() => loadAccounts($)} />}
+          {modify && <Button key="acct-detect" label="↻ Detect" plain onPress={() => inBackground($, 'git-refresh', 'Reading the accounts', () => loadAccounts($))} />}
           {acct && <Button key="acct-modify" label={s.ui.acctOpen ? 'Done' : 'Modify'} plain onPress={toggle} />}
         </Box>
       </Box>
@@ -376,7 +377,7 @@ function Setup($: $, v: V) {
       )}
       {step === 1 && (
         <Box flexDirection="column" gap={sp(v, 1)}>
-          <Text color={t.text} wrap="wrap">How are branches named? Cockpit cuts one off the base branch for each piece of work, kind chosen from the task (feature, fix, docs, …).</Text>
+          <Text color={t.text} wrap="wrap">How are branches named? Cockpit cuts one off the base branch for each piece of work, kind written from the changes (feature, fix, docs, …).</Text>
           <Seg v={v} id="bp" value={g.branchPattern} items={BRANCH_PRESETS.map(p => [p.v, p.label] as [string, string])} onPick={k => setGit({ branchPattern: k, branchAuto: true })} />
           <Input key="git-bpat" label="Pattern" value={g.branchPattern} onInput={val => setGit({ branchPattern: val, branchAuto: true })} onSubmit={val => setGit({ branchPattern: val, branchAuto: true })} />
           <Text color={t.dim} size="footnote">{`{kind} {type} {ticket} {slug} {user} · e.g. ${branchName({ ...sample, branchAuto: true }, g.base || 'main')}`}</Text>
@@ -384,12 +385,12 @@ function Setup($: $, v: V) {
             <Input key="git-ticket" label="Ticket" placeholder="API-12" value={g.ticket} onInput={val => setGit({ ticket: val })} onSubmit={val => setGit({ ticket: val })} />
             <Input key="git-user" label="User" value={g.user} onInput={val => setGit({ user: val })} onSubmit={val => setGit({ user: val })} />
           </Box>
-          <Check v={v} id="opt-branchAuto" on={g.branchAuto} label="Cut a new branch when on the base branch" onPress={() => setGit({ branchAuto: !g.branchAuto })} />
+          <Check v={v} id="opt-branchAuto" on={g.branchAuto} label="New branch off the base, by the pattern" onPress={() => setGit({ branchAuto: !g.branchAuto })} />
         </Box>
       )}
       {step === 2 && (
         <Box flexDirection="column" gap={sp(v, 1)}>
-          <Text color={t.text} wrap="wrap">How are commit messages written? The type comes from the task; the subject from your prompt.</Text>
+          <Text color={t.text} wrap="wrap">How are commit messages written? A quick model writes the type and the subject from the diff of the ticked files.</Text>
           <Seg v={v} id="mp" value={g.msgPattern} items={MSG_PRESETS.map(p => [p.v, p.label] as [string, string])} onPick={k => setGit({ msgPattern: k })} />
           <Input key="git-mpat" label="Pattern" value={g.msgPattern} onInput={val => setGit({ msgPattern: val })} onSubmit={val => setGit({ msgPattern: val })} />
           <Text color={t.dim} size="footnote">{`{type} {subject} {Subject} {ticket} {branch} · e.g. ${commitMsg(sample, 'x')}`}</Text>

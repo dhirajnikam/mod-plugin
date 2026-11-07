@@ -23,6 +23,7 @@ import {
   removeAccount,
   useAccount,
   refreshRepo,
+  refreshGit,
   set,
   startPipeline,
   setTheme,
@@ -157,7 +158,7 @@ export function Tabs($: $, v: V) {
     <Box flexDirection="column">
       <Box flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'xs' : 0}>
         {tabs.map(([id, label, badge]) => {
-          const open = () => Promise.all([set($, { tab: id }), id === 'git' ? refreshRepo($) : id === 'agents' ? discoverAgentTypes($) : id === 'files' ? loadProject($) : id === 'rules' ? loadRules($) : null])
+          const open = () => Promise.all([set($, { tab: id }), id === 'git' ? refreshGit($) : id === 'agents' ? discoverAgentTypes($) : id === 'files' ? loadProject($) : id === 'rules' ? loadRules($) : null])
           return v.desk ? (
             <Button key={`tab-${id}`} label={badge ? `${label} ${badge}` : label} variant={id === s.tab ? 'primary' : 'secondary'} onPress={open} />
           ) : (

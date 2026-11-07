@@ -41,6 +41,7 @@ import {
   openPane,
   pickFlow,
   refreshRepo,
+  refreshGit,
   registerExperts,
   set,
   startPipeline,
@@ -107,6 +108,10 @@ export const register: Register = on => {
       if ((await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) {
         await refreshRepo($)
         await measure($)
+        // The accounts too while their box is on screen (the Git tab's setup, or its options open): a gh login added
+        // or a token that stopped working shows by itself
+        const s = await read($, S)
+        if (s.tab === 'git' && (s.ui.more || !s.git.setupDone)) await loadAccounts($).catch(() => null)
       }
     }))
     // Focus, theme and the rest: what draws next reads them
@@ -153,7 +158,7 @@ export const register: Register = on => {
       return { text: `Decisions: ${arg === 'auto' ? 'Auto · judge' : arg === 'ask' ? 'Ask me · the judges advise' : 'Judges off'}` }
     }
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
-    if (verb === 'tab' && arg === 'git') await refreshRepo($)
+    if (verb === 'tab' && arg === 'git') await refreshGit($)
     if (verb === 'tab' && arg === 'files') await loadProject($)
     if (verb === 'tab' && arg === 'rules') await loadRules($)
     if (verb === 'tab' && arg === 'agents') await Promise.all([discoverAgentTypes($), syncAgents($)])
@@ -345,13 +350,14 @@ export const register: Register = on => {
     await trackPlan($, e.tool, e, r, e.agentId)
     return r
   }).catch(($, e, next) => next(e))
-  // This app's own task list, and the wrap-up that ticks it off
-  on('tool.call', { tool: 'mcp__ccd_turn__update_plan' }, async ($, e, next) => {
+  // This app's own task list, and the wrap-up that ticks it off. The matchers are cast loose: the generated
+  // types know only the MCP tools connected when they were written, so the literal alone fails tsc in other sessions
+  on('tool.call', { tool: 'mcp__ccd_turn__update_plan' } as {}, async ($, e, next) => {
     const r = await next(e)
     await trackPlan($, e.tool, e, r, e.agentId)
     return r
   }).catch(($, e, next) => next(e))
-  on('tool.call', { tool: 'mcp__ccd_turn__wrap_up' }, async ($, e, next) => {
+  on('tool.call', { tool: 'mcp__ccd_turn__wrap_up' } as {}, async ($, e, next) => {
     const r = await next(e)
     await trackPlan($, e.tool, e, r, e.agentId)
     // Its question goes to the judges, in the background: the turn ends as it would

@@ -213,3 +213,42 @@ test('accounts come from and go to the machine: a token logs in with gh, push go
   expect(toasts.join(' ')).toContain('Removed alice from this machine')
   await ui.unmount()
 })
+
+test('a gh login added outside Cockpit, or a token that stopped working, shows when the Git tab is opened again', { timeoutMs: 20_000 }, async ($, on) => {
+  // What `gh auth status` says: at first only alice; then dave, added with gh in a terminal; then alice's token fails
+  let status = '  ✓ Logged in to github.com account alice (keyring)\n  - Active account: true\n'
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('process.run', async (_, e) => {
+    const { argv } = e as unknown as { argv: string[] }
+    const cmd = argv.join(' ')
+    const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd.startsWith('git status')) return out('## main\0')
+    if (cmd.startsWith('gh auth status')) return out(`github.com\n${status}`)
+    return out('')
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const ui = await $.ui.mount(PANE as never)
+  expect(JSON.stringify(await ui.drawn())).toContain('alice')
+  expect(JSON.stringify(await ui.drawn())).not.toContain('dave')
+  // A login added in a terminal: opening the tab again finds it, no Detect pressed
+  status += '\n  ✓ Logged in to github.com account dave (keyring)\n  - Active account: false\n'
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  await ui.press({ key: 'acct-modify' })
+  expect(JSON.stringify(await ui.drawn())).toContain('acct-gh-dave')
+  // alice's token fails: she is named in the box, and dave, still logged in, is not taken for the active login
+  status = '  X Failed to log in to github.com account alice (keyring)\n  - Active account: true\n  - The token in keyring is invalid.\n\n  ✓ Logged in to github.com account dave (keyring)\n  - Active account: false\n'
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('The GitHub token for alice no longer works')
+  expect(drawn).not.toContain('acct-gh-alice')
+  // Fixed again: the note goes
+  status = '  ✓ Logged in to github.com account alice (keyring)\n  - Active account: true\n'
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('no longer works')
+  await ui.unmount()
+})

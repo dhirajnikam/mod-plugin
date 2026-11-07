@@ -571,8 +571,8 @@ test('accounts are detected, a token logs in through gh, and the choice is kept 
   const log = stand($, on)
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(pane('git') as never)
-  await ui.press({ key: 'acct-detect' })
-  // An account is now saved: the box shows it, the choices and the login controls wait behind Modify
+  // Opening the tab detects the accounts, no press needed. One is now saved: the box shows it, the choices and the
+  // login controls wait behind Modify
   let drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('"Modify"')
   expect(drawn).not.toContain('gh-token')
