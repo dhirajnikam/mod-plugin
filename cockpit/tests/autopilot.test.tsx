@@ -113,6 +113,10 @@ test('cycles that tick nothing are told to change approach, and a reworded next 
   expect(log.submitted.at(-1)).not.toContain('Do not repeat the last approach')
   await cycle($, log, 'AUTOPILOT: CONTINUE the queue, again')
   expect(log.submitted.at(-1)).toContain('No milestone has been ticked for 2 cycles')
+  // Cycles that change code without ticking go on past six: that is work, not a stall
+  for (let c = 0; c < 6; c++) await cycle($, log, 'AUTOPILOT: CONTINUE the queue')
+  expect(log.submitted.at(-1)).toContain('Autopilot, cycle 9.')
+  expect(await overview($)).toContain('AUTOPILOT · CYCLE 9')
   // Rewording the next milestone while nothing changes still counts toward the stall
   for (const w of ['one', 'two', 'three']) await cycle($, log, `AUTOPILOT: CONTINUE the queue, ${w}`, false)
   expect(await overview($)).toContain('three cycles in a row changed nothing')

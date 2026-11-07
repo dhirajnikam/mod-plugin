@@ -501,7 +501,8 @@ export const register: Register = on => {
     const s = await read($, S)
     const didChange = changed || (atStart !== null && s.repo.changed.length > 0 && changesOf(s.repo.changed) !== atStart)
     // The autopilot's next cycle, once this turn's figures are in (cost for its budget, changes for its stall count)
-    await autopilotTurnEnd($, e.answer ?? '', didChange, !!e.isAborted, s.turnStart).catch(() => null)
+    // A failure here must not leave the run marked running with no next cycle: it pauses, saying why
+    await autopilotTurnEnd($, e.answer ?? '', didChange, !!e.isAborted, s.turnStart).catch(err => stopAutopilot($, 'paused', `its turn's end failed: ${String((err as Error)?.message ?? err).slice(0, 120)}`).catch(() => null))
     // Files a shell command or script changed reach the memory here
     if (didChange) for (const c of s.repo.changed.slice(0, 40)) await updateMemory($, `${await repoRootOf($)}/${c.path}`)
     // The flow's +/− counts what changed in the repository this turn, a shell command's edits too: the lines each file

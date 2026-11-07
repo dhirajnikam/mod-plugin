@@ -346,9 +346,12 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
   const stuck = done > ap.done ? 0 : (ap.stuck ?? 0) + 1
   await set($, { autopilot: { ...ap, next, stall, stuck, done, total } })
   if (asked) return
-  if (stall >= 3 || stuck >= 6) {
+  // Cycles that change nothing pause the task: it is spinning. Cycles that change code without ticking a milestone are
+  // work, so the task goes on (told past two to split the milestone or change approach); the product owner, which has
+  // other goals to build, sets such a goal aside after six
+  const productStuck = ap.role === 'product' && stuck >= 6
+  if (stall >= 3 || productStuck) {
     const why = stall >= 3 ? 'three cycles in a row changed nothing' : `six cycles without a milestone ticked (on: ${next || 'the next milestone'})`
-    // The product owner does not wait on a goal that is stuck: it sets it aside and picks another
     if (ap.role === 'product') return setAside($, why)
     return stopAutopilot($, 'paused', why)
   }
