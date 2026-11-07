@@ -234,3 +234,16 @@ test('a vote is its leading number; stop and resume act only alone and on their 
   await cycle($, log, 'PRODUCT: OPTION add tags :: a\nPRODUCT: OPTION add sync :: b', false)
   expect(log.submitted.at(-1)).toContain('Goal: add sync')
 })
+
+test('DONE claim on the third no-change cycle is judged, not paused', { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand(on)
+  await $.command.run({ command: 'cockpit', args: 'task x' } as never)
+  await settle()
+  log.files['/repo/.cockpit/roadmap.md'] = '# R\n- [x] a: t\n'
+  await cycle($, log, 'AUTOPILOT: CONTINUE verify')
+  await cycle($, log, 'AUTOPILOT: CONTINUE verify', false)
+  await cycle($, log, 'AUTOPILOT: CONTINUE verify', false)
+  log.vote = '1 - done'
+  await cycle($, log, 'AUTOPILOT: DONE all good', false)
+  expect(log.judged.length).toBeGreaterThan(0)
+})

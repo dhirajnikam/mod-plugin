@@ -351,8 +351,10 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
   // work, so the task goes on (told past two to split the milestone or change approach), but not without end: code
   // churned for twelve cycles with nothing ticked is no progress either. The product owner, which has other goals to
   // build, sets such a goal aside after six
+  // A DONE claim on a fully ticked roadmap goes to the judges first: checking finished work changes nothing
+  const finished = claim?.[1]?.toUpperCase() === 'DONE' && total > 0 && done === total
   const limit = ap.role === 'product' ? 6 : 12
-  if (stall >= 3 || stuck >= limit) {
+  if (!finished && (stall >= 3 || stuck >= limit)) {
     const why = stall >= 3 ? 'three cycles in a row changed nothing' : `${limit === 6 ? 'six' : 'twelve'} cycles without a milestone ticked (on: ${next || 'the next milestone'})`
     if (ap.role === 'product') return setAside($, why)
     return stopAutopilot($, 'paused', why)
