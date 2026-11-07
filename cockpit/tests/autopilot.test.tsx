@@ -117,6 +117,11 @@ test('cycles that tick nothing are told to change approach, and a reworded next 
   for (let c = 0; c < 6; c++) await cycle($, log, 'AUTOPILOT: CONTINUE the queue')
   expect(log.submitted.at(-1)).toContain('Autopilot, cycle 9.')
   expect(await overview($)).toContain('AUTOPILOT · CYCLE 9')
+  // ...but not without end: twelve with nothing ticked pause it
+  for (let c = 0; c < 4; c++) await cycle($, log, 'AUTOPILOT: CONTINUE the queue')
+  expect(await overview($)).toContain('twelve cycles without a milestone ticked')
+  await $.command.run({ command: 'cockpit', args: 'task resume' } as never)
+  await settle()
   // Rewording the next milestone while nothing changes still counts toward the stall
   for (const w of ['one', 'two', 'three']) await cycle($, log, `AUTOPILOT: CONTINUE the queue, ${w}`, false)
   expect(await overview($)).toContain('three cycles in a row changed nothing')

@@ -295,7 +295,8 @@ export async function resumeAutopilot($: $) {
   const s = await read($, S)
   if (!s.autopilot || s.autopilot.status === 'running' || s.autopilot.status === 'done') return
   const ap = s.autopilot
-  await set($, { autopilot: { ...ap, status: 'running', why: '', stall: 0, cycle: ap.phase === 'scout' ? ap.cycle : ap.cycle + 1 } })
+  // A resume is your call to go on: the counts that paused it start again
+  await set($, { autopilot: { ...ap, status: 'running', why: '', stall: 0, stuck: 0, cycle: ap.phase === 'scout' ? ap.cycle : ap.cycle + 1 } })
   if (!s.isWorking) await sendCycle($)
 }
 
@@ -347,11 +348,12 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
   await set($, { autopilot: { ...ap, next, stall, stuck, done, total } })
   if (asked) return
   // Cycles that change nothing pause the task: it is spinning. Cycles that change code without ticking a milestone are
-  // work, so the task goes on (told past two to split the milestone or change approach); the product owner, which has
-  // other goals to build, sets such a goal aside after six
-  const productStuck = ap.role === 'product' && stuck >= 6
-  if (stall >= 3 || productStuck) {
-    const why = stall >= 3 ? 'three cycles in a row changed nothing' : `six cycles without a milestone ticked (on: ${next || 'the next milestone'})`
+  // work, so the task goes on (told past two to split the milestone or change approach), but not without end: code
+  // churned for twelve cycles with nothing ticked is no progress either. The product owner, which has other goals to
+  // build, sets such a goal aside after six
+  const limit = ap.role === 'product' ? 6 : 12
+  if (stall >= 3 || stuck >= limit) {
+    const why = stall >= 3 ? 'three cycles in a row changed nothing' : `${limit === 6 ? 'six' : 'twelve'} cycles without a milestone ticked (on: ${next || 'the next milestone'})`
     if (ap.role === 'product') return setAside($, why)
     return stopAutopilot($, 'paused', why)
   }

@@ -26,8 +26,9 @@ pass.
   spend and the time, with ■ Stop, and ▶ Resume when it has paused.
 - **It pauses for you** on a decision it must not make (anything that publishes, pushes, deletes, merges, or touches
   settings, permissions or credentials, and a question only you can answer), after three cycles in a row that change
-  nothing (a reworded next step is not a change), and when you interrupt a turn. Cycles that change code without
-  ticking a milestone go on: that is work, not a stall.
+  nothing (a reworded next step is not a change), after twelve that tick no milestone, and when you interrupt a turn.
+  Cycles that change code without ticking a milestone go on until then, told after two to split the milestone or
+  change approach.
   While it runs, the judges answer Claude's questions and next steps without the usual three-in-a-row limit.
 
 ## Product owner: leads the product, goal after goal
