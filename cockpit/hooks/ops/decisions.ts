@@ -199,11 +199,12 @@ export function productPrompt(ap: Autopilot) {
 export function parseOptions(text: string) {
   const seen = new Set<string>()
   return text
-    .split('\n')
-    .map(l => l.replace(/\r$/, '').replace(/^[\s>*#-]*/, '').replace(/\*\*/g, '').match(/^PRODUCT:\s*OPTION\s+(.*)$/i)?.[1] ?? '')
+    .split(/\r?\n|[\u2028\u2029]/)
+    .map(l => l.replace(/^[\s>*#-]*/, '').replace(/\*\*/g, '').match(/^PRODUCT:\s*OPTION\s+(.*)$/i)?.[1] ?? '')
     .map(rest => {
-      const cut = rest.search(/\s+::(\s|$)/)
-      return { label: (cut < 0 ? rest : rest.slice(0, cut)).trim(), description: cut < 0 ? '' : rest.slice(cut).replace(/^\s+::/, '').trim() }
+      // One whitespace before "::", not a run of them: a run would make the search quadratic on a line of spaces
+      const m = /(?:^|\s)::(?:\s|$)/.exec(rest)
+      return { label: (m ? rest.slice(0, m.index) : rest).trim(), description: m ? rest.slice(m.index + m[0].length).trim() : '' }
     })
     .filter(o => o.label && !o.label.startsWith('::'))
     .map(o => ({ label: o.label.slice(0, 200), description: o.description.slice(0, 300) }))

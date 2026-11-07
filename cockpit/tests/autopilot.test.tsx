@@ -170,6 +170,11 @@ test('the product owner\'s options parse from decorated, CRLF and odd lines, and
     { label: 'bold', description: 'c' },
     { label: 'plain', description: '' },
   ])
+  // A unicode line separator ends a line, and a line of spaces parses at once
+  expect(parseOptions('PRODUCT: OPTION x\u2028PRODUCT: OPTION y :: r').map(x => x.label)).toEqual(['x', 'y'])
+  const t = Date.now()
+  expect(parseOptions(`PRODUCT: OPTION a${' '.repeat(200_000)}b :: r`)[0]?.description).toBe('r')
+  expect(Date.now() - t).toBeLessThan(500)
 })
 
 test('the judges\' "option N" votes count; a product owner nobody voted for, or one stuck goal after another, pauses', { timeoutMs: 20_000 }, async ($, on) => {
