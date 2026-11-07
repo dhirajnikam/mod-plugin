@@ -194,19 +194,20 @@ export function productPrompt(ap: Autopilot) {
 }
 
 // "PRODUCT: OPTION <goal> :: <why>" lines from the product owner's answer
-// The line may come quoted, bulleted or bold ("> ", "- ", "**…**") and end in \r; the goal ends at the first " :: ", so
+// The line may come quoted, bulleted, numbered, bold or as code ("> ", "- ", "1. ", "**…**", "`…`") and end in \r; the goal ends at the first " :: ", so
 // a goal may hold "a::b"; a line with no goal before its reason is no option
 export function parseOptions(text: string) {
   const seen = new Set<string>()
   return text
     .split(/\r?\n|[\u2028\u2029]/)
-    .map(l => l.replace(/^[\s>*#-]*/, '').replace(/\*\*/g, '').match(/^PRODUCT:\s*OPTION\s+(.*)$/i)?.[1] ?? '')
+    .map(l => l.replace(/[`*]/g, '').replace(/^(?:[\s>#-]|\d+[.)])*/, '').match(/^PRODUCT:\s*OPTION\s+(.*)$/i)?.[1] ?? '')
     .map(rest => {
       // One whitespace before "::", not a run of them: a run would make the search quadratic on a line of spaces
       const m = /(?:^|\s)::(?:\s|$)/.exec(rest)
       return { label: (m ? rest.slice(0, m.index) : rest).trim(), description: m ? rest.slice(m.index + m[0].length).trim() : '' }
     })
-    .filter(o => o.label && !o.label.startsWith('::'))
+    // The rules' own template line ("<the goal>") echoed back is no goal
+    .filter(o => o.label && !o.label.startsWith('::') && !/^<[^>]*>$/.test(o.label))
     .map(o => ({ label: o.label.replace(/\s+/g, ' ').slice(0, 200), description: o.description.slice(0, 300) }))
     // The same goal twice is one option, so the judges never split their votes over a repeat
     .filter(o => !seen.has(o.label.toLowerCase()) && !!seen.add(o.label.toLowerCase()))

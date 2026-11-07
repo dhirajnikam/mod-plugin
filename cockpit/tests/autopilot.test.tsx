@@ -170,6 +170,8 @@ test('the product owner\'s options parse from decorated, CRLF and odd lines, and
     { label: 'bold', description: 'c' },
     { label: 'plain', description: '' },
   ])
+  // Numbered or code-formatted lines parse; the rules' template line echoed back does not
+  expect(parseOptions('1. PRODUCT: OPTION a :: x\n2) `PRODUCT: OPTION b :: y`\nPRODUCT: OPTION <the goal> :: <why>').map(x => x.label)).toEqual(['a', 'b'])
   // Labels differing only in spacing or case are one option
   expect(parseOptions('PRODUCT: OPTION a b\nPRODUCT: OPTION A  b\nPRODUCT: OPTION c').map(x => x.label)).toEqual(['a b', 'c'])
   // A unicode line separator ends a line, and a line of spaces parses at once
