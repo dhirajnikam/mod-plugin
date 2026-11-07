@@ -193,3 +193,26 @@ test('the judges\' "option N" votes count; a product owner nobody voted for, or 
   }
   expect(await overview($)).toContain('three goals in a row were set aside')
 })
+
+test('a vote is its leading number; stop and resume act only alone and on their own role; no roadmap is never done', { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand(on)
+  // "stop using jquery" is a goal, not the stop command
+  await $.command.run({ command: 'cockpit', args: 'task stop using jquery' } as never)
+  await settle()
+  expect(log.submitted.at(-1)).toContain('Goal: stop using jquery')
+  // product stop does not stop a task
+  expect(JSON.stringify(await $.command.run({ command: 'cockpit', args: 'product stop' } as never))).toContain('/cockpit task stop')
+  expect(await overview($)).toContain('AUTOPILOT · CYCLE 1')
+  // A claim of done with no milestones goes back with what is missing, though the judges said Done
+  log.vote = '1 - looks fine'
+  await cycle($, log, 'AUTOPILOT: DONE all done')
+  expect(log.submitted.at(-1)).toContain('has no milestones: write them')
+  expect(await overview($)).not.toContain('AUTOPILOT · DONE')
+  await $.command.run({ command: 'cockpit', args: 'task stop' } as never)
+  // The leading number wins over an option the reason mentions
+  log.vote = '2 - better than option 1, which is dull'
+  await $.command.run({ command: 'cockpit', args: 'product a great notes app' } as never)
+  await settle()
+  await cycle($, log, 'PRODUCT: OPTION add tags :: a\nPRODUCT: OPTION add sync :: b', false)
+  expect(log.submitted.at(-1)).toContain('Goal: add sync')
+})

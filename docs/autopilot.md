@@ -18,7 +18,7 @@ pass.
 - **It stops when the judges agree.** Claude ends each cycle with `AUTOPILOT: CONTINUE <next milestone>` or
   `AUTOPILOT: DONE <why>`. A claim of done goes to the judges with the evidence: the roadmap, the commits since the run
   began, what is uncommitted, and the end of Claude's answer. The run ends when two thirds vote Done and every
-  milestone is ticked. Otherwise each judge's reason for Not done goes into the next cycle, which adds them as
+  milestone is ticked (a roadmap with no milestones is never done). Otherwise each judge's reason for Not done goes into the next cycle, which adds them as
   milestones and builds them, or shows why they are met. A second claim in a row on a finished roadmap that took in
   none of the judges' points pauses the run for you instead of arguing on.
 - **Limits are yours.** A budget in dollars and a time limit, each optional: leave them out and it runs until it is

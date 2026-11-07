@@ -140,8 +140,13 @@ export const register: Register = on => {
       const product = verb === 'product'
       const name = product ? 'Product owner' : 'Autopilot'
       const rest = e.args.trim().split(/\s+/).slice(1)
-      if (rest[0] === 'stop') return (await stopAutopilot($, 'stopped', 'you stopped it'), { text: `${name} stopped.` })
-      if (rest[0] === 'resume') return (await resumeAutopilot($), { text: `${name} resumed.` })
+      // stop and resume alone are commands ("task stop using jquery" is a goal), and act only on a run of this role
+      if (rest.length === 1 && (rest[0] === 'stop' || rest[0] === 'resume')) {
+        const ap = (await read($, S)).autopilot
+        if (ap && (ap.role ?? 'task') !== (product ? 'product' : 'task')) return { text: `The run is ${ap.role === 'product' ? 'the product owner: /cockpit product' : 'a task: /cockpit task'} ${rest[0]}` }
+        if (rest[0] === 'stop') return (await stopAutopilot($, 'stopped', 'you stopped it'), { text: `${name} stopped.` })
+        return (await resumeAutopilot($), { text: `${name} resumed.` })
+      }
       const budget = Number(rest.find(w => /^\$\d+(\.\d+)?$/.test(w))?.slice(1) ?? 0)
       const hours = Number(rest.find(w => /^\d+(\.\d+)?h$/.test(w))?.slice(0, -1) ?? 0)
       const goal = rest.filter(w => !/^\$\d+(\.\d+)?$/.test(w) && !/^\d+(\.\d+)?h$/.test(w)).join(' ').trim()

@@ -71,10 +71,10 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
           prompt: `Context: ${brief}\n\nQuestion: ${q}\n${menu}`,
         })
         .catch(() => null)
-      // The vote is "option N" where the reply says so, else its leading number; none is an abstention (-2), never a
-      // vote for the first option
+      // The vote is the reply's leading number, as asked, else an "option N" it names; none is an abstention (-2),
+      // never a vote for the first option
       const text = (r?.isAnswered ? r.text : '').trim()
-      const pick = Number(text.match(/\boption\s*(?:number\s*)?#?(\d+)/i)?.[1] ?? text.match(/^\D{0,12}?(\d+)/)?.[1] ?? 0) - 1
+      const pick = Number(text.match(/^\D{0,12}?(\d+)/)?.[1] ?? text.match(/\boption\s*(?:number\s*)?#?(\d+)/i)?.[1] ?? 0) - 1
       const vote = pick >= 0 && pick < opts.length ? pick : -2
       const why = text.replace(/^\D{0,12}?\d+\s*[-—–:.)]*\s*/, '').split('\n')[0]?.slice(0, 160) ?? ''
       await set($, s => ({ decisions: s.decisions.map(d => (d.id === id ? { ...d, votes: d.votes.map((v, i) => (i === seat ? vote : v)), reasons: (d.reasons ?? []).map((x, i) => (i === seat ? why : x)) } : d)) }))
@@ -357,10 +357,14 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
     await set($, st => ({ decisions: [...st.decisions, { id, q, opts: ['Done', 'Not done yet'], at: now, score: 0, signals: [], votes: [], status: 'scoring' as const, result: '' }].slice(-50) }))
     const evidence = await doneEvidence($, ap, roadmap, answer)
     const win = await judge($, id, q, [{ label: 'Done', description: 'every milestone is ticked and the evidence shows its criteria pass' }, { label: 'Not done yet', description: 'something in the goal or the roadmap is unfinished or unproven by the evidence' }], true, evidence)
-    if (win === 'Done' && (total === 0 || allTicked)) return finishGoal($, `the judges agree: ${(claim[2] ?? '').trim() || 'the goal is reached'}`)
+    if (win === 'Done' && allTicked) return finishGoal($, `the judges agree: ${(claim[2] ?? '').trim() || 'the goal is reached'}`)
     const d = (await read($, S)).decisions.find(x => x.id === id)
     const said = d ? reasonsFor(d, 1).slice(0, 5) : []
-    const gaps = win === 'Done' ? `- ${total - done} of ${total} milestones in the roadmap are still unticked` : said.map(r => `- ${r}`).join('\n') || '- the evidence does not show every milestone passing'
+    // No roadmap is no proof: done is claimed against milestones a check can pass
+    const gaps =
+      total === 0 ? '- .cockpit/roadmap.md has no milestones: write them, with criteria a test or command can check, and tick each that passes'
+      : win === 'Done' ? `- ${total - done} of ${total} milestones in the roadmap are still unticked`
+      : said.map(r => `- ${r}`).join('\n') || '- the evidence does not show every milestone passing'
     // A second claim in a row on a finished roadmap that took in none of the judges' points: arguing again would only
     // repeat the last cycles, so the task stops for you, and the product owner moves on with the points noted
     if ((ap.claims ?? 0) >= 1 && allTicked && total <= ap.total) {

@@ -800,6 +800,8 @@ test("a subagent's task list that comes before its row is kept, and the row take
 test('the autopilot sends cycle after cycle, ends when the judges agree it is done, and stops at its budget or on a stall', { timeoutMs: 20_000 }, async ($, on) => {
   let spend = 1.5
   const log = stand($, on, { tick: true, votes: [0, 0, 0], cost: () => spend })
+  // Claude's roadmap, every milestone ticked: done is claimed against milestones, never against none
+  on('fs.read', async (_: unknown, e: any) => ({ value: posix(e.path).endsWith('/roadmap.md') ? '# Roadmap\n- [x] sync: the sync test passes\n' : '' }))
   const end = (answer: string) => $.turn.complete({ answer, reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
   const ov = async () => {
     const ui = await $.ui.mount(pane('overview') as never)
