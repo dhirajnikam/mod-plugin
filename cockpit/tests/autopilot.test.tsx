@@ -171,3 +171,25 @@ test('the product owner\'s options parse from decorated, CRLF and odd lines, and
     { label: 'plain', description: '' },
   ])
 })
+
+test('the judges\' "option N" votes count; a product owner nobody voted for, or one stuck goal after another, pauses', { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand(on)
+  await $.command.run({ command: 'cockpit', args: 'product a great notes app' } as never)
+  await settle()
+  // Every judge answers off the point: no goal is built in their name
+  log.vote = 'Hard to say.'
+  await cycle($, log, 'PRODUCT: OPTION add tags :: a\nPRODUCT: OPTION add sync :: b', false)
+  expect(await overview($)).toContain('no judge gave a usable vote on the next goal')
+  // "option number 2" is a vote for the second
+  log.vote = 'I would pick option number 2, it matters most'
+  await $.command.run({ command: 'cockpit', args: 'product resume' } as never)
+  await settle()
+  await cycle($, log, 'PRODUCT: OPTION add tags :: a\nPRODUCT: OPTION add sync :: b', false)
+  expect(log.submitted.at(-1)).toContain('Goal: add sync')
+  // Three goals in a row set aside (each three cycles that change nothing) pause it instead of scouting on
+  for (let g = 0; g < 3; g++) {
+    for (let c = 0; c < 3; c++) await cycle($, log, 'AUTOPILOT: CONTINUE same', false)
+    if (g < 2) await cycle($, log, `PRODUCT: OPTION goal ${g}a :: a\nPRODUCT: OPTION goal ${g}b :: b`, false)
+  }
+  expect(await overview($)).toContain('three goals in a row were set aside')
+})

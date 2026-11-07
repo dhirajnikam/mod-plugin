@@ -93,8 +93,9 @@ export type Autopilot = {
   vision?: string
   round?: number
   phase?: 'scout' | 'build'
-  // Goals the product owner has had built, oldest first
+  // Goals the product owner has had built, oldest first, and goals set aside in a row (three pause it)
   shipped?: string[]
+  asides?: number
   // Cycles in a row with no milestone ticked; past two the prompt asks for another approach, at four it pauses
   stuck?: number
   // What the judges said was missing at the last done-check, carried into the next cycle; and DONE claims in a row

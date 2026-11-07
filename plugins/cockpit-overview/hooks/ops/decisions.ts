@@ -71,9 +71,10 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
           prompt: `Context: ${brief}\n\nQuestion: ${q}\n${menu}`,
         })
         .catch(() => null)
-      // The reply's leading number is the vote; none is an abstention (-2), never a vote for the first option
+      // The vote is "option N" where the reply says so, else its leading number; none is an abstention (-2), never a
+      // vote for the first option
       const text = (r?.isAnswered ? r.text : '').trim()
-      const pick = Number(text.match(/^\D{0,12}?(\d+)/)?.[1] ?? 0) - 1
+      const pick = Number(text.match(/\boption\s*(?:number\s*)?#?(\d+)/i)?.[1] ?? text.match(/^\D{0,12}?(\d+)/)?.[1] ?? 0) - 1
       const vote = pick >= 0 && pick < opts.length ? pick : -2
       const why = text.replace(/^\D{0,12}?\d+\s*[-—–:.)]*\s*/, '').split('\n')[0]?.slice(0, 160) ?? ''
       await set($, s => ({ decisions: s.decisions.map(d => (d.id === id ? { ...d, votes: d.votes.map((v, i) => (i === seat ? vote : v)), reasons: (d.reasons ?? []).map((x, i) => (i === seat ? why : x)) } : d)) }))
@@ -196,6 +197,7 @@ export function productPrompt(ap: Autopilot) {
 // The line may come quoted, bulleted or bold ("> ", "- ", "**…**") and end in \r; the goal ends at the first " :: ", so
 // a goal may hold "a::b"; a line with no goal before its reason is no option
 export function parseOptions(text: string) {
+  const seen = new Set<string>()
   return text
     .split('\n')
     .map(l => l.replace(/\r$/, '').replace(/^[\s>*#-]*/, '').replace(/\*\*/g, '').match(/^PRODUCT:\s*OPTION\s+(.*)$/i)?.[1] ?? '')
@@ -206,7 +208,7 @@ export function parseOptions(text: string) {
     .filter(o => o.label && !o.label.startsWith('::'))
     .map(o => ({ label: o.label.slice(0, 200), description: o.description.slice(0, 300) }))
     // The same goal twice is one option, so the judges never split their votes over a repeat
-    .filter((o, i, all) => all.findIndex(x => x.label.toLowerCase() === o.label.toLowerCase()) === i)
+    .filter(o => !seen.has(o.label.toLowerCase()) && !!seen.add(o.label.toLowerCase()))
     .slice(0, 4)
 }
 
@@ -300,7 +302,7 @@ async function finishGoal($: $, why: string) {
   const ap = (await read($, S)).autopilot
   if (!ap) return
   if (ap.role !== 'product') return stopAutopilot($, 'done', why)
-  await set($, { autopilot: { ...ap, ...goalStart('', await $.clock.now()), phase: 'scout', round: (ap.round ?? 1) + 1, shipped: [...(ap.shipped ?? []), ap.goal].slice(-20) } })
+  await set($, { autopilot: { ...ap, ...goalStart('', await $.clock.now()), phase: 'scout', round: (ap.round ?? 1) + 1, asides: 0, shipped: [...(ap.shipped ?? []), ap.goal].slice(-20) } })
   await note($, `◈ Built: ${ap.goal} · ${why}. Scouting the next goal`)
   await sendCycle($)
 }
@@ -372,11 +374,18 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
   await sendCycle($)
 }
 
-// The product owner's goal set aside: noted as such, and the next goal scouted
+// The product owner's goal set aside: noted as such, and the next goal scouted. Three in a row set aside means the
+// trouble is not the goal: it pauses for you rather than scout and stall without end
 async function setAside($: $, why: string) {
   const ap = (await read($, S)).autopilot
   if (!ap) return
-  await set($, { autopilot: { ...ap, ...goalStart('', await $.clock.now()), phase: 'scout', round: (ap.round ?? 1) + 1, shipped: [...(ap.shipped ?? []), `${ap.goal} (set aside: ${why})`].slice(-20) } })
+  const asides = (ap.asides ?? 0) + 1
+  const shipped = [...(ap.shipped ?? []), `${ap.goal} (set aside: ${why})`].slice(-20)
+  if (asides >= 3) {
+    await set($, { autopilot: { ...ap, asides, shipped } })
+    return stopAutopilot($, 'paused', `three goals in a row were set aside, the last: ${ap.goal} (${why})`)
+  }
+  await set($, { autopilot: { ...ap, ...goalStart('', await $.clock.now()), phase: 'scout', round: (ap.round ?? 1) + 1, asides, shipped } })
   await note($, `◈ Set aside: ${ap.goal} · ${why}. Scouting the next goal`)
   await sendCycle($)
 }
@@ -396,7 +405,9 @@ async function scoutEnd($: $, ap: Autopilot, answer: string, now: number) {
   const evidence = [`Vision: ${ap.vision}`, `Built so far: ${ap.shipped?.join('; ') || 'nothing yet'}`, `The product owner's study:\n${answer.trim().slice(-4000)}`].join('\n\n')
   const win = await judge($, id, q, opts, true, evidence)
   const d = (await read($, S)).decisions.find(x => x.id === id)
-  const goal = win || (d ? (opts[tally(d).top]?.label ?? '') : '') || (opts[0]?.label ?? '')
+  // No judge gave a usable vote (the model failed or answered off the point): nobody chose, so nothing is built
+  if (!win && (!d || tally(d).revealed === 0)) return stopAutopilot($, 'paused', 'no judge gave a usable vote on the next goal')
+  const goal = win || opts[tally(d!).top]?.label || ''
   if (!win && d) await set($, st => ({ decisions: st.decisions.map(x => (x.id === id ? { ...x, status: 'decided', result: `Split ${tally(d).counts.join('/')} → ${goal} (most votes)` } : x)) }))
   await freshRoadmap($, goal)
   await set($, st => ({ autopilot: st.autopilot && { ...st.autopilot, ...goalStart(goal, now), phase: 'build' } }))

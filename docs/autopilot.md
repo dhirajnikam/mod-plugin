@@ -43,7 +43,8 @@ pass.
    Overview's Decisions.
 3. **The task builds it**, as above, on a roadmap of its own. Once the judges agree it is done, the next round
    scouts again, knowing what was built. A goal that stalls is set aside, noted as such, and the next round picks
-   another, so the product owner does not wait on you.
+   another, so the product owner does not wait on you. Three goals set aside in a row pause it for you, as does a vote
+   in which no judge gave a usable answer: then nobody chose, and nothing is built.
 
 It runs until you stop it or a limit is hit, and needs the judges deciding (Auto, `/cockpit mode auto`). The Overview's card shows
 the round, the vision, the goal being built (or that it is scouting) and how many goals were built.
