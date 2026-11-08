@@ -6,6 +6,8 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
 
 *A preview drawn from the desktop pane; the app's own spacing differs slightly.*
 
+> **What you see first.** The tab opens on one plain sentence of its own state ("2 agents running · Reviewer found 1 issue") and the Build, Verify and Review buttons, the running pipeline and the running agents. Everything else below sits behind one **› More** fold (`fold-more-agents`), folded by default; Autopilot, + New agent, the run bar, connections, the team, finished runs and Settings (including Choose model and effort for me) are inside it. Every button is still there.
+
 ## The tab, from top to bottom
 
 - **Build, Verify, Review**, **⟳ Autopilot** and **+ New agent** in one row.

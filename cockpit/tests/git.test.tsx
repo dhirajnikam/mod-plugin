@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { openMore } from './more'
 
 // git's own output for a repo with an edit, a deletion, a file staged earlier, a rename, a new folder and a name with a space
 const STATUS = '## master...origin/master [ahead 2]\0 M a.txt\0 D gone.txt\0M  keep.txt\0R  new.txt\0old.txt\0?? newdir/\0?? with space.txt\0'
@@ -44,15 +45,17 @@ test('the Git tab reads the repo and commits only the ticked files', { timeoutMs
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   // The setup runs once per repository: account, branch pattern, message pattern, commit mode, when
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) {
     expect(JSON.stringify(await ui.drawn())).toContain(step)
     await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   }
+  await openMore(ui)
   const drawn = JSON.stringify(await ui.drawn())
   // Branch, ahead, the rename and the default base are read from the repo
-  expect(drawn).toContain('⎇ master')
-  expect(drawn).toContain('↑2')
+  expect(drawn).toContain('On master')
+  expect(drawn).toContain('2 to push')
   expect(drawn).toContain('renamed')
   // The repository's own history as a graph: refs as chips, the merge's branch on a lane of its own
   expect(drawn).toContain('fix(cockpit): make the mod load')
@@ -117,6 +120,7 @@ test('a failed push says why', { timeoutMs: 20_000 }, async ($, on) => {
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   await $.prompt.submit({ text: 'x', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   for (let i = 0; i < 4; i++) await ui.press({ key: 'setup-next' })
   await ui.press({ key: 'opt-push' })
@@ -162,8 +166,10 @@ test('accounts come from and go to the machine: a token logs in with gh, push go
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   for (let i = 0; i < 4; i++) await ui.press({ key: 'setup-next' })
   await ui.press({ key: 'setup-done' })
+  await openMore(ui)
   await ui.press({ key: 'git-more' })
   await ui.press({ key: 'acct-detect' }).catch(() => null)
   let drawn = JSON.stringify(await ui.drawn())
@@ -233,6 +239,7 @@ test('a gh login added outside Cockpit, or a token that stopped working, shows w
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('alice')
   expect(JSON.stringify(await ui.drawn())).not.toContain('dave')
   // A login added in a terminal: opening the tab again finds it, no Detect pressed
@@ -282,6 +289,7 @@ test("the branch's pull request is read with gh when the Git tab opens, its chec
   expect(ran).toContain('gh pr view --json number,title,url,state,isDraft,reviewDecision -- feat/x')
   expect(ran).toContain('gh pr checks --json name,bucket,link -- feat/x')
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   let drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('#7')
@@ -333,6 +341,7 @@ test("the pull request row survives what GitHub and gh can hand it: escapes in a
   const open = () => $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   await open()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' } as never)
+  await openMore(ui)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   // Escapes and newlines draw as spaces: the pane draws, on one line
   let drawn = JSON.stringify(await ui.drawn())
@@ -393,6 +402,7 @@ test('with no origin and no main, master or develop, the branch you are on is no
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   expect(ran.filter(c => c.startsWith('gh pr view')).length).toBe(2)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('#5')
@@ -425,8 +435,10 @@ test('a base set to the branch you are on, with no real base around, is let go o
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   // The branch you are on, picked as the base, as the old fallback saved it
+  await openMore(ui)
   await ui.press({ key: 'git-more' })
   // A desktop pane draws Selects; the mount's type covers every surface, so it is named here
   await (ui as unknown as { select: (t: { key: string; value: string }) => Promise<unknown> }).select({ key: 'git-base', value: 'feat/x' })

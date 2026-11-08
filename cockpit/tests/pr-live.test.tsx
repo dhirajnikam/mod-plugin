@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { openMore } from './more'
 
 // The Git tab's pull request kept live: the 15 s timer (fired here by hand through its clock.every stand-in) reads gh
 // pr checks again while a check is pending, every 30 s at most, and a run that finishes sends one notice
@@ -82,6 +83,7 @@ test('a pending check is read again every 30 s while the pane is placed, the row
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   expect(checksRead(ran)).toBe(1)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   expect(JSON.stringify(await ui.drawn())).toContain('◌ 1 running')
   // 15 s on: too soon to ask again
@@ -212,6 +214,7 @@ test('after a push the row is read again although GitHub has not started the new
   await start($)
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   for (let i = 0; i < 4; i++) await ui.press({ key: 'setup-next' })
   await ui.press({ key: 'opt-push' })
   await ui.press({ key: 'setup-done' })

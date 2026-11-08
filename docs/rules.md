@@ -2,6 +2,8 @@
 
 The Rules tab shows the hooks, permission rules and instructions Claude Code follows, for **this repository** (`.claude/settings.json` and `CLAUDE.md`) or **you, everywhere** (`~/.claude/settings.json` and `~/.claude/CLAUDE.md`). Hooks with their event, matcher and command; permission rules as allow, ask or deny; instructions as the bullet lines of `CLAUDE.md`. Each row has ✎ to edit it in place and ✕ to delete it (after you confirm), each section **+ Add**. Every change reads the file again first and writes it back with the rest of it kept (a row that moved meanwhile is left alone); a settings file that is not valid JSON is shown read-only with the error, never overwritten. Hooks run shell commands: read one before you add it.
 
+> **What you see first.** The tab opens on one plain sentence ("3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens"), the scope switch and which files load. Read again, the skill and MCP costs, hooks, permission rules, MCP servers, skills and instructions are behind one **› More** fold (`fold-more-rules`), folded by default.
+
 ## What loads every session
 
 At the top of the tab, before either scope: an estimate of what Claude Code puts in context before you type.

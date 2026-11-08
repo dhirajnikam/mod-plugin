@@ -3,6 +3,8 @@
 What is happening, live, and how the codebase fits together. Every section has the Overview's small capitalised
 heading.
 
+> **What you see first.** The tab opens on one plain sentence of its own state ("12 edits in 4 files this session") and the live feed's latest five events. Everything else below sits behind one **› More** fold (`fold-more-activity`), folded by default; the pulse bar, feature map, features, project tree and the earlier events are inside it. Every button is still there.
+
 ## The tab, from top to bottom
 
 - **What is happening**: the current action and the feature it is in ("Editing views.tsx in Cockpit views"), with a

@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 import { parseOptions } from '../hooks/ops/decisions'
+import { openMore } from './more'
 
 // The autopilot's two roles end to end, with the engine stood in: a file system in memory, judges whose replies the
 // test writes, and the prompts Cockpit sends

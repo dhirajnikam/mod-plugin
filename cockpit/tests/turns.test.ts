@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 import { AUTHOR, LITERAL, SNAPSHOT_PLAN, snapshot, turnRef, undoPlan, undoTurn } from '../hooks/turns'
+import { openMore } from './more'
 
 // A git that answers the plan's commands, recording each with the env it ran in
 function fakeGit(hasHead: boolean, fail = '') {

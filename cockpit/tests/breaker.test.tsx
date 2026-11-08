@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 import { parseCases, parseReport, verifyState } from '../hooks/logic'
+import { openMore } from './more'
 
 // Every feature driven end to end with the engine stood in: judges, testers, agents, files, commands, accounts, buttons
 const scroll = { offset: 0, bodyRows: 60 }
@@ -137,6 +138,7 @@ test('an agent that changes files gets a positive and a negative tester, and the
   await done($, 'ag3', 'CASE PASS zero limit\nCASE FAIL negative limit :: accepted\nREPORT: one hole')
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   const d = JSON.stringify(await ui.drawn())
   expect(d).toContain('+ positive 1/1')
   expect(d).toContain('− negative 1/2')
@@ -154,6 +156,7 @@ test('a run that only read files is tested when you press Test; the setting turn
   expect(log.spawned).toEqual(['review the diff'])
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   await ui.press({ key: 'test-ag1' })
   expect(log.spawned).toEqual(['review the diff', 'Prover'])
   expect(log.prompts[1]).toContain('Reviewer (the agent whose work you are testing)')
@@ -206,6 +209,7 @@ test('several agents run at once with one task, and Stop all and Clear finished 
   // Two copies of one agent run side by side
   await run($, 'planner')
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   // Running lists the live runs, with their count
   expect(d).toContain('RUNNING')
@@ -226,6 +230,7 @@ test('ticked agents run together from the run bar', async ($, on) => {
   const log = stand($, on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).not.toContain('run-selected')
   await ui.press({ key: 'pick-cockpit:planner' })
   await ui.press({ key: 'pick-cockpit:scribe' })
@@ -243,6 +248,7 @@ test('a batch auto mode refuses goes to Claude in one line', async ($, on) => {
   const log = stand($, on, { noVerdict: 2 })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   await ui.press({ key: 'pick-cockpit:planner' })
   await ui.press({ key: 'pick-cockpit:reviewer' })
   await ui.press({ key: 'run-selected' })
@@ -260,6 +266,7 @@ test('subagents Claude starts show in the Agents tab from the engine\'s list, an
   log.list.push({ id: 'x1', description: 'scan the repo', type: 'Explore', status: 'running' }, { id: 'x2', description: 'write the docs', type: 'general-purpose', status: 'running' })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('RUNNING')
   expect(d).toContain('"  2"')
@@ -278,6 +285,7 @@ test('an agent runs again with your instructions, from its team row or from a fi
   const log = stand($, on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   await ui.press({ key: 'edit-cockpit:planner' })
   await (ui as any).input({ key: 'rerun-input', text: 'plan the auth refactor', kind: 'change' })
   await ui.press({ key: 'rerun-go' })
@@ -304,6 +312,7 @@ test('Clear finished stays cleared though the engine still lists the runs, and t
   log.list.push({ id: 'ag1', description: 'Reviewer', type: 'cockpit:reviewer', status: 'completed' }, { id: 'x9', description: 'scan', type: 'Explore', status: 'completed' })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).not.toContain('RUNNING')
   expect(d).toContain('FINISHED')
@@ -336,6 +345,7 @@ test('an agent whose run ends on an error shows as failed', async ($, on) => {
   await $.turn.complete({ agentId: 'ag1', answer: '', reason: 'error', turnId: 'ag1', isAborted: false, durationMs: 1 } as never)
   const ui = await $.ui.mount(agentsPane as never)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('Failed · ')
   await ui.unmount()
 })
@@ -348,6 +358,7 @@ test('an agent made from a description joins the team, runs from its card, and i
   on('session.start', async () => ({ cwd: '/repo' }))
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   // Typed and sent with Enter: the form makes the agent and closes
   await (ui as any).input({ key: 'describe', text: 'check API changes for breaking changes' })
@@ -403,6 +414,7 @@ test('Stop on the pipeline agent ends the pipeline; late turn.complete does not 
   await verify($)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane('agents') as never)
+  await openMore(ui)
   // The pipeline's own step is stopped from the pipeline card
   await ui.press({ key: 'pipe-stop' })
   await done($, 'ag1', 'REPORT: late')
@@ -510,6 +522,7 @@ test('an expert started with the setting on is spawned with the picked model and
   expect(log.models[0]).toBe('sonnet')
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('sonnet · medium — a usual task')
   await ui.unmount()
 })
@@ -518,6 +531,7 @@ test('with Choose model and effort for me off, a start names no model', { timeou
   const log = stand($, on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
   await ui.press({ key: 'fold-settings' })
   await ui.press({ key: 'choosemodel' })
   await ui.unmount()

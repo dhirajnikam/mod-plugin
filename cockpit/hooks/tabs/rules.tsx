@@ -142,16 +142,19 @@ export function Rules($: $, v: V) {
   const skills = s.rules?.skills?.[scope] ?? []
   const load = s.rules?.load
   const servers: McpRow[] = (mcp?.rows ?? []).filter(m => (scope === 'repo' ? m.scope !== 'user' : m.scope === 'user'))
+  const moreOpen = !!s.ui.collapsed['rules-more']
+  const nSkills = load ? load.skills.length : skills.length
+  const state = load
+    ? `${load.files.length} CLAUDE.md file${load.files.length === 1 ? '' : 's'} · ${hooks.length} hook${hooks.length === 1 ? '' : 's'} · ${nSkills} skill${nSkills === 1 ? '' : 's'} load before you type, ≈${kTok(load.total)} tokens`
+    : `${hooks.length} hook${hooks.length === 1 ? '' : 's'} · ${perms.length} permission rule${perms.length === 1 ? '' : 's'} · ${lines.length} instruction${lines.length === 1 ? '' : 's'}`
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
+      <Text color={t.text} bold wrap="wrap">{state}</Text>
       <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
         <Seg v={v} id="rscope" value={scope} items={[['repo', 'This repository'], ['user', 'You, everywhere']]} onPick={k => ui({ ...clear, ruleScope: k as 'repo' | 'user' })} />
-        <Button key="rules-reload" plain onPress={() => loadRules($)}>
-          <Text color={t.dim} size="footnote">↻ Read again</Text>
-        </Button>
       </Box>
       {load && (
-        <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+        <Box flexDirection="column">
           <Box justifyContent="space-between" columnGap={sp(v, 1)} flexWrap="wrap">
             <Text color={t.dim} size="footnote" bold>LOADS EVERY SESSION</Text>
             <Text color={t.accent} size="footnote" bold>{`≈ ${load.total.toLocaleString('en-US')} tokens`}</Text>
@@ -167,6 +170,18 @@ export function Rules($: $, v: V) {
             </Box>
           ))}
           {load.files.length === 0 && <Text color={t.faint} size="footnote">No CLAUDE.md here or in ~/.claude.</Text>}
+        </Box>
+      )}
+      <Button key="fold-more-rules" plain onPress={() => ui({ collapsed: { ...s.ui.collapsed, 'rules-more': !moreOpen } })}>
+        <Text color={t.dim}>{`${moreOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {moreOpen && (
+        <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
+          <Button key="rules-reload" plain onPress={() => loadRules($)}>
+            <Text color={t.dim} size="footnote">↻ Read again</Text>
+          </Button>
+          {load && (
+            <Box flexDirection="column">
           <Text color={t.dim} size="footnote" wrap="wrap">{`Skills Claude may load: ${load.skills.length} · ≈${load.skills.reduce((a, k) => a + k.tokens, 0)}`}</Text>
           {load.largest.map(k => (
             <Box key={`ld-k-${k.path}`} columnGap={sp(v, 1)} justifyContent="space-between" alignItems="center">
@@ -180,8 +195,8 @@ export function Rules($: $, v: V) {
           ))}
           <Text color={t.dim} size="footnote" wrap="wrap">{`MCP servers on: ${load.mcpOn} · their tools' cost: /context`}</Text>
           <Text color={t.faint} size="footnote" wrap="wrap">Estimates (characters ÷ 4), before Claude Code's own system prompt and tools.</Text>
-        </Box>
-      )}
+            </Box>
+          )}
       <Text color={t.faint} size="footnote" wrap="wrap">{scope === 'repo' ? 'Shared with everyone who works in this repository (commit them to share them).' : 'Yours, in every repository on this machine.'} Hooks run shell commands: read one before you add it.</Text>
       {error !== '' && <Text color={t.bad} wrap="wrap">{`${f.settingsPath} is ${error}. Hooks and permissions are shown read-only until it is fixed by hand.`}</Text>}
 
@@ -369,6 +384,8 @@ export function Rules($: $, v: V) {
           )
         })}
       </Box>
+        </Box>
+      )}
     </Box>
   )
 }

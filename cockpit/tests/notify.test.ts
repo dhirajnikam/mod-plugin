@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { doneText } from '../hooks/ops/notify'
+import { openMore } from './more'
 
 test("each kind of finish says what finished and how it went", () => {
   expect(doneText({ kind: 'turn', task: 'fix the login', files: 3, add: 40, del: 12, tests: { pass: 3, total: 3 } })).toEqual({ title: 'Claude is done', text: 'fix the login · 3 files +40 −12 · tests 3/3' })
@@ -107,6 +108,7 @@ test('Tell me when work is done can be turned off in the Agents settings, and on
   const log = stand(on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'fold-settings' })
   expect(JSON.stringify(await ui.drawn())).toContain('Tell me when work is done')
   await ui.press({ key: 'notify-done' })

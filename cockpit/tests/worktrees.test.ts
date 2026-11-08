@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, pickIsolated, worktreeFor } from '../hooks/worktrees'
+import { openMore } from './more'
 
 test("a worktree's place, its changes and what will not apply are read from git's own output", () => {
   // Under the git folder, on a branch of its own, whatever the id holds; Windows paths made forward
@@ -88,6 +89,7 @@ test('ticked In its own worktree, an agent from the New agent form runs in a wor
   const log = stand(on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   expect(JSON.stringify(await ui.drawn())).toContain('In its own worktree')
   await ui.press({ key: 'spawn-wt' })
@@ -105,6 +107,7 @@ test('with the tick off, or no commit to start a worktree from, the agent runs i
   const log = stand(on, { fresh: true })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   // Off: no worktree, no cwd
   await (ui as any).input({ key: 'spawn-task', text: 'first', kind: 'change' })
@@ -126,6 +129,7 @@ test('a start that is refused leaves no worktree or branch behind, and a pipelin
   const log = stand(on, { deny: true })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   await (ui as any).input({ key: 'spawn-task', text: 'refused one', kind: 'change' })
@@ -142,6 +146,7 @@ test("a pipeline's experts work in your tree whatever the tick says", async ($, 
   const log = stand(on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'team-wt' })
   await $.command.run({ command: 'cockpit', args: 'test' } as never)
   expect(log.spawned.length).toBeGreaterThan(0)
@@ -155,6 +160,7 @@ test("a worktree agent's row shows what it changed; Bring back and Remove each a
   const log = stand(on, { clash: () => clash })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   await (ui as any).input({ key: 'spawn-task', text: 'refactor the login', kind: 'change' })
@@ -208,6 +214,7 @@ test('a worktree whose spawn event came before its start returned, and one delet
   // The engine's spawn event for the worktree's folder arrives first (the start hands no id back)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   const wt = '/repo/.git/cockpit-worktrees/ag1700000000000-1'
@@ -264,6 +271,7 @@ test("ticked, an agent runs in Claude Code's own worktree isolation through its 
   expect(registered).toContainEqual({ name: 'agent-in-worktree', isolation: 'worktree' })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   await (ui as any).input({ key: 'spawn-task', text: 'tidy the docs', kind: 'change' })
@@ -344,6 +352,7 @@ test("a twin is shown as the agent it is, Rerun starts its twin again with no wo
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   await start($, ui, 'tidy the docs')
@@ -370,6 +379,7 @@ test('two twins started together each get their own worktree, a foreign one is l
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   await start($, ui, 'one')
@@ -399,6 +409,7 @@ test('an agent made now gets its twin at once, so it can run in a worktree of it
   const log = twinStand(on, () => [])
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await (ui as any).input({ key: 'describe', text: 'writes the docs for each change', kind: 'change' })
   await ui.press({ key: 'describe-go' })
@@ -415,6 +426,7 @@ test("a twin start that throws gives back its turn, so the next twin still start
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   await ui.press({ key: 'spawn-wt' })
   // The first twin start breaks

@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, upsertSession, withCurrent } from '../hooks/spend'
+import { openMore } from './more'
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 
 // Noon on a day where you are, so a day's edge never depends on the machine's time zone
 const noon = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime()

@@ -125,26 +125,24 @@ function GitBody($: $, v: V) {
   const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
   const when = g.commitMode === 'manual' ? '' : `  ·  ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
   const newBranch = plan.branch !== s.repo.current
+  const pr = s.repo.pr
+  const state = [
+    `On ${s.repo.current || '(no branch)'}`,
+    s.repo.changed.length ? `${s.repo.changed.length} file${s.repo.changed.length === 1 ? '' : 's'} changed` : 'working tree clean',
+    s.repo.ahead > 0 ? `${s.repo.ahead} to push` : '',
+    s.repo.behind > 0 ? `${s.repo.behind} to pull` : '',
+    pr ? `PR #${pr.number}${pr.checks.unknown ? '' : ` checks ${pr.checks.fail ? 'failing' : pr.checks.pending ? 'running' : 'passing'}`}` : '',
+  ].filter(Boolean).join(' · ')
+  const moreOpen = !!s.ui.collapsed['git-more']
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        {/* A long branch name gives way, its counts stay */}
-        <Box flexShrink={1}>
-          <Text color={t.accent} bold wrap="truncate-end">{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
-          <Text>
-            {s.repo.ahead > 0 && <Text color={t.busy}>{`  ↑${s.repo.ahead} to push`}</Text>}
-            {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
-            {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
-          </Text>
-        </Box>
+      <Text color={t.text} bold wrap="truncate-end">{state}</Text>
+      {(s.repo.behind > 0 || s.repo.ahead > 0) && (
         <Box gap={sp(v, 1)} flexWrap="wrap">
           {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => inBackground($, 'pull', 'Pulling', () => pullNow($))} />}
           {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => inBackground($, 'push', 'Pushing', () => pushNow($))} />}
-          <Button key="git-refresh" label="↻" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
-          <Button key="git-setup" label="⚙" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
         </Box>
-      </Box>
-      <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
+      )}
       {s.repo.pr && PrStatusRow($, v, s.repo.pr)}
       {s.pending && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.busy} paddingX={1}>
@@ -210,6 +208,16 @@ function GitBody($: $, v: V) {
         ))}
       </Box>
       )}
+      <Button key="fold-more-git" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'git-more': !st.ui.collapsed['git-more'] } } }))}>
+        <Text color={t.dim}>{`${moreOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {moreOpen && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box gap={sp(v, 1)} flexWrap="wrap">
+            <Button key="git-refresh" label="↻ Refresh" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
+            <Button key="git-setup" label="⚙ Setup" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
+          </Box>
+          <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
       {s.repo.log.length > 0 && History($, v)}
       <Box justifyContent="space-between">
         <Button key="git-more" plain onPress={() => set($, st => ({ ui: { ...st.ui, more: !st.ui.more } }))}>
@@ -218,6 +226,8 @@ function GitBody($: $, v: V) {
         <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
       </Box>
       {s.ui.more && Options($, v)}
+        </Box>
+      )}
     </Box>
   )
 }
