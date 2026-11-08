@@ -9,7 +9,7 @@ export function Guide($: $, v: V) {
   const g = s.guide
   const ask = (key: string, label: string) => <Button key={key} label={label} onPress={() => inBackground($, key, 'Asking Claude', () => explainCodebase($))} />
   const head = <Text size="footnote" bold color={t.dim}>CODEBASE GUIDE</Text>
-  if (!g || !g.at)
+  if (!g || !(g.exists ?? g.at))
     return (
       <Box flexDirection="column">
         {head}

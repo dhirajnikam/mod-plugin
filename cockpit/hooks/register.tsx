@@ -182,9 +182,10 @@ export const register: Register = on => {
       return { text: `${name}: ${goal}${budget ? ` · $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}` }
     }
     if (verb === 'explain') {
-      await explainCodebase($)
+      const asked = await explainCodebase($)
       await set($, { tab: 'overview' })
       await openPane($)
+      if (!asked) return { text: 'Open a project folder first' }
       return { text: `Asked Claude to write ${(await read($, S)).guide?.path ?? 'the codebase guide'}` }
     }
     if (verb === 'theme') {

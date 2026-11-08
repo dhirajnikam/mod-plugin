@@ -256,7 +256,7 @@ export type Ph = {
   // Every path of the project, relative to the root: the Activity tree's skeleton
   project: string[]
   // The codebase guide Claude writes on request: its path, and when the file was last written (0 while it is not there)
-  guide?: { path: string; at: number }
+  guide?: { path: string; at: number; exists?: boolean }
   decisions: Decision[]
   waiting: string
   // Run the Verify experts after each turn that changes files
