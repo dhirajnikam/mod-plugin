@@ -7,6 +7,7 @@ import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryM
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
 import { snapshot, turnRef, undoTurn } from '../turns'
+import { WORKTREE_COMMANDS, fillArgs, worktreeFor } from '../worktrees'
 import type { Run } from '../turns'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -535,4 +536,21 @@ export async function undoFlow($: $, flowId: string) {
   await refreshRepo($)
   const n = r.restore.length + r.remove.length
   await toast($, n ? `Undone: ${r.restore.length} restored, ${r.remove.length} removed · the files as they were just before: ${turnRef(flowId, 'undone')}` : 'That turn changed no files')
+}
+
+// An agent's own worktree, made before it starts: from HEAD, under the git folder, on a branch of its own. Why not,
+// when it cannot be made (no commit yet, the add refused), so the agent runs in your tree instead
+export async function makeWorktree($: $, id: string): Promise<{ path: string; branch: string; base: string } | { error: string }> {
+  const run = await turnRun($)
+  const root = (await repoRoot($)) || '.'
+  const head = await run(WORKTREE_COMMANDS.head, {})
+  if (head.exitCode !== 0 || !head.stdout.trim()) return { error: 'the repository has no commit yet' }
+  const common = (await run(WORKTREE_COMMANDS.common, {})).stdout.trim()
+  if (!common) return { error: 'git did not say where its folder is' }
+  const at = /^([A-Za-z]:)?[\\/]/.test(common) ? common : `${root}/${common}`
+  const w = worktreeFor(id, at)
+  const base = head.stdout.trim()
+  const add = await run(fillArgs(WORKTREE_COMMANDS.add, { branch: w.branch, path: w.path, base }), {})
+  if (add.exitCode !== 0) return { error: `git worktree add failed: ${(add.stderr || add.stdout).trim().split('\n')[0] ?? ''}` }
+  return { path: w.path, branch: w.branch, base }
 }

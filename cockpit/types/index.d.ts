@@ -61,6 +61,8 @@ export type Agent = {
   parent?: string
   // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
   provider?: string
+  // Its own git worktree, when it ran in one: where, on which branch, from which commit, and what it changed there
+  worktree?: { path: string; branch: string; base: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
@@ -253,7 +255,7 @@ export type Ph = {
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by
-  starting: { name: string; type: string; task: string } | null
+  starting: { name: string; type: string; task: string; worktree?: boolean } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   // The tabs an add-on said it draws; absent, Cockpit draws every tab
@@ -282,6 +284,8 @@ export type Ph = {
     openDec: string
     openAgent: string
     openFlow: string
+    // Agents started from the Agents tab run in a git worktree of their own
+    agentWorktree?: boolean
     // The earlier flow whose Undo this turn is waiting for Undo? / Keep
     undoAsk?: string
     // The commit opened in the graph, and what git show said of it

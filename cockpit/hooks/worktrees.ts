@@ -8,7 +8,7 @@
 // wt:start
 export const WORKTREE_COMMANDS = {
   "head": ["git", "rev-parse", "--verify", "-q", "HEAD"],
-  "home": ["git", "rev-parse", "--git-path", "cockpit-worktrees"],
+  "common": ["git", "rev-parse", "--git-common-dir"],
   "add": ["git", "worktree", "add", "-q", "-b", "{branch}", "{path}", "{base}"],
   "stat": ["git", "diff", "--numstat", "--no-renames", "-z", "{base}", "{snap}"],
   "diff": ["git", "diff", "--binary", "--no-renames", "{base}", "{snap}"],
@@ -20,11 +20,13 @@ export const WORKTREE_COMMANDS = {
 
 export const fillArgs = (argv: string[], v: Record<string, string>) => argv.map(a => a.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? ''))
 
-// Where an agent's worktree goes and the branch it is on: under the repository's git folder (the path `git rev-parse
-// --git-path cockpit-worktrees` gives), so `git status` and the turn snapshots never see it
-export function worktreeFor(id: string, home: string) {
+// Where an agent's worktree goes and the branch it is on: in cockpit-worktrees under the repository's common git folder
+// (`git rev-parse --git-common-dir`: the main repository's, even from a linked worktree, so removing that one never takes
+// the agents' with it), so `git status` and the turn snapshots never see it. The id is the time it was made, never reused
+export const C_LOCALE = { LC_ALL: 'C', LANGUAGE: 'C' }
+export function worktreeFor(id: string, common: string) {
   const slug = id.replace(/[^\w-]/g, '_')
-  return { path: `${home.replace(/\\/g, '/').replace(/\/+$/, '')}/${slug}`, branch: `cockpit/${slug}`, ref: `refs/cockpit/worktrees/${slug}` }
+  return { path: `${common.replace(/\\/g, '/').replace(/\/+$/, '')}/cockpit-worktrees/${slug}`, branch: `cockpit/${slug}`, ref: `refs/cockpit/worktrees/${slug}` }
 }
 
 // What a worktree changed, from `git diff --numstat --no-renames -z`: "add\tdel\tpath\0" a file ("-\t-" a binary one)
@@ -42,12 +44,16 @@ export function parseStat(out: string): { files: string[]; add: number; del: num
   return { files, add, del }
 }
 
-// The files `git apply --check` says will not apply (its patch failed there, it exists already, or it is not there)
+// The files `git apply --check` (run with C_LOCALE, so in English) says will not apply: its patch failed there, it
+// exists already, it is not there, a binary patch does not fit. A failed check refuses whether or not a file is named;
+// any other error line is kept whole, so the refusal always says something
 export function applyRefusal(stderr: string): string[] {
   const out = new Set<string>()
+  const unq = (p: string) => (p.startsWith('"') && p.endsWith('"') ? p.slice(1, -1).replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\') : p)
   for (const line of stderr.split('\n')) {
-    const m = line.match(/^error: (?:patch failed: (.+):\d+|(.+): (?:already exists in working directory|does not exist in index|No such file or directory|patch does not apply|does not match index))$/)
-    if (m) out.add((m[1] ?? m[2])!)
+    const m = line.match(/^error: (?:patch failed: (.+):\d+|(.+): (?:already exists in working directory|No such file or directory|patch does not apply|does not match index)|(?:cannot apply binary patch to|binary patch does not apply to) '(.+)'.*)$/)
+    if (m) out.add(unq((m[1] ?? m[2] ?? m[3])!))
+    else if (/^error: /.test(line)) out.add(line.slice(7))
   }
   return [...out]
 }

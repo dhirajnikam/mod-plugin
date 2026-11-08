@@ -404,6 +404,7 @@ export function Agents($: $, v: V) {
             <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={s.ui.spawnTypeText ?? ''} submitLabel="use" onInput={val => set($, st => ({ ui: { ...st.ui, spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} onSubmit={val => set($, st => ({ ui: { ...st.ui, spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} />
             <Button key="spawn-go" label="Start" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
           </Box>
+          <Check v={v} id="spawn-wt" on={!!s.ui.agentWorktree} label="In its own worktree (its own branch; bring its work back when you choose)" onPress={() => set($, st => ({ ui: { ...st.ui, agentWorktree: !st.ui.agentWorktree } }))} />
         </Box>
       )}
       {Object.values(s.ui.selected).some(Boolean) && (
@@ -441,6 +442,7 @@ export function Agents($: $, v: V) {
       {AgentMap($, v, [...s.agents.filter(a => a.status === 'running'), ...done_.slice(0, 8)].filter(a => !s.cleared.includes(a.id)))}
       <Box flexDirection="column" gap={sp(v, 1)}>
         {section('Team', `${team.length} agents`)}
+        <Check v={v} id="team-wt" on={!!s.ui.agentWorktree} label="Runs in their own worktree" onPress={() => set($, st => ({ ui: { ...st.ui, agentWorktree: !st.ui.agentWorktree } }))} />
         {team.map(x => {
           const a = latestOf(x.type)
           const st = stateOf(a)

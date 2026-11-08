@@ -9,7 +9,7 @@ import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { cockpitDir, note, saveHistory, set, summary, toast } from './core'
-import { decideCommit, refreshRepo } from './git'
+import { decideCommit, makeWorktree, refreshRepo } from './git'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
@@ -23,10 +23,10 @@ export function isOwnStart(input: unknown) {
 }
 
 // Starts a subagent in the background and settles once it has started, with its id
-export async function startAgent($: $, a: { prompt: string; description: string; type: string }) {
+export async function startAgent($: $, a: { prompt: string; description: string; type: string; cwd?: string }) {
   const own = { type: a.type, prompt: a.prompt }
   ownStarts.push(own)
-  const r = await $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type })
+  const r = await $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type, ...(a.cwd ? { cwd: a.cwd } : {}) })
     .catch(e => ({ deny: String(e) }))
     .finally(() => ownStarts.splice(ownStarts.indexOf(own), 1))
   if ('deny' in r && r.deny) return { deny: r.deny }
@@ -173,9 +173,11 @@ export async function runExpert($: $, type: string, prior: string[] = [], opts: 
   const s0 = await read($, S)
   const s = opts.task ? { ...s0, task: opts.task } : s0
   const name = expertName(type)
-  await set($, { starting: { name, type, task: s.task || name } })
-  const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type })
+  await set($, { starting: { name, type, task: s.task || name, ...(s.ui.agentWorktree ? { worktree: true } : {}) } })
+  const wt = await worktreeToRun($)
+  const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type, ...(wt ? { cwd: wt.path } : {}) })
   await set($, { starting: null })
+  if ('agentId' in r) await keepWorktree($, r.agentId ?? '', wt)
   if ('deny' in r) {
     // Refused for want of a request: Claude starts it instead; '' keeps a pipeline waiting on this step
     if (/no verdict/i.test(r.deny ?? '')) {
@@ -322,9 +324,11 @@ export async function discoverAgentTypes($: $) {
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
-  await set($, { starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task } })
-  const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
+  await set($, s => ({ starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task, ...(s.ui.agentWorktree ? { worktree: true } : {}) } }))
+  const wt = await worktreeToRun($)
+  const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type, ...(wt ? { cwd: wt.path } : {}) })
   await set($, { starting: null })
+  if ('agentId' in r) await keepWorktree($, r.agentId ?? '', wt)
   if ('deny' in r) {
     if (/no verdict/i.test(r.deny ?? '') && (await handOff($, [{ type, brief: task }]))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
@@ -438,4 +442,19 @@ export async function measure($: $) {
     ctx: { pct, used, window: u.context.window, segs },
     cost: u.cost?.usd ?? 0,
   })
+}
+
+// With "In its own worktree" ticked, the worktree an agent starts in: made from HEAD on a branch of its own; none (and
+// a toast saying why) when it cannot be, so the agent runs in your tree
+async function worktreeToRun($: $) {
+  if (!(await read($, S)).ui.agentWorktree) return null
+  const wt = await makeWorktree($, `ag${await $.clock.now()}`).catch(e => ({ error: String(e) }))
+  if ('error' in wt) {
+    await toast($, `Runs in your tree: ${wt.error}`)
+    return null
+  }
+  return wt
+}
+async function keepWorktree($: $, id: string, wt: { path: string; branch: string; base: string } | null) {
+  if (wt && id) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: wt } : a)) }))
 }

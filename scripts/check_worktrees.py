@@ -37,8 +37,8 @@ def snapshot(cwd, ref):
 def make(root, slug):
     # What Cockpit's spawn hook does: the worktree under the git folder, on its own branch, from HEAD
     base = run(root, WT['head']).stdout.strip()
-    home = run(root, WT['home']).stdout.strip()
-    path = os.path.join(root, home, slug) if not os.path.isabs(home) else os.path.join(home, slug)
+    common = run(root, WT['common']).stdout.strip()
+    path = os.path.join(common if os.path.isabs(common) else os.path.join(root, common), 'cockpit-worktrees', slug)
     run(root, fill(WT['add'], {'branch': f'cockpit/{slug}', 'path': path, 'base': base}))
     return path, base
 
@@ -46,7 +46,7 @@ def bring_back(root, path, base, slug):
     # What Bring back does: snapshot the worktree, diff it against its base, check, then apply to the working tree
     snap = snapshot(path, f'refs/cockpit/worktrees/{slug}')
     patch = run(root, fill(WT['diff'], {'base': base, 'snap': snap})).stdout
-    check = run(root, WT['check'], stdin=patch, ok=True)
+    check = run(root, WT['check'], {'LC_ALL': 'C', 'LANGUAGE': 'C'}, stdin=patch, ok=True)
     if check.returncode:
         return check.stderr
     run(root, WT['apply'], stdin=patch)
