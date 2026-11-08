@@ -229,7 +229,7 @@ export type Ph = {
   pastSessions?: SessionSpend[]
   // A daily budget in dollars (absent: none), and the last day and level it warned at, so each warns once a day
   dailyBudget?: number
-  budgetWarned?: { day: string; level: 'near' | 'over' }
+  budgetWarned?: { day: string; level: 'near' | 'over'; budget?: number }
   sessionAt?: number
   pastAgents: Agent[]
   // Runs you cleared from the list (the engine still lists them, so a sync must not bring them back), and when: a team

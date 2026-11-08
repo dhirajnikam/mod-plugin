@@ -164,7 +164,8 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   let now = noon(2026, 11, 8, 10)
   let started = noon(2026, 11, 8, 9)
   const notices: { title?: string; text: string }[] = []
-  const prefs: Record<string, unknown> = {}
+  // Finish notices off: the budget warns all the same
+  const prefs: Record<string, unknown> = { notifyDone: false }
   stand(on, { cost: () => usd, startedAt: () => started, disk: {}, now: () => now, notices, prefs })
   await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
@@ -174,8 +175,10 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
   await pane.press({ key: 'fold-past' })
-  await (pane as any).input({ key: 'budget-input', text: 'lots' })
-  expect(prefs.dailyBudget).toBe(undefined)
+  for (const bad of ['lots', '1e3', '0x10', '0.004', '0', '-5', '5.505']) {
+    await (pane as any).input({ key: 'budget-input', text: bad })
+    expect(prefs.dailyBudget).toBe(undefined)
+  }
   await (pane as any).input({ key: 'budget-input', text: '$10' })
   expect(prefs.dailyBudget).toBe(10)
   expect(JSON.stringify(await pane.drawn())).toContain('$1.00 of $10.00 today')
@@ -203,7 +206,7 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   await turnDone($, 'fifth')
   expect(notices.filter(n => n.title?.startsWith('Daily budget')).map(n => n.title)).toEqual(['Daily budget at 80%', 'Daily budget reached'])
   expect(await band()).toContain('{"color":"error"},"children":["  ·  $10.20 of $10.00 today"]')
-  expect(prefs.budgetWarned).toEqual({ day: '2026-11-08', level: 'over' })
+  expect(prefs.budgetWarned).toEqual({ day: '2026-11-08', level: 'over', budget: 10 })
   // The next day, a new session: quiet under 80%, and warned again once it crosses
   now = noon(2026, 11, 9, 10)
   started = noon(2026, 11, 9, 9)
@@ -215,6 +218,21 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   await prompt($, 'next day again')
   await turnDone($, 'next day again')
   expect(notices.filter(n => n.title?.startsWith('Daily budget')).length).toBe(3)
+  // With finish notices off, no turn told you it was done; only the budget spoke
+  expect(notices.every(n => n.title?.startsWith('Daily budget'))).toBe(true)
+  // Raised after a warning: crossing 80% of the new budget warns again
+  await (pane as any).input({ key: 'budget-input', text: '20' })
+  usd = 17
+  await prompt($, 'raised')
+  await turnDone($, 'raised')
+  expect(notices.filter(n => n.title?.startsWith('Daily budget')).at(-1)).toEqual({ title: 'Daily budget at 80%', text: '$17.00 of $20.00 spent today (estimates); nothing is stopped' })
+  // Another session warned at 100% of this budget meanwhile (as the store now says): this one stays quiet
+  const before = notices.length
+  prefs.budgetWarned = { day: '2026-11-09', level: 'over', budget: 20 }
+  usd = 21
+  await prompt($, 'other session warned')
+  await turnDone($, 'other session warned')
+  expect(notices.length).toBe(before)
   // Clear: no budget, no figure on the band
   await pane.press({ key: 'budget-clear' })
   expect(prefs.dailyBudget).toBe(undefined)

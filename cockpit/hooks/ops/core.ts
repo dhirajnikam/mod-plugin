@@ -27,7 +27,12 @@ export async function set($: $, patch: Patch) {
     if (PREFS.some(k => n[k] !== s[k])) saved = Object.fromEntries(PREFS.map(k => [k, n[k]]))
     return n
   })
-  if (saved) await $.store.set('prefs', saved).catch(() => null)
+  if (!saved) return
+  // Another session may have warned since this one read the settings: its warning stands over an older one here
+  const was = ((await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined)?.budgetWarned
+  const ours = (saved as Partial<Ph>).budgetWarned
+  if (was && (!ours || was.day > ours.day || (was.day === ours.day && was.budget === ours.budget && was.level === 'over'))) (saved as Partial<Ph>).budgetWarned = was
+  await $.store.set('prefs', saved).catch(() => null)
 }
 
 // Cockpit's folder in the repository, kept out of git (and so out of every commit) by its own .gitignore

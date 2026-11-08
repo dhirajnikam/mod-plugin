@@ -543,7 +543,7 @@ export function Agents($: $, v: V) {
         </Button>
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />}
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />}
-        {s.ui.collapsed['ag-settings'] && <Check v={v} id="notify-done" on={s.notifyDone !== false} label="Tell me when work is done (while I am not watching this pane)" onPress={() => set($, st => ({ notifyDone: st.notifyDone === false }))} />}
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="notify-done" on={s.notifyDone !== false} label="Tell me when work is done (while I am not watching this pane; a daily budget warns regardless)" onPress={() => set($, st => ({ notifyDone: st.notifyDone === false }))} />}
       </Box>
     </Box>
   )

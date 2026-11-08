@@ -47,14 +47,17 @@ export function doneText(f: Finish): { title: string; text: string } {
 // Sends a finish's notice once (by key), while the setting is on and you are not watching: the Cockpit pane is not
 // on screen (isShown; isFocused would count it unwatched whenever you type in the prompt beside it)
 const told = new Set<string>()
-export async function tellDone($: $, key: string, f: Finish, opt: { always?: boolean } = {}) {
-  if ((await read($, S)).notifyDone === false || told.has(key)) return
+export async function tellDone($: $, key: string, f: Finish, opt: { always?: boolean } = {}): Promise<boolean> {
+  // A warning (the budget's) is its own choice: sent with finish notices off, and whether or not you are watching
+  if ((!opt.always && (await read($, S)).notifyDone === false) || told.has(key)) return false
   told.add(key)
-  // A warning is sent whether or not you are watching; a finish only while you are not
   const watching = !opt.always && (await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced && p.isShown)
-  if (watching) return
+  if (watching) return false
   const { title, text } = doneText(f)
-  await $.ui.notify(text, { title }).catch(() => null)
+  const sent = await $.ui.notify(text, { title }).catch(() => null)
+  // Not sent: the key may be tried again
+  if (!sent?.isSent) told.delete(key)
+  return !!sent?.isSent
 }
 
 // The daily budget, checked after each turn: crossing 80% and then 100% of it warns once each a day (kept across
@@ -66,15 +69,22 @@ export async function checkBudget($: $, sessions: SessionSpend[], now: number) {
   const level = budgetLevel(spend, s.dailyBudget)
   if (level !== 'near' && level !== 'over') return
   const day = dayOf(now)
-  const was = s.budgetWarned?.day === day ? RANK[s.budgetWarned.level] : 0
+  // What any session warned today, read from the store just now (another session may have warned meanwhile); a
+  // warning for a different budget does not count, so a raised budget warns again
+  const stored = ((await $.store.get('prefs').catch(() => undefined)) ?? {}) as { budgetWarned?: { day: string; level: 'near' | 'over'; budget?: number } }
+  const w = stored.budgetWarned
+  const was = w && w.day === day && w.budget === s.dailyBudget ? RANK[w.level] : 0
   if (RANK[level] <= was) return
-  await set($, { budgetWarned: { day, level } })
-  await tellDone($, `budget:${day}:${level}`, { kind: 'budget', level, spend, budget: s.dailyBudget! }, { always: true })
+  // Marked warned only once the notice went out
+  if (!(await tellDone($, `budget:${day}:${level}:${s.dailyBudget}`, { kind: 'budget', level, spend, budget: s.dailyBudget! }, { always: true }))) return
+  await set($, { budgetWarned: { day, level, budget: s.dailyBudget! } })
 }
 
 // A daily budget typed in the Overview: dollars above 0, or left as it was with a word why
 export async function setBudget($: $, text: string) {
-  const usd = Number(String(text).trim().replace(/^\$/, ''))
-  if (!Number.isFinite(usd) || usd <= 0) return toast($, 'A daily budget is a number of dollars above 0')
-  await set($, st => ({ dailyBudget: Math.round(usd * 100) / 100, ui: { ...st.ui, budgetText: undefined } }))
+  // Plain dollars, cents at most: 5, 12.5, $7.25; nothing else (no 1e3, no 0x10, no 0.004)
+  const t = String(text).trim().replace(/^\$/, '')
+  const usd = /^\d+(\.\d{1,2})?$/.test(t) ? Number(t) : NaN
+  if (!(usd > 0)) return toast($, 'A daily budget is dollars above 0, like 10 or 12.50')
+  await set($, st => ({ dailyBudget: usd, ui: { ...st.ui, budgetText: undefined } }))
 }

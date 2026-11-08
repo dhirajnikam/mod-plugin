@@ -38,7 +38,9 @@ with an arrow only where it folds.
   token total) and its turns. They are Claude Code's estimates, not a bill.
 - **Daily budget ($)**, in the opened Earlier sessions (none until you set one; kept across sessions; **Clear** removes
   it): today's spend against it shows there and on the band above the prompt, amber from 80% and red from 100%, and
-  crossing each sends one notice that day, even while the pane is on screen. It only warns: nothing is ever stopped.
+  crossing each sends one notice that day (shared by every session in the repository; a raised budget warns afresh),
+  even while the pane is on screen and with finish notices off. Plain dollars only (10, 12.50). A session counts on
+  the day it started, so one running past midnight adds to the day before. It only warns: nothing is ever stopped.
 
 ## Around the prompt and in the chat
 
