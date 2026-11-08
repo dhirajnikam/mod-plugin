@@ -451,7 +451,7 @@ export function Overview($: $, v: V) {
           </Box>
           {isOpen('past') && sessions.length > 0 && (
             <Box flexDirection="column">
-              <Text color={t.dim} size="footnote" wrap="wrap">{spent > 0 ? `Spend, last 14 days ≈ $${spent.toFixed(2)} (Claude Code's estimates)` : 'Nothing spent in the last 14 days'}</Text>
+              <Text color={t.dim} size="footnote" wrap="wrap">{spent > 0 ? `Spend, last 14 days ≈ $${spent.toFixed(2)} (estimates)` : 'Nothing spent in the last 14 days'}</Text>
               {days.map(d => (
                 <Box key={`spend-${d.day}`} columnGap={sp(v, 1)}>
                   <Text color={t.faint} size="footnote" mono>{d.day.slice(5)}</Text>

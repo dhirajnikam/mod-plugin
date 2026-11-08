@@ -117,7 +117,7 @@ test("each session's spend is saved in history at every turn's end, kept in plac
   expect(JSON.stringify(await ui.drawn())).toContain('≈ $5.15 in 14 days')
   await ui.press({ key: 'fold-past' })
   const d = JSON.stringify(await ui.drawn())
-  expect(d).toContain("Spend, last 14 days ≈ $5.15 (Claude Code's estimates)")
+  expect(d).toContain("Spend, last 14 days ≈ $5.15 (estimates)")
   expect(d).toContain('Costliest sessions')
   expect(d).toContain('11-06 · 10:00 · 12 turns')
   expect(d).toContain('$3.10')
