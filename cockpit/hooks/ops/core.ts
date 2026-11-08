@@ -9,13 +9,13 @@ import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 
 // The session's Cockpit state (see state.ts)
-export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 export type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 
 // The choices that outlast a session, a reload and a change of the state's shape: kept in the store, read at session start
-const PREFS = ['focus', 'theme', 'mode', 'autoVerify', 'testAgents'] as const
+const PREFS = ['focus', 'theme', 'mode', 'autoVerify', 'testAgents', 'chooseModel'] as const
 export async function set($: $, patch: Patch) {
   let saved: Record<string, unknown> | null = null
   await update($, S, s => {

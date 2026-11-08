@@ -11,7 +11,7 @@ const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g,
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean; noVerdict?: number }
 function stand($: unknown, on: any, st: Stubs = {}) {
-  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], files: {} as Record<string, string>, list: [] as any[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
+  const log = { toasts: [] as string[], spawned: [] as string[], prompts: [] as string[], models: [] as unknown[], registered: [] as string[], specs: [] as any[], ran: [] as string[][], store: {} as Record<string, unknown>, stopped: [] as string[], submitted: [] as string[], files: {} as Record<string, string>, list: [] as any[], open: () => {}, inFlight: Promise.resolve(), asked: 0, theme: 'dark' }
   let seat = 0
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('agent.register', async (_: unknown, e: any) => (log.registered.push(String(e.name)), log.specs.push(e), st.regDeny ? { deny: 'x' } : { value: { agent: `cockpit:${e.name}` } }))
@@ -57,6 +57,7 @@ function stand($: unknown, on: any, st: Stubs = {}) {
   on('agent.spawn', async (_: unknown, e: any) => {
     log.spawned.push(String(e.description))
     log.prompts.push(String(e.prompt))
+    log.models.push(e.model)
     flying()
     if (st.hold) await gate
     if (st.noId) return { model: 'haiku' } as never
@@ -486,4 +487,32 @@ test('verifyState with only the Prover run is not passed; stopped agents not pas
   expect(verifyState([a('cockpit:breaker', 'done', [{ n: 'a', st: 'pass' }])]).passed).toBe(false)
   expect(verifyState([a('cockpit:prover', 'stopped', [{ n: 'a', st: 'pass' }]), a('cockpit:breaker', 'done', [{ n: 'b', st: 'pass' }])]).passed).toBe(false)
   expect(verifyState([a('cockpit:prover', 'done', [{ n: 'a', st: 'fixed' }]), a('cockpit:breaker', 'done', [{ n: 'b', st: 'pass' }])]).fail).toBe(0)
+})
+
+test('an expert started with the setting on is spawned with the picked model and shows it; off, with none', { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand($, on, { hold: true })
+  const run = verify($)
+  await log.inFlight
+  // The engine's own spawn event for the start in flight: the row takes the choice from the note Cockpit left
+  const seen = modelSpawn($, 'cockpit:prover', 'prove it')
+  log.open()
+  await Promise.all([run, seen])
+  // The Prover on a task with no words to go by: sonnet, medium
+  expect(log.models[0]).toBe('sonnet')
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  expect(JSON.stringify(await ui.drawn())).toContain('sonnet · medium — a usual task')
+  await ui.unmount()
+})
+
+test('with Choose model and effort for me off, a start names no model', { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand($, on)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await ui.press({ key: 'fold-settings' })
+  await ui.press({ key: 'choosemodel' })
+  await ui.unmount()
+  await verify($)
+  expect(log.spawned).toEqual(['Prover'])
+  expect(log.models).toEqual([undefined])
 })

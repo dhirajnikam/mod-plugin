@@ -61,6 +61,8 @@ export type Agent = {
   parent?: string
   // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
   provider?: string
+  // The model and effort Cockpit chose for it, with why: "sonnet · medium — small docs change"
+  pick?: string
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
@@ -231,10 +233,12 @@ export type Ph = {
   autoVerify: boolean
   // Run the positive and the negative tester on each agent's run that changed files
   testAgents: boolean
+  // Choose each expert's model and effort from the task (hooks/pick.ts); off: the agent's own defaults
+  chooseModel: boolean
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by
-  starting: { name: string; type: string; task: string } | null
+  starting: { name: string; type: string; task: string; pick?: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   // The tabs an add-on said it draws; absent, Cockpit draws every tab

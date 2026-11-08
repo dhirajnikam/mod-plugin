@@ -243,6 +243,7 @@ export function Agents($: $, v: V) {
                       {a.for !== undefined && <Text color={t.dim} size="footnote" wrap="truncate-end">{`testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work`}</Text>}
                       {/* A finished run says what it found (its REPORT line), or else what it was asked */}
                       {live ? <Tracker v={v} a={a} /> : (!a.for || reportOf(a)) && <Text color={t.dim} size="footnote" wrap="truncate-end">{reportOf(a) || a.task}</Text>}
+                      {a.pick && <Text color={t.faint} size="footnote" wrap="truncate-end">{a.pick}</Text>}
                       {testLine(a.id, `rl-${a.id}`)}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
@@ -505,6 +506,7 @@ export function Agents($: $, v: V) {
           </Text>
         </Button>
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />}
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="choosemodel" on={s.chooseModel} label="Choose model and effort for me" onPress={() => set($, st => ({ chooseModel: !st.chooseModel }))} />}
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />}
       </Box>
     </Box>

@@ -12,7 +12,7 @@ import { claim, git, moveSaved, note, release, repoRoot, set, toast } from './co
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
 

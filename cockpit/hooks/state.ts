@@ -24,6 +24,7 @@ export const INITIAL: Ph = {
   waiting: '',
   autoVerify: false,
   testAgents: true,
+  chooseModel: true,
   agents: [],
   pipeline: null,
   starting: null,
@@ -93,5 +94,5 @@ export const INITIAL: Ph = {
 }
 
 // The state atom is declared in each file that reads it (the engine scans for it there).
-// Bump its 'ph-23' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
+// Bump its 'ph-24' tag in both files when Ph's fields change: an older stored value then reads as INITIAL.
 export const PANE = 'cockpit'

@@ -5,6 +5,7 @@ import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, F
 import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
+import { pickLabel, pickRun } from '../pick'
 import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -13,7 +14,7 @@ import { decideCommit, refreshRepo } from './git'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 // Spawns started from the pane right now, each its type and exact prompt: the tool.check hook puts these to the person
 const ownStarts: { type: string; prompt: string }[] = []
@@ -23,15 +24,22 @@ export function isOwnStart(input: unknown) {
 }
 
 // Starts a subagent in the background and settles once it has started, with its id
-export async function startAgent($: $, a: { prompt: string; description: string; type: string }) {
+export async function startAgent($: $, a: { prompt: string; description: string; type: string; pick?: ReturnType<typeof pickRun> }) {
   const own = { type: a.type, prompt: a.prompt }
   ownStarts.push(own)
-  const r = await $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type })
+  // The spawn takes a model; effort belongs to the agent's definition, so a known expert is registered again with the pick's
+  // ponytail: a run started at the same moment as another of its type can take the other's effort; per-run effort needs a spawn field
+  const spec = a.pick && specs.get(a.type.replace(/^cockpit:/, ''))
+  if (spec && a.pick) await $.agent.register({ ...spec, model: a.pick.model, effort: a.pick.effort }).catch(() => null)
+  const r = await $.agent.spawn({ prompt: a.prompt, description: a.description, subagentType: a.type, ...(a.pick ? { model: a.pick.model } : {}) })
     .catch(e => ({ deny: String(e) }))
     .finally(() => ownStarts.splice(ownStarts.indexOf(own), 1))
   if ('deny' in r && r.deny) return { deny: r.deny }
   return { agentId: 'agentId' in r && r.agentId ? r.agentId : '' }
 }
+
+// The experts' definitions as registered, by name
+const specs = new Map<string, { name: string; description: string; prompt: string; model?: string; tools?: string[] }>()
 
 // The experts from the mod's own agents/*.md, registered as cockpit:<name> so they dispatch however the mod was loaded
 // (a plugin's agent files are read only at startup; a mod that loads later, or reloads, registers its own)
@@ -46,6 +54,7 @@ export async function registerExperts($: $) {
     const name = head.name || f.name.slice(0, -3)
     const tools = String(head.tools ?? '').split(',').map((t: string) => t.trim()).filter(Boolean)
     const spec = { name, description: head.description || `Cockpit's ${name}`, prompt: (m[2] ?? '').trim(), ...(head.model ? { model: head.model } : {}), ...(tools.length ? { tools } : {}) }
+    specs.set(name, spec)
     await $.agent.register(spec).catch(e => $.ui.log(`cockpit: could not register the ${spec.name}: ${String(e)}`))
   }
   // And the agents made from a description, kept in the store across sessions
@@ -173,8 +182,9 @@ export async function runExpert($: $, type: string, prior: string[] = [], opts: 
   const s0 = await read($, S)
   const s = opts.task ? { ...s0, task: opts.task } : s0
   const name = expertName(type)
-  await set($, { starting: { name, type, task: s.task || name } })
-  const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type })
+  const pick = s.chooseModel ? pickRun(s.task, type, new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path)).size) : undefined
+  await set($, { starting: { name, type, task: s.task || name, ...(pick ? { pick: pickLabel(pick) } : {}) } })
+  const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type, ...(pick ? { pick } : {}) })
   await set($, { starting: null })
   if ('deny' in r) {
     // Refused for want of a request: Claude starts it instead; '' keeps a pipeline waiting on this step
@@ -187,7 +197,7 @@ export async function runExpert($: $, type: string, prior: string[] = [], opts: 
     await toast($, `${name} could not start: ${r.deny}`)
     return null
   }
-  if (r.agentId) await trackAgent($, { id: r.agentId, name, type, task: s.task || name, prompt: expertPrompt(s, prior) })
+  if (r.agentId) await trackAgent($, { id: r.agentId, name, type, task: s.task || name, prompt: expertPrompt(s, prior), ...(pick ? { pick: pickLabel(pick) } : {}) })
   await toast($, `Started the ${name.toLowerCase()}`)
   return r.agentId
 }
@@ -322,15 +332,16 @@ export async function discoverAgentTypes($: $) {
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
-  await set($, { starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task } })
-  const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type })
+  const pick = (await read($, S)).chooseModel ? pickRun(task, type) : undefined
+  await set($, { starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task, ...(pick ? { pick: pickLabel(pick) } : {}) } })
+  const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type, ...(pick ? { pick } : {}) })
   await set($, { starting: null })
   if ('deny' in r) {
     if (/no verdict/i.test(r.deny ?? '') && (await handOff($, [{ type, brief: task }]))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
     return toast($, `Could not start the agent: ${r.deny}`)
   }
-  if (r.agentId) await trackAgent($, { id: r.agentId, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task })
+  if (r.agentId) await trackAgent($, { id: r.agentId, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task, ...(pick ? { pick: pickLabel(pick) } : {}) })
   await set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '', openAgent: r.agentId } }))
   await toast($, `Started ${type}`)
 }
