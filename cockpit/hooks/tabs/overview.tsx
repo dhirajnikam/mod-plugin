@@ -407,7 +407,9 @@ export function Overview($: $, v: V) {
                   <Box flexDirection="column" paddingLeft={2}>
                     <Text color={t.dim} size="footnote" wrap="wrap">{`${fmt(took)} · ${fp.pct}% · ${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
                     <Text color={t.dim} size="footnote">{`${(f.turns ?? 1) > 1 ? `${f.turns} turns · ` : ''}${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
-                    {!live && f.snap?.before && f.snap?.after && (
+                    {f.snap?.undone ? (
+                      <Text color={t.faint} size="footnote" wrap="wrap">{`↶ undone · the files just before: refs/cockpit/turns/${f.id}/undone`}</Text>
+                    ) : !live && f.snap?.before && f.snap?.after && (
                       // Undo asks first: it changes files in the working tree
                       s.ui.undoAsk === f.id ? (
                         <Box columnGap={sp(v, 1)} flexWrap="wrap">
@@ -424,7 +426,6 @@ export function Overview($: $, v: V) {
                           <Button key={`undo-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, undoAsk: f.id } }))}>
                             <Text color={t.accent} size="footnote">↶ Undo this turn</Text>
                           </Button>
-                          {f.snap.undone && <Text color={t.faint} size="footnote">undone once</Text>}
                         </Box>
                       )
                     )}

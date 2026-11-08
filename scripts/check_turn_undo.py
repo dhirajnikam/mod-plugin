@@ -51,19 +51,19 @@ def undo(repo, before, after):
         (remove if code.startswith('A') else restore).append(path)
     if not restore and not remove:
         return []
-    now = snapshot(repo, 'refs/cockpit/turns/t/undone')
+    now = snapshot(repo, 'refs/cockpit/scratch')
     mine = set(restore + remove)
     stale = [p for p in git(repo, fill(UNDO['since'], {'after': after, 'now': now})).stdout.split('\0') if p and p in mine]
     if stale:
         return stale
+    git(repo, fill(UNDO['keep'], {'ref': 'refs/cockpit/turns/t/undone', 'commit': now}))
     tracked = set(git(repo, UNDO['tracked']).stdout.split('\0'))
     untracked = [p for p in remove if p not in tracked]
     for i in range(0, len(untracked), 100):
         git(repo, UNDO['clean'] + untracked[i:i + 100], LITERAL)
     dirs = sorted({'/'.join(p.split('/')[:i + 1]) for p in remove for i in range(len(p.split('/')) - 1)}, key=len, reverse=True)
     for d in dirs:
-        full = os.path.join(repo, d)
-        if os.path.isdir(full) and not os.listdir(full):
+        if not git(repo, UNDO['untrackedIn'] + [d + '/'], LITERAL).stdout:
             git(repo, UNDO['cleanDir'] + [d + '/'], LITERAL)
     back = restore + [p for p in remove if p in tracked]
     if back:
@@ -125,6 +125,14 @@ with tempfile.TemporaryDirectory() as repo:
     files_late = files(repo)
     check('a stale undo is refused, naming the file', undo(repo, before2, after2) == ['a.txt'])
     check('a refused undo changes nothing', files(repo) == files_late)
+    check('a refused undo leaves the undone ref of the earlier one', git(repo, ['git', 'rev-parse', 'refs/cockpit/turns/t/undone']).stdout.strip() != '')
+    # A folder the turn made, where you then put a file of your own: the turn's file goes, yours and the folder stay
+    before3 = snapshot(repo, 'refs/cockpit/turns/w/before')
+    write(repo, 'shared/turn.txt', 'turn\n')
+    after3 = snapshot(repo, 'refs/cockpit/turns/w/after')
+    write(repo, 'shared/.yours', 'mine\n')
+    check('undo of the folder turn goes through', undo(repo, before3, after3) == [])
+    check('a file you put in a folder the turn made is kept, and the folder', os.path.exists(os.path.join(repo, 'shared/.yours')) and not os.path.exists(os.path.join(repo, 'shared/turn.txt')))
 
 with tempfile.TemporaryDirectory() as repo:
     # A file that becomes a folder, and a folder that becomes a file

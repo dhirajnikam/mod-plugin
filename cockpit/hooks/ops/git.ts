@@ -525,9 +525,10 @@ export async function pruneTurns(run: Run, keep = TURNS_KEPT) {
 export async function undoFlow($: $, flowId: string) {
   await set($, st => ({ ui: { ...st.ui, undoAsk: '' } }))
   const run = await turnRun($)
-  const root = (await repoRoot($)) || '.'
-  const isEmpty = async (dir: string) => (await $.fs.list(`${root}/${dir}`).catch(() => null))?.length === 0
-  const r = await undoTurn(turnRef(flowId, 'before'), turnRef(flowId, 'after'), turnRef(flowId, 'undone'), run, isEmpty)
+  // In the snapshots' queue: the undo's own snapshot shares their temporary index
+  const mine = snapping.then(() => undoTurn(turnRef(flowId, 'before'), turnRef(flowId, 'after'), turnRef(flowId, 'undone'), run))
+  snapping = mine.catch(() => null)
+  const r = await mine
   if (r.refuse.length) return toast($, `Not undone: changed since that turn ended: ${r.refuse.slice(0, 3).join(', ')}${r.refuse.length > 3 ? ` and ${r.refuse.length - 3} more` : ''}`)
   if (!r.done) return toast($, `Not undone: ${r.error}`)
   await set($, st => ({ flows: st.flows.map(f => (f.id === flowId ? { ...f, snap: { ...f.snap, undone: true } } : f)) }))

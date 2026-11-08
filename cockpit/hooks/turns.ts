@@ -32,7 +32,9 @@ export const UNDO_COMMANDS = {
   "restore": ["git", "restore", "--source={before}", "--worktree", "--pathspec-from-file=-", "--pathspec-file-nul"],
   "tracked": ["git", "ls-files", "-z"],
   "clean": ["git", "clean", "-f", "-q", "--"],
-  "cleanDir": ["git", "clean", "-d", "-f", "-q", "--"]
+  "cleanDir": ["git", "clean", "-d", "-f", "-q", "--"],
+  "untrackedIn": ["git", "ls-files", "--others", "--exclude-standard", "-z", "--"],
+  "keep": ["git", "update-ref", "{ref}", "{commit}"]
 }
 // undo:end
 export const LITERAL = { GIT_LITERAL_PATHSPECS: '1' }
@@ -78,27 +80,33 @@ export function undoPlan(nameStatus: string, stale: string): { restore: string[]
 // folders that leaves empty), then the rest is restored, so a file that became a folder, or a folder a file, comes back
 // too. Claude Code's file API cannot delete, so git does: `clean` takes a created file nothing tracks, and restore
 // (which deletes a tracked file its source lacks) takes one that is tracked, say because it was auto-committed.
-// isEmpty: whether a folder, from the top folder, holds nothing
-export async function undoTurn(before: string, after: string, undoneRef: string, run: Run, isEmpty: (dir: string) => Promise<boolean>) {
+// The check against now uses a scratch ref, so a refused or repeated undo never replaces the undone ref of an earlier one.
+// A folder a created file leaves is removed only when git finds nothing untracked left in it (ignored files are never
+// cleaned, and a tracked one keeps the folder)
+export async function undoTurn(before: string, after: string, undoneRef: string, run: Run) {
   const fill = (argv: string[], v: Record<string, string>) => argv.map(a => a.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? ''))
   const changed = await run(fill(UNDO_COMMANDS.changed, { before, after }), {})
   if (changed.exitCode !== 0) return { done: false, restore: [], remove: [], refuse: [], error: 'its snapshots could not be read' }
   const plan = undoPlan(changed.stdout, '')
   const files = [...plan.restore, ...plan.remove]
   if (!files.length) return { done: true, ...plan, error: '' }
-  const now = await snapshot(undoneRef, run)
+  const now = await snapshot('refs/cockpit/scratch', run)
   if (!now.commit) return { done: false, ...plan, error: now.error }
   const since = await run(fill(UNDO_COMMANDS.since, { after, now: now.commit }), {})
   const mine = new Set(files)
   const refuse = since.stdout.split('\0').filter(p => p && mine.has(p))
   if (refuse.length) return { done: false, restore: [], remove: [], refuse, error: '' }
+  await run(fill(UNDO_COMMANDS.keep, { ref: undoneRef, commit: now.commit }), {})
   const tracked = new Set((await run(UNDO_COMMANDS.tracked, {})).stdout.split('\0'))
   const untracked = plan.remove.filter(p => !tracked.has(p))
   // ponytail: 100 paths a command, well under any system's command-line limit
   for (let i = 0; i < untracked.length; i += 100) await run([...UNDO_COMMANDS.clean, ...untracked.slice(i, i + 100)], LITERAL)
   // The folders a created file leaves empty, deepest first; one that still holds anything stays
   const dirs = [...new Set(plan.remove.flatMap(p => p.split('/').slice(0, -1).map((_, i, all) => all.slice(0, i + 1).join('/'))))].sort((a, b) => b.length - a.length)
-  for (const d of dirs) if (await isEmpty(d).catch(() => false)) await run([...UNDO_COMMANDS.cleanDir, `${d}/`], LITERAL)
+  for (const d of dirs) {
+    const left = await run([...UNDO_COMMANDS.untrackedIn, `${d}/`], LITERAL)
+    if (left.exitCode === 0 && !left.stdout) await run([...UNDO_COMMANDS.cleanDir, `${d}/`], LITERAL)
+  }
   const back = [...plan.restore, ...plan.remove.filter(p => tracked.has(p))]
   if (back.length) {
     const r = await run(fill(UNDO_COMMANDS.restore, { before }), LITERAL, back.join('\0'))

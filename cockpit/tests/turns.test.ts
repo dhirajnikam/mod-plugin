@@ -70,19 +70,20 @@ test('undoTurn takes away what the turn created (git clean, or restore when trac
     if (cmd.startsWith('git diff --name-only')) return { exitCode: 0, stdout: since }
     // committed.ts was auto-committed after the turn: it is tracked now
     if (cmd === 'git ls-files -z') return { exitCode: 0, stdout: 'a.txt\0committed.ts\0' }
+    // src/deep holds nothing untracked once new.ts goes; src still holds a file of yours
+    if (cmd.startsWith('git ls-files --others')) return { exitCode: 0, stdout: cmd.endsWith(' src/') ? 'src/yours.txt\0' : '' }
     if (cmd === 'git write-tree') return { exitCode: 0, stdout: 'tree\n' }
     if (cmd.startsWith('git commit-tree')) return { exitCode: 0, stdout: 'now9\n' }
     if (cmd.startsWith('git rev-parse --git-path')) return { exitCode: 0, stdout: '.git/cockpit-index\n' }
     if (cmd.startsWith('git rev-parse --verify')) return { exitCode: 0, stdout: 'h\n' }
     return { exitCode: 0, stdout: '' }
   }
-  // src/deep empties when new.ts goes; src still holds other files
-  const isEmpty = async (d: string) => d === 'src/deep'
-  expect(await undoTurn('b1', 'a1', 'refs/cockpit/turns/f/undone', run, isEmpty)).toEqual({ done: true, restore: ['a.txt', 'gone.md'], remove: ['src/deep/new.ts', 'committed.ts'], refuse: [], error: '' })
+  expect(await undoTurn('b1', 'a1', 'refs/cockpit/turns/f/undone', run)).toEqual({ done: true, restore: ['a.txt', 'gone.md'], remove: ['src/deep/new.ts', 'committed.ts'], refuse: [], error: '' })
   expect(steps.filter(x => /^git (update-ref|diff --name-only|clean|restore)/.test(x))).toEqual([
-    // The tree as it is now kept first, so the undo can be undone
-    'git update-ref refs/cockpit/turns/f/undone now9',
+    // The tree as it is now, on a scratch ref; kept as the undone ref only once nothing changed since
+    'git update-ref refs/cockpit/scratch now9',
     'git diff --name-only --no-renames -z a1 now9',
+    'git update-ref refs/cockpit/turns/f/undone now9',
     'git clean -f -q -- src/deep/new.ts [literal]',
     'git clean -d -f -q -- src/deep/ [literal]',
     // The tracked created file goes with the restore (it is not in before), files on standard input, read literally
@@ -92,17 +93,19 @@ test('undoTurn takes away what the turn created (git clean, or restore when trac
   // A later change to another file does not matter; one to the turn's own files refuses, removing and restoring nothing
   steps.length = 0
   since = 'unrelated.txt\0'
-  expect((await undoTurn('b1', 'a1', 'u', run, isEmpty)).done).toBe(true)
+  expect((await undoTurn('b1', 'a1', 'u', run)).done).toBe(true)
   steps.length = 0
   since = 'unrelated.txt\0a.txt\0'
-  expect(await undoTurn('b1', 'a1', 'u', run, isEmpty)).toEqual({ done: false, restore: [], remove: [], refuse: ['a.txt'], error: '' })
+  expect(await undoTurn('b1', 'a1', 'u', run)).toEqual({ done: false, restore: [], remove: [], refuse: ['a.txt'], error: '' })
   expect(steps.some(x => /^git (clean|restore)/.test(x))).toBe(false)
+  // A refused undo leaves the undone ref of an earlier one alone
+  expect(steps.some(x => x.startsWith('git update-ref u '))).toBe(false)
   // Hundreds of created files go 100 a command
   const many = Array.from({ length: 250 }, (_, i) => `A\0f${i}.txt\0`).join('')
   steps.length = 0
   since = ''
   const runMany = async (argv: string[], env: Record<string, string>, stdin?: string) => (argv.join(' ').startsWith('git diff --name-status') ? { exitCode: 0, stdout: many } : run(argv, env, stdin))
-  await undoTurn('b1', 'a1', 'u', runMany, isEmpty)
+  await undoTurn('b1', 'a1', 'u', runMany)
   expect(steps.filter(x => x.startsWith('git clean -f')).map(x => x.split(' ').length - 6)).toEqual([100, 100, 50])
 })
 
@@ -139,6 +142,7 @@ function session(on: any, opt: { repo?: boolean; refs?: string; changed?: string
     if (cmd.startsWith('git diff --name-status')) return out(opt.changed ?? '')
     if (cmd.startsWith('git diff --name-only')) return out(opt.since?.() ?? '')
     if (cmd === 'git ls-files -z') return out('a.ts\0')
+    if (cmd.startsWith('git ls-files --others')) return out('')
     return out('')
   })
   return ran
@@ -216,22 +220,29 @@ test("Undo this turn asks first, then undoes the turn's files from its snapshots
   // Keep: still nothing
   await ui.press({ key: `undo-no-${flow}` })
   expect(ran.slice(mark).some(r => /git (diff|restore|clean)/.test(r))).toBe(false)
-  // Confirmed: the turn's own snapshots, the tree kept as undone, the created file cleaned, the rest restored
-  await ui.press({ key: `undo-${flow}` })
-  await ui.press({ key: `undo-yes-${flow}` })
-  const did = ran.slice(mark).map(r => r.replace(/ @\/repo/, ''))
-  expect(did).toContain(`git diff --name-status --no-renames -z refs/cockpit/turns/${flow}/before refs/cockpit/turns/${flow}/after`)
-  expect(did.some(r => r.startsWith(`git update-ref refs/cockpit/turns/${flow}/undone`))).toBe(true)
-  expect(did).toContain('git clean -f -q -- src/new.ts')
-  expect(did).toContain(`git restore --source=refs/cockpit/turns/${flow}/before --worktree --pathspec-from-file=- --pathspec-file-nul`)
-  expect(toasts.join('\n')).toContain('Undone: 1 restored, 1 removed')
-  expect(JSON.stringify(await ui.drawn())).toContain('undone once')
-  // a.ts edited by hand since that turn: refused, nothing cleaned or restored
+  // a.ts edited by hand since that turn: refused, nothing cleaned or restored, no undone ref written
   since = 'a.ts\0'
   const mark2 = ran.length
   await ui.press({ key: `undo-${flow}` })
   await ui.press({ key: `undo-yes-${flow}` })
   expect(ran.slice(mark2).some(r => /git (restore|clean)/.test(r))).toBe(false)
+  expect(ran.slice(mark2).some(r => r.includes(`update-ref refs/cockpit/turns/${flow}/undone`))).toBe(false)
   expect(toasts.join('\n')).toContain('Not undone: changed since that turn ended: a.ts')
+  // Nothing changed since: confirmed, the turn's own snapshots, the tree kept as undone, the created file cleaned,
+  // the rest restored
+  since = ''
+  const mark3 = ran.length
+  await ui.press({ key: `undo-${flow}` })
+  await ui.press({ key: `undo-yes-${flow}` })
+  const did = ran.slice(mark3).map(r => r.replace(/ @\/repo/, ''))
+  expect(did).toContain(`git diff --name-status --no-renames -z refs/cockpit/turns/${flow}/before refs/cockpit/turns/${flow}/after`)
+  expect(did.some(r => r.startsWith(`git update-ref refs/cockpit/turns/${flow}/undone`))).toBe(true)
+  expect(did).toContain('git clean -f -q -- src/new.ts')
+  expect(did).toContain(`git restore --source=refs/cockpit/turns/${flow}/before --worktree --pathspec-from-file=- --pathspec-file-nul`)
+  expect(toasts.join('\n')).toContain('Undone: 1 restored, 1 removed')
+  // Undone: it says so, and offers no second undo
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain(`↶ undone · the files just before: refs/cockpit/turns/${flow}/undone`)
+  expect(d).not.toContain(`undo-${flow}`)
   await ui.unmount()
 })

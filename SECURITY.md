@@ -18,7 +18,7 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
   the base branch cuts a branch by your pattern), `init`, and `git config user.name` / `user.email` when you press
   **Use for this repo**. These happen when you press a button, or after each turn in Auto-commit mode.
   Around every turn, for **Undo this turn**: `git read-tree`, `add -A`, `write-tree` on a temporary index under
-  `.git/` (never the real one), `commit-tree`, and `update-ref` of Cockpit's own refs under `refs/cockpit/turns/`,
+  `.git/` (never the real one), `commit-tree`, and `update-ref` of Cockpit's own refs under `refs/cockpit/`,
   dropping those of turns older than the newest 50 (never a branch or tag). Undoing a turn, after you confirm, runs
   `git restore --worktree` and `git clean` on that turn's files only. `git push`,
   `pull` and `gh pr create` run only when you press them or turn push and pull requests on.
