@@ -5,7 +5,7 @@ import { expect, test } from 'claude-code/testing'
 const sleep = (ms: number) => new Promise(res => (globalThis as any).setTimeout(res, ms))
 const VIEW = (state = 'OPEN') => `{"number":7,"title":"Add x","url":"https://github.com/o/r/pull/7","state":"${state}","isDraft":false,"reviewDecision":""}`
 
-function stand(on: any, o: { now: () => number; checks: () => string; branch: () => string; shown: () => boolean; view: () => string; notices: { title?: string; text: string }[]; ran: string[]; prefs?: Record<string, unknown> }) {
+function stand(on: any, o: { dirty?: () => boolean; now: () => number; checks: () => string; branch: () => string; shown: () => boolean; view: () => string; notices: { title?: string; text: string }[]; ran: string[]; prefs?: Record<string, unknown> }) {
   // Each dispatch of the 15 s timer waits for tick(); the others never fire
   const waiting: (() => void)[] = []
   on('clock.every', async (_: unknown, e: any) => {
@@ -37,7 +37,8 @@ function stand(on: any, o: { now: () => number; checks: () => string; branch: ()
     const cmd = (e.argv as string[]).join(' ')
     o.ran.push(cmd)
     const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-    if (cmd.startsWith('git status')) return out(`## ${o.branch()}\0`)
+    if (cmd.startsWith('git status')) return out(`## ${o.branch()}\0${o.dirty?.() ? ' M a.txt\0' : ''}`)
+    if (cmd.startsWith('git rev-parse --short') || cmd === 'git rev-parse HEAD') return out('abc1234\n')
     if (cmd.startsWith('git branch')) return out('main\nfeat/x\nfeat/y\n')
     if (cmd === 'git rev-parse --show-toplevel') return out('/repo\n')
     if (cmd.startsWith('gh pr view')) return out(o.view())
@@ -145,6 +146,11 @@ test('a run that passes says so; none while you watch the pane, none when the fi
   now += 30_000
   await tick()
   expect(checksRead(ran)).toBe(afterClosed)
+  // Reopened with its run finished meanwhile: no late notice for the run it was waiting on before it closed
+  view = VIEW()
+  checks = PASSED
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  expect(notices.length).toBe(1)
   // Pending, then you switch branch: the row goes and nothing is asked
   view = VIEW()
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
@@ -190,4 +196,42 @@ test('an unreadable answer from gh is not taken for a finished run: no notice, a
   now += 30_000
   await tick()
   expect(checksRead(ran)).toBe(3)
+})
+
+test('after a push the row is read again although GitHub has not started the new run yet, so the run that starts late is still followed and told', { timeoutMs: 30_000 }, async ($, on) => {
+  let now = 1_000_000
+  let checks = PASSED
+  let dirty = true
+  const ran: string[] = []
+  const notices: { title?: string; text: string }[] = []
+  const tick = stand(on, { dirty: () => dirty, now: () => now, checks: () => checks, branch: () => 'feat/x', shown: () => false, view: () => VIEW(), notices, ran })
+  await start($)
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const ui = await $.ui.mount(PANE as never)
+  for (let i = 0; i < 4; i++) await ui.press({ key: 'setup-next' })
+  await ui.press({ key: 'opt-push' })
+  await ui.press({ key: 'setup-done' })
+  // Commit and push: the read right after still sees the old run, all passed
+  await ui.press({ key: 'git-commit' })
+  dirty = false
+  expect(ran.some(c => c.startsWith('git push'))).toBe(true)
+  const afterPush = checksRead(ran)
+  // 30 s on the new run has started: asked again although nothing showed pending
+  checks = PENDING
+  now += 30_000
+  await tick()
+  expect(checksRead(ran)).toBe(afterPush + 1)
+  // and it fails: told
+  checks = FAILED
+  now += 30_000
+  await tick()
+  expect(notices).toEqual([{ title: 'CI failed on #7', text: 'test failed · Add x' }])
+  // Then quiet: nothing pending, no push since
+  const done = checksRead(ran)
+  for (let i = 0; i < 5; i++) {
+    now += 30_000
+    await tick()
+  }
+  expect(checksRead(ran)).toBe(done)
+  await ui.unmount()
 })

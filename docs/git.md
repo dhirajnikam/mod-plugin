@@ -18,7 +18,9 @@ The first time you open the Git tab in a repository it asks five things, once: t
   named. It is read with `gh pr view` and `gh pr checks` when you open the tab, press ↻, or push. While a check is pending and the pane is open, it is read again every 30 s, so the row turns green or red
   by itself, and the read that finds the run finished sends one notice ("CI passed on #12" or "CI failed on #12"
   naming the failing job) while the pane is not on screen and finish notices are on. Nothing is asked once no check
-  is pending, the pull request is closed or you switch branch. The base branch is never read: its pull requests
+  is pending, the pull request is closed or you switch branch; after a push from Cockpit it is read for about two
+  minutes although nothing shows pending yet (GitHub takes a while to start the new run), and after ten answers in a
+  row gh could not give, it stops asking until ↻. The base branch is never read: its pull requests
   are other branches'. When gh cannot answer (offline, not logged in) the row stays as it
   was; it goes once gh says the branch has no pull request. Checks gh could not list in full say "checks unknown",
   never "no checks".
