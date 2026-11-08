@@ -141,9 +141,9 @@ export function drawings(on: Parameters<Register>[0]) {
         {advice}
         <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
-            <Text color={t.accent}>{`${p.pct}%`}</Text>
-            <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
-            <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`${s.ctx.pct}%`}</Text>
+            <Text color={t.text}>{p.steps.length > 0 && p.total > 0 ? `Step ${Math.min(p.done + 1, p.steps.length)} of ${p.steps.length}` : p.stepName}</Text>
+            {p.steps.length > 0 && p.total > 0 && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}
+            {s.ctx.pct >= 50 && <Text color={s.ctx.pct >= 80 ? t.busy : t.dim}>{`  ·  context ${s.ctx.pct}%`}</Text>}
             {testsLine && <Text color={testsFail ? t.bad : testsLine === 'testing…' ? t.busy : t.ok}>{`  ·  ${testsLine}`}</Text>}
             {liveLine}
             {budgetLine}

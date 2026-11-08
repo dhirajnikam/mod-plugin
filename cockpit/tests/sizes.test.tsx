@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 
 // Every computed run of text fits the width it is drawn in, from a narrow pane to a wide terminal
 const WIDTHS = [28, 40, 60, 100, 160]
@@ -258,6 +260,7 @@ test("the Overview's spend by day and costliest sessions fit every width", { tim
     for (const w of WIDTHS) {
       const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
       if (!opened) {
+        await more(pane)
         await pane.press({ key: 'fold-past' })
         opened = true
       }

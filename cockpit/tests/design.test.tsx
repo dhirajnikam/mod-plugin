@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 import { neuralSvg } from '../hooks/logic'
 
 // The layout's promises, each checked by drawing a tab with a pipeline, agents and a changed file
@@ -97,6 +99,7 @@ test('Checks read plainly: passes are counted in words, and a tester still at wo
   await $.tool.call({ tool: 'TodoWrite', agentId: 'ag3', tool_use_id: 'p3', todos: [{ content: 'Read the login diff', status: 'in_progress', activeForm: 'x' }, { content: 'Check the error paths', status: 'pending', activeForm: 'x' }, { content: 'List the findings', status: 'pending', activeForm: 'x' }] } as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  await more(ui)
   const d = JSON.stringify(await ui.drawn())
   await ui.unmount()
   // The Prover passed three; the Breaker is still at work

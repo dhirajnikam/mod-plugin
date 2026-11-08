@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 import { AUTHOR, LITERAL, SNAPSHOT_PLAN, snapshot, turnRef, undoPlan, undoTurn } from '../hooks/turns'
 
 // A git that answers the plan's commands, recording each with the env it ran in
@@ -210,6 +212,7 @@ test("Undo this turn asks first, then undoes the turn's files from its snapshots
   const flow = ran.find(r => r.includes('/before'))!.match(/turns\/(f\d+)\//)![1]
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane as never)
+  await more(ui)
   await ui.press({ key: `flb-${flow}` })
   expect(JSON.stringify(await ui.drawn())).toContain('↶ Undo this turn')
   // Pressed: it asks, and nothing has run yet

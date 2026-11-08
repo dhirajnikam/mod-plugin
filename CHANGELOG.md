@@ -5,6 +5,12 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/ops/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
+  a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
+  (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
+  folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
+
 ### Added
 - **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
   `docs/CODEBASE.md` (what the project is for, layout, data flow, design decisions, how to build and run it); the row then
