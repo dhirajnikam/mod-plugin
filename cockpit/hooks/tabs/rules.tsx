@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
+import type { Account, Agent, Decision, GitForm, McpRow, Ph, Tab, ThemeId } from '../../types'
 import {
   applyAccount,
   commit,
@@ -75,7 +75,7 @@ import {
 import type { IconState, Neuron } from '../logic'
 import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
 import type { FeatureMark } from '../memory'
-import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeSettings } from '../actions'
+import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeMcp, writeSettings } from '../actions'
 import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
 import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
@@ -127,9 +127,9 @@ export function Rules($: $, v: V) {
         <Text color={t.faint}>{` ${n}`}</Text>
         <Text color={t.faint} bold={false}>{`  ${path}`}</Text>
       </Text>
-      <Button key={`radd-${add}`} plain onPress={() => ui({ ...clear, ruleAdd: s.ui.ruleAdd === add ? '' : add, ruleA: add === 'hook' ? 'PreToolUse' : add === 'perm' ? 'allow' : '' })}>
+      {add !== '' && <Button key={`radd-${add}`} plain onPress={() => ui({ ...clear, ruleAdd: s.ui.ruleAdd === add ? '' : add, ruleA: add === 'hook' ? 'PreToolUse' : add === 'perm' ? 'allow' : '' })}>
         <Text color={t.accent} size="footnote">{s.ui.ruleAdd === add ? '✕ Close' : '+ Add'}</Text>
-      </Button>
+      </Button>}
     </Box>
   )
   if (!f) return <Text color={t.dim}>Reading the rules…</Text>
@@ -137,6 +137,9 @@ export function Rules($: $, v: V) {
   const hooks = hookRows(json)
   const perms = permRows(json)
   const lines = ruleLines(f.md)
+  const mcp = s.rules?.mcp
+  const mcpError = parseSettings(mcp?.text ?? '').error
+  const servers: McpRow[] = (mcp?.rows ?? []).filter(m => (scope === 'repo' ? m.scope !== 'user' : m.scope === 'user'))
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
       <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
@@ -230,6 +233,50 @@ export function Rules($: $, v: V) {
       </Box>
 
       <Box flexDirection="column">
+        {head('MCP servers', servers.length, scope === 'repo' && !mcpError ? 'mcp' : '', scope === 'repo' ? '.mcp.json' : '~/.claude.json')}
+        {mcpError !== '' && scope === 'repo' && <Text color={t.bad} wrap="wrap">{`${mcp?.path} is ${mcpError}. Its servers are shown read-only until it is fixed by hand.`}</Text>}
+        {s.ui.ruleAdd === 'mcp' && (
+          <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+            {field('ruleA', 'Name', 'github', (val: string) => null)}
+            {field('ruleB', 'Command or URL', 'npx -y @modelcontextprotocol/server-github, or https://…/mcp', (val: string) => val.trim() && save(writeMcp($, { add: { name: (s.ui.ruleA ?? '').trim(), target: val.trim() } }, 'Server added')))}
+            <Text color={t.faint} size="footnote" wrap="wrap">A server's env and headers (tokens) are added in .mcp.json by hand; Cockpit never shows their values.</Text>
+            <Button key="rm-go" label="Add server" variant="primary" onPress={() => ((s.ui.ruleA ?? '').trim() && (s.ui.ruleB ?? '').trim() ? save(writeMcp($, { add: { name: (s.ui.ruleA ?? '').trim(), target: (s.ui.ruleB ?? '').trim() } }, 'Server added')) : undefined)} />
+          </Box>
+        )}
+        {servers.length === 0 && s.ui.ruleAdd !== 'mcp' && <Text color={t.faint} size="footnote">None yet.</Text>}
+        {servers.map(m => {
+          const key = `m:${m.key}`
+          const editable = m.scope === 'project' && !mcpError
+          if (editable) rowsDelete.set(key, () => save(writeMcp($, { remove: m }, 'Server deleted')))
+          if (s.ui.ruleEdit === key)
+            return (
+              <Box key={key} flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+                {field('ruleA', 'Name', m.name, (val: string) => null)}
+                {field('ruleB', 'Command or URL', m.target, (val: string) => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: val.trim() }, 'Server saved')))}
+                <Box columnGap={sp(v, 1)}>
+                  <Button key="rm-save" label="Save" variant="primary" onPress={() => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: (s.ui.ruleB ?? '').trim() }, 'Server saved'))} />
+                  <Button key="rm-cancel" label="Cancel" onPress={() => ui(clear)} />
+                </Box>
+              </Box>
+            )
+          return (
+            <Box key={key} columnGap={sp(v, 1)} alignItems="center">
+              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                  <Text color={t.accent} size="footnote" wrap="truncate-end">{m.name}</Text>
+                  <Text color={m.state === 'on' ? t.ok : m.state === 'off' ? t.dim : t.busy} size="footnote">{MCP_STATE[m.state]}</Text>
+                  <Text color={t.dim} size="footnote">{m.scope === 'local' ? `${m.kind} · local, only you` : m.kind}</Text>
+                </Box>
+                <Text color={t.text} mono wrap="truncate-end">{m.target}</Text>
+                {m.secrets.length > 0 && <Text color={t.faint} size="footnote" wrap="truncate-end">{`secrets: ${m.secrets.join(', ')}`}</Text>}
+              </Box>
+              {editable && actions(key, () => ui({ ...clear, ruleEdit: key, ruleA: m.name, ruleB: m.target }))}
+            </Box>
+          )
+        })}
+      </Box>
+
+      <Box flexDirection="column">
         {head('Instructions', lines.length, 'rule', f.mdPath.replace(/^.*\//, ''))}
         {s.ui.ruleAdd === 'rule' && (
           <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
@@ -267,3 +314,5 @@ export function Rules($: $, v: V) {
     </Box>
   )
 }
+
+const MCP_STATE = { on: 'on', off: 'off', approval: 'needs approval' } as const

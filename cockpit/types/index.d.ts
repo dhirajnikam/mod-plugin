@@ -64,6 +64,10 @@ export type Agent = {
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
+// An MCP server Claude Code would start here: env and header names only, never their values
+export type McpRow = { key: string; name: string; scope: 'project' | 'local' | 'user'; kind: 'stdio' | 'http' | 'sse'; target: string; secrets: string[]; state: 'on' | 'off' | 'approval' }
+// The project's .mcp.json (its path and text, the only one Cockpit writes) and every server that applies here
+export type McpFiles = { path: string; text: string; rows: McpRow[] }
 
 // The autopilot: Claude works on a goal cycle after cycle until the judges agree it is done, a limit is hit, or you stop it
 export type Autopilot = {
@@ -189,7 +193,7 @@ export type Ph = {
   goal?: { text: string; at: number }
   autopilot?: Autopilot
   // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
-  rules?: { repo: RuleFiles; user: RuleFiles }
+  rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles }
   // Slow work a press started, running past the press: its kind and the words that say it ("Pushing")
   busy?: Record<string, string>
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current

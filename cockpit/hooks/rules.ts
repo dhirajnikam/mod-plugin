@@ -1,3 +1,5 @@
+import type { McpRow } from '../types'
+
 // Hooks, permission rules and instructions, as Claude Code keeps them: settings.json ("hooks", "permissions") and
 // CLAUDE.md, for the repository and for the user. Pure: the Rules tab reads the files, these read and change their
 // text, and every change keeps the rest of the file as it was
@@ -109,4 +111,71 @@ export function changeRule(md: string, op: { add: string } | { edit: RuleLine; t
   if ('edit' in op) lines[row.line] = `${m[1]}${op.text.trim()}`
   else lines.splice(row.line, 1)
   return lines.join('\n')
+}
+
+// MCP servers, as Claude Code keeps them: the project's in .mcp.json, yours at the top of ~/.claude.json and this
+// project's private ("local") ones under its entry there. A row says what each runs and whether it runs; env and
+// headers hold tokens, so only their names are kept, never their values
+export type McpScope = McpRow['scope']
+type McpServer = { type?: string; command?: string; args?: unknown[]; url?: string; env?: Json; headers?: Json }
+const obj = (x: unknown): Json => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Json) : {})
+const names = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
+// Whatever a config file holds is drawn: control characters (escapes, newlines) become spaces
+const plain = (x: unknown) => String(x ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+export const mcpTarget = (sv: McpServer) => plain(sv.url ?? [sv.command ?? '', ...(Array.isArray(sv.args) ? sv.args : [])].join(' ').trim())
+
+// mcp: .mcp.json; claude: ~/.claude.json; settings: the repository's and your settings.json; root: the repository
+export function mcpRows(mcp: Json, claude: Json, settings: Json[], root: string): McpRow[] {
+  const project = obj(obj(claude.projects)[root])
+  const all = [...settings, project]
+  const off = new Set(all.flatMap(j => names(j.disabledMcpjsonServers)))
+  const on = new Set(all.flatMap(j => names(j.enabledMcpjsonServers)))
+  const allOn = all.some(j => j.enableAllProjectMcpServers === true)
+  // Servers switched off with /mcp in this project, whatever their scope
+  const muted = new Set(names(project.disabledMcpServers))
+  const rows = (servers: unknown, scope: McpScope): McpRow[] =>
+    Object.entries(obj(servers)).map(([name, raw]) => {
+      const sv = obj(raw) as McpServer
+      const kind = sv.type === 'sse' ? 'sse' : sv.type === 'http' || (!sv.command && sv.url) ? 'http' : 'stdio'
+      const state = muted.has(name) || (scope === 'project' && off.has(name)) ? 'off' : scope !== 'project' || allOn || on.has(name) ? 'on' : 'approval'
+      return { key: `${scope}/${name}`, name: plain(name), scope, kind, target: mcpTarget(sv), secrets: [...Object.keys(obj(sv.env)), ...Object.keys(obj(sv.headers))].map(plain), state }
+    })
+  return [...rows(mcp.mcpServers, 'project'), ...rows(project.mcpServers, 'local'), ...rows(claude.mcpServers, 'user')]
+}
+
+// A server typed as one line: a URL is an HTTP server, anything else a command and its arguments
+// ponytail: arguments split at spaces, no quoting; a server needing quoted arguments is edited in .mcp.json by hand
+function serverOf(target: string): McpServer {
+  const t = target.trim()
+  if (/^https?:\/\//i.test(t)) return { type: 'http', url: t }
+  const [command = '', ...args] = t.split(/\s+/)
+  return { command, args }
+}
+
+// Adds a server to .mcp.json, changes one's name or what it runs (its env, headers and other fields kept), or
+// removes one. A name already taken is not overwritten, and a row that no longer matches the file is left alone
+export function changeMcp(j: Json, op: { add: { name: string; target: string } } | { edit: McpRow; name: string; target: string } | { remove: McpRow }): Json {
+  const next = JSON.parse(JSON.stringify(j)) as Json
+  const servers = obj((next.mcpServers ??= {}))
+  next.mcpServers = servers
+  if ('add' in op) {
+    const name = op.add.name.trim()
+    if (!name || !op.add.target.trim() || name in servers) return j
+    servers[name] = serverOf(op.add.target)
+    return next
+  }
+  const row = 'edit' in op ? op.edit : op.remove
+  const cur = servers[row.name] as McpServer | undefined
+  if (row.scope !== 'project' || !cur || mcpTarget(cur) !== row.target) return j
+  if ('remove' in op) delete servers[row.name]
+  else {
+    const name = op.name.trim() || row.name
+    if (name !== row.name && name in servers) return j
+    // What it runs is replaced; the rest of the server (env, headers, timeouts) stays
+    const { type: _t, command: _c, args: _a, url: _u, ...rest } = cur
+    delete servers[row.name]
+    servers[name] = { ...serverOf(op.target.trim() || row.target), ...rest }
+  }
+  if (!Object.keys(servers).length) delete next.mcpServers
+  return next
 }

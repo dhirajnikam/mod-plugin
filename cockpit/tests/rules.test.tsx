@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../hooks/rules'
+import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines } from '../hooks/rules'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -106,4 +106,43 @@ test('the Rules tab adds, edits and deletes hooks, rules and instructions, and n
   expect(disk['/home/me/.claude/CLAUDE.md']).toBe('- Answer in British English\n')
   expect(disk['/home/me/.claude/settings.json']).toBe('{ "hooks": ')
   await ui.unmount()
+})
+
+test('MCP servers: every scope and state read, secrets never kept, and .mcp.json changed with the rest kept', async () => {
+  const mcp = { other: 1, mcpServers: { github: { command: 'npx', args: ['-y', '@mcp/github'], env: { GITHUB_TOKEN: 'ghp_SECRET1' } }, docs: { type: 'http', url: 'https://docs.example/mcp', headers: { Authorization: 'Bearer SECRET2' } }, off: { command: 'off-srv' }, live: { type: 'sse', url: 'https://live.example/sse' } } }
+  const claude = { mcpServers: { mine: { command: 'my-srv', env: { KEY: 'SECRET3' } } }, projects: { '/repo': { mcpServers: { local1: { command: 'loc' } }, disabledMcpServers: ['mine'], enabledMcpjsonServers: ['github', 'docs'] }, '/elsewhere': { mcpServers: { notmine: { command: 'x' } } } } }
+  const settings = [{ disabledMcpjsonServers: ['off'] }, {}]
+  const rows = mcpRows(mcp, claude, settings, '/repo')
+  expect(rows.map(r => `${r.scope}|${r.name}|${r.kind}|${r.target}|${r.state}|${r.secrets.join(',')}`)).toEqual([
+    'project|github|stdio|npx -y @mcp/github|on|GITHUB_TOKEN',
+    'project|docs|http|https://docs.example/mcp|on|Authorization',
+    'project|off|stdio|off-srv|off|',
+    // Neither enabled nor disabled: Claude Code asks before it runs
+    'project|live|sse|https://live.example/sse|approval|',
+    'local|local1|stdio|loc|on|',
+    // Switched off with /mcp in this project
+    'user|mine|stdio|my-srv|off|KEY',
+  ])
+  expect(JSON.stringify(rows)).not.toContain('SECRET')
+  // enableAllProjectMcpServers turns every unlisted project server on, but not one disabled by name
+  expect(mcpRows(mcp, {}, [{ enableAllProjectMcpServers: true, disabledMcpjsonServers: ['off'] }], '/repo').map(r => r.state)).toEqual(['on', 'on', 'off', 'on'])
+  // Control characters in a name or command draw as spaces
+  expect(mcpRows({ mcpServers: { 'a\u001b[2Jb': { command: 'x\ny' } } }, {}, [], '/r')[0]).toMatchObject({ name: 'a [2Jb', target: 'x y' })
+  // Added, edited (env kept), renamed, removed; the rest of the file kept
+  let n = changeMcp(mcp, { add: { name: 'pg', target: 'npx -y @mcp/postgres postgres://localhost/db' } })
+  n = changeMcp(n, { add: { name: 'web', target: 'https://web.example/mcp' } })
+  expect((n.mcpServers as any).pg).toEqual({ command: 'npx', args: ['-y', '@mcp/postgres', 'postgres://localhost/db'] })
+  expect((n.mcpServers as any).web).toEqual({ type: 'http', url: 'https://web.example/mcp' })
+  // A taken name is not overwritten
+  expect(changeMcp(n, { add: { name: 'github', target: 'evil' } })).toEqual(n)
+  const gh = mcpRows(n, {}, [], '/repo').find(r => r.name === 'github')!
+  n = changeMcp(n, { edit: gh, name: 'gh', target: 'npx -y @mcp/github@2' })
+  expect((n.mcpServers as any).gh).toEqual({ command: 'npx', args: ['-y', '@mcp/github@2'], env: { GITHUB_TOKEN: 'ghp_SECRET1' } })
+  expect('github' in (n.mcpServers as object)).toBe(false)
+  // The old row no longer matches the file: left alone
+  expect(changeMcp(n, { remove: gh })).toEqual(n)
+  // Only project servers change here
+  expect(changeMcp(n, { remove: { ...mcpRows(n, {}, [], '/repo')[0]!, scope: 'user' } })).toEqual(n)
+  for (const r of mcpRows(n, {}, [], '/repo')) n = changeMcp(n, { remove: r })
+  expect(n).toEqual({ other: 1 })
 })
