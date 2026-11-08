@@ -6,7 +6,9 @@ The Rules tab shows the hooks, permission rules and instructions Claude Code fol
 
 The servers Claude Code would start here, each with its name, its kind (stdio, http, sse), what it runs (the command
 and its arguments, or the URL) and whether it runs: **on**, **off** (switched off with `/mcp`, or listed in
-`disabledMcpjsonServers`), or **needs approval** (a project server Claude Code will ask about before its first start).
+`disabledMcpjsonServers`), **needs approval** (a project server Claude Code will ask about before its first start;
+`.claude/settings.local.json`, where Claude Code keeps your answers, is read too), or **hidden** by a server of the
+same name in a nearer scope (local wins over project, project over user).
 
 - **This repository** shows the project's servers from `.mcp.json` (shared with everyone who works here), with ✎, ✕
   (after you confirm) and **+ Add** (a name, and a command with its arguments or a URL), and this project's own
@@ -15,7 +17,12 @@ and its arguments, or the URL) and whether it runs: **on**, **off** (switched of
 - `~/.claude.json` is Claude Code's own state file: Cockpit reads it and never writes it; change those servers with
   `claude mcp` or `/mcp`.
 - A server's `env` and `headers` usually hold tokens: the tab shows their names (`secrets: GITHUB_TOKEN`), never their
-  values, and an edit keeps them as they are in the file. Add them to `.mcp.json` by hand.
+  values, and an edit keeps them as they are in the file. Add them to `.mcp.json` by hand. Tokens in what a server runs
+  are masked too (`•••`): a URL's login and query values, `KEY=value`, the word after `--token`, `--api-key` or
+  `--header`, and strings shaped like known tokens. Such a server can be renamed or deleted here; what it runs is
+  changed in `.mcp.json` by hand, so a masked value is never written back.
+- A rename keeps what a server runs exactly, and its place in the file. Names are letters, digits, `_` and `-`, as
+  Claude Code takes them.
 - `.mcp.json` is read again before each change and written back with the rest of it kept; one that is not valid JSON
   is shown read-only with the error, never overwritten.
 

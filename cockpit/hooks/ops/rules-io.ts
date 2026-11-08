@@ -29,22 +29,26 @@ async function mcpFiles($: $, files: { repo: RuleFiles; user: RuleFiles }) {
   const path = `${root}/.mcp.json`
   const text = await $.fs.read(path).then(String).catch(() => '')
   const claude = home ? parseSettings(await $.fs.read(`${home}/.claude.json`).then(String).catch(() => '')).json : {}
-  return { path, text, rows: mcpRows(parseSettings(text).json, claude, [parseSettings(files.repo.settings).json, parseSettings(files.user.settings).json], root) }
+  // Approvals given at Claude Code's prompt are kept in settings.local.json
+  const local = parseSettings(await $.fs.read(`${root}/.claude/settings.local.json`).then(String).catch(() => '')).json
+  const { json, error } = parseSettings(text)
+  const settings = [parseSettings(files.repo.settings).json, local, parseSettings(files.user.settings).json]
+  return { file: { path, error, rows: mcpRows(json, claude, settings, root) }, json }
 }
 export async function loadRules($: $) {
   const files = await ruleFiles($)
-  await set($, { rules: { ...files, mcp: await mcpFiles($, files) } })
+  await set($, { rules: { ...files, mcp: (await mcpFiles($, files)).file } })
 }
 // A change to the project's .mcp.json, read again first; one that is not valid JSON is never written
 export async function writeMcp($: $, op: Parameters<typeof changeMcp>[1], what: string) {
-  const f = await mcpFiles($, await ruleFiles($))
-  const { json, error } = parseSettings(f.text)
+  const { file: f, json } = await mcpFiles($, await ruleFiles($))
   // Refused, and read again, so the tab shows it read-only
-  if (error) return Promise.all([loadRules($), toast($, `${f.path} is ${error}: fix it by hand first; Cockpit will not overwrite it`)])
+  if (f.error) return Promise.all([loadRules($), toast($, `${f.path} is ${f.error}: fix it by hand first; Cockpit will not overwrite it`)])
   const next = changeMcp(json, op)
-  if (JSON.stringify(next) === JSON.stringify(json)) return Promise.all([loadRules($), toast($, 'Nothing changed: the name is taken, or the file moved since it was shown and was read again')])
-  await $.fs.write(f.path, settingsText(next)).catch(e => toast($, `Could not write ${f.path}: ${String(e)}`))
+  if (JSON.stringify(next) === JSON.stringify(json)) return Promise.all([loadRules($), toast($, 'Nothing changed: the name is taken or not allowed (letters, digits, _ and -), or the file moved since it was shown and was read again')])
+  const failed = await $.fs.write(f.path, settingsText(next)).then(() => false, async e => (await toast($, `Could not write ${f.path}: ${String(e)}`), true))
   await loadRules($)
+  if (failed) return
   await toast($, `${what} · ${f.path}`)
 }
 export async function writeSettings($: $, scope: 'repo' | 'user', change: (j: Record<string, unknown>) => Record<string, unknown>, what: string) {

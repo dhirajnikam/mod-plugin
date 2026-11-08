@@ -150,7 +150,9 @@ test('MCP servers: every scope and state read, secrets never kept, and .mcp.json
 test('the Rules tab lists the MCP servers of every scope, changes only .mcp.json, and never shows a secret or writes ~/.claude.json', { timeoutMs: 20_000 }, async ($, on) => {
   const claudeJson = JSON.stringify({ numStartups: 9, mcpServers: { mine: { command: 'my-srv', env: { KEY: 'SECRET_USER' } } }, projects: { '/repo': { mcpServers: { scratch: { command: 'scratch-srv' } }, enabledMcpjsonServers: ['github'] } } })
   const disk: Record<string, string> = {
-    '/repo/.mcp.json': JSON.stringify({ note: 'kept', mcpServers: { github: { command: 'npx', args: ['-y', '@mcp/github'], env: { GITHUB_TOKEN: 'ghp_SECRET' } }, docs: { type: 'http', url: 'https://docs.example/mcp' } } }, null, 2),
+    '/repo/.mcp.json': JSON.stringify({ note: 'kept', mcpServers: { github: { command: 'npx', args: ['-y', '@mcp/github'], env: { GITHUB_TOKEN: 'ghp_SECRET' } }, docs: { type: 'http', url: 'https://docs.example/mcp' }, tok: { command: 'srv', args: ['--token', 'SECRET_ARG'] } } }, null, 2),
+    // An approval given at Claude Code's prompt
+    '/repo/.claude/settings.local.json': JSON.stringify({ enabledMcpjsonServers: ['tok'] }),
     '/home/me/.claude.json': claudeJson,
   }
   const writes: string[] = []
@@ -186,6 +188,15 @@ test('the Rules tab lists the MCP servers of every scope, changes only .mcp.json
   expect(d).toContain('re-m:project/github')
   expect(d).not.toContain('re-m:local/scratch')
   expect(d).not.toContain('SECRET')
+  // The token in tok's arguments is masked, and the approval in settings.local.json counts
+  expect(d).toContain('srv --token •••')
+  expect(d.split('needs approval').length - 1).toBe(1)
+  // Its edit form never holds the token
+  await ui.press({ key: 're-m:project/tok' })
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('not shown here')
+  expect(d).not.toContain('SECRET')
+  await ui.press({ key: 'rm-cancel' })
   // Add a server: written to .mcp.json, the rest kept
   await ui.press({ key: 'radd-mcp' })
   await (ui as any).input({ key: 'rf-ruleA', text: 'pg', kind: 'change' } as never)
@@ -227,4 +238,40 @@ test('the Rules tab lists the MCP servers of every scope, changes only .mcp.json
   expect([...new Set(writes)]).toEqual(['/repo/.mcp.json'])
   expect(disk['/home/me/.claude.json']).toBe(claudeJson)
   await ui.unmount()
+})
+
+test("MCP servers: tokens in a target are masked, nearer servers win, Windows project keys match, and edits never reshape a server", async () => {
+  // Tokens a URL or the arguments carry are masked; what is not a token is kept
+  const t = (target: string) => mcpRows({ mcpServers: { s: target.startsWith('http') ? { url: target } : { command: target.split(' ')[0], args: target.split(' ').slice(1) } } }, {}, [], '/r')[0]!
+  expect(t('https://u:pw@h.example/mcp?token=SEKRIT&x=1').target).toBe('https://•••@h.example/mcp?token=•••&x=•••')
+  expect(t('srv --token SEKRIT --port 8080').target).toBe('srv --token ••• --port 8080')
+  expect(t('srv --api-key=SEKRIT API_KEY=SEKRIT').target).toBe('srv --api-key=••• API_KEY=•••')
+  expect(t('srv ghp_abcdefghijklmnop sk-abcdefghijkl').target).toBe('srv ••• •••')
+  expect(t('npx -y @mcp/github').masked).toBe(false)
+  expect(t('srv --token SEKRIT').masked).toBe(true)
+  // One name, one server: local over project over user
+  const rows = mcpRows({ mcpServers: { db: { command: 'proj' } } }, { mcpServers: { db: { command: 'user' } }, projects: { 'C:/Users/me/repo': { mcpServers: { db: { command: 'local' } } } } }, [{ enableAllProjectMcpServers: true }], 'C:\\Users\\me\\repo\\')
+  expect(rows.map(r => `${r.scope}:${r.target}:${r.state}`)).toEqual(['project:proj:shadowed', 'local:local:on', 'user:user:shadowed'])
+  // A rename keeps what it runs exactly (quoted arguments, an sse type) and its place among the servers
+  const j = { mcpServers: { a: { command: 'sh', args: ['-c', 'echo hi'] }, live: { type: 'sse', url: 'https://l.example/sse', headers: { Authorization: 'Bearer x' } }, z: { command: 'z' } } }
+  const [a, live] = mcpRows(j, {}, [], '/r')
+  let n = changeMcp(j, { edit: a!, name: 'a2', target: a!.target })
+  expect(n.mcpServers).toEqual({ a2: { command: 'sh', args: ['-c', 'echo hi'] }, live: j.mcpServers.live, z: { command: 'z' } })
+  expect(Object.keys(n.mcpServers as object)).toEqual(['a2', 'live', 'z'])
+  n = changeMcp(j, { edit: live!, name: 'stream', target: '' })
+  expect((n.mcpServers as any).stream).toEqual(j.mcpServers.live)
+  // A masked target is never written back: only an empty or untouched one keeps it
+  const sec = { mcpServers: { s: { command: 'srv', args: ['--token', 'SEKRIT'] } } }
+  const row = mcpRows(sec, {}, [], '/r')[0]!
+  expect(changeMcp(sec, { edit: row, name: 's', target: 'srv --token •••' })).toEqual(sec)
+  expect(changeMcp(sec, { edit: row, name: 's', target: 'srv --token OTHER' })).toEqual(sec)
+  expect((changeMcp(sec, { edit: row, name: 's2', target: '' }).mcpServers as any).s2).toEqual(sec.mcpServers.s)
+  // Names: own keys only, Claude Code's characters only, the special object keys refused
+  expect((changeMcp({}, { add: { name: 'toString', target: 'x' } }).mcpServers as any).toString).toEqual({ command: 'x', args: [] })
+  for (const bad of ['__proto__', 'constructor', 'has space', 'dot.ted', '']) expect(changeMcp({}, { add: { name: bad, target: 'x' } })).toEqual({})
+  // An entry that is not an object, or an mcpServers that is not one, is left for you to fix by hand
+  const junk = { mcpServers: { a: 'junk' } }
+  expect(changeMcp(junk, { edit: mcpRows(junk, {}, [], '/r')[0]!, name: 'b', target: 'x' })).toEqual(junk)
+  expect(changeMcp(junk, { remove: mcpRows(junk, {}, [], '/r')[0]! })).toEqual(junk)
+  expect(changeMcp({ mcpServers: ['keep'] }, { add: { name: 'x', target: 'x' } })).toEqual({ mcpServers: ['keep'] })
 })

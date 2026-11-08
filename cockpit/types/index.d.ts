@@ -65,9 +65,11 @@ export type Agent = {
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
 // An MCP server Claude Code would start here: env and header names only, never their values
-export type McpRow = { key: string; name: string; scope: 'project' | 'local' | 'user'; kind: 'stdio' | 'http' | 'sse'; target: string; secrets: string[]; state: 'on' | 'off' | 'approval' }
-// The project's .mcp.json (its path and text, the only one Cockpit writes) and every server that applies here
-export type McpFiles = { path: string; text: string; rows: McpRow[] }
+// target: what it runs with tokens masked (masked: some were); shadowed: a server of the same name in a nearer scope wins
+export type McpRow = { key: string; name: string; scope: 'project' | 'local' | 'user'; kind: 'stdio' | 'http' | 'sse'; target: string; masked: boolean; secrets: string[]; state: 'on' | 'off' | 'approval' | 'shadowed' }
+// The project's .mcp.json (its path, the only one Cockpit writes, and why it cannot be changed, if so) and every server
+// that applies here; no file's text is kept, since env values live in it
+export type McpFiles = { path: string; error: string; rows: McpRow[] }
 
 // The autopilot: Claude works on a goal cycle after cycle until the judges agree it is done, a limit is hit, or you stop it
 export type Autopilot = {

@@ -138,7 +138,7 @@ export function Rules($: $, v: V) {
   const perms = permRows(json)
   const lines = ruleLines(f.md)
   const mcp = s.rules?.mcp
-  const mcpError = parseSettings(mcp?.text ?? '').error
+  const mcpError = mcp?.error ?? ''
   const servers: McpRow[] = (mcp?.rows ?? []).filter(m => (scope === 'repo' ? m.scope !== 'user' : m.scope === 'user'))
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -252,7 +252,8 @@ export function Rules($: $, v: V) {
             return (
               <Box key={key} flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
                 {field('ruleA', 'Name', m.name, (val: string) => null)}
-                {field('ruleB', 'Command or URL', m.target, (val: string) => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: val.trim() }, 'Server saved')))}
+                {m.masked && <Text color={t.faint} size="footnote" wrap="wrap">What it runs holds a token, so it is not shown here: leave it empty to keep it, or change it in .mcp.json by hand.</Text>}
+                {!m.masked && field('ruleB', 'Command or URL', m.target, (val: string) => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: val.trim() }, 'Server saved')))}
                 <Box columnGap={sp(v, 1)}>
                   <Button key="rm-save" label="Save" variant="primary" onPress={() => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: (s.ui.ruleB ?? '').trim() }, 'Server saved'))} />
                   <Button key="rm-cancel" label="Cancel" onPress={() => ui(clear)} />
@@ -264,13 +265,15 @@ export function Rules($: $, v: V) {
               <Box flexDirection="column" flexGrow={1} flexShrink={1}>
                 <Box columnGap={sp(v, 2)} flexWrap="wrap">
                   <Text color={t.accent} size="footnote" wrap="truncate-end">{m.name}</Text>
-                  <Text color={m.state === 'on' ? t.ok : m.state === 'off' ? t.dim : t.busy} size="footnote">{MCP_STATE[m.state]}</Text>
+                  <Text color={m.state === 'on' ? t.ok : m.state === 'approval' ? t.busy : t.dim} size="footnote">{MCP_STATE[m.state]}</Text>
                   <Text color={t.dim} size="footnote">{m.scope === 'local' ? `${m.kind} · local, only you` : m.kind}</Text>
                 </Box>
                 <Text color={t.text} mono wrap="truncate-end">{m.target}</Text>
                 {m.secrets.length > 0 && <Text color={t.faint} size="footnote" wrap="truncate-end">{`secrets: ${m.secrets.join(', ')}`}</Text>}
               </Box>
-              {editable && actions(key, () => ui({ ...clear, ruleEdit: key, ruleA: m.name, ruleB: m.target }))}
+              {/* A masked target is never put in a field: such a server is renamed or deleted here, and what it runs is
+                  changed in .mcp.json by hand */}
+              {editable && actions(key, () => ui({ ...clear, ruleEdit: key, ruleA: m.name, ruleB: m.masked ? '' : m.target }))}
             </Box>
           )
         })}
@@ -315,4 +318,4 @@ export function Rules($: $, v: V) {
   )
 }
 
-const MCP_STATE = { on: 'on', off: 'off', approval: 'needs approval' } as const
+const MCP_STATE = { on: 'on', off: 'off', approval: 'needs approval', shadowed: 'hidden by a nearer server of this name' } as const

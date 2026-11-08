@@ -124,23 +124,53 @@ const names = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
 const plain = (x: unknown) => String(x ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
 export const mcpTarget = (sv: McpServer) => plain(sv.url ?? [sv.command ?? '', ...(Array.isArray(sv.args) ? sv.args : [])].join(' ').trim())
 
-// mcp: .mcp.json; claude: ~/.claude.json; settings: the repository's and your settings.json; root: the repository
+// What a target shows: tokens a URL or an argument can carry are masked (a URL's login and query values, KEY=value,
+// the word after --token, --api-key or --header, and strings shaped like known tokens)
+const MASK = '•••'
+const SECRET_FLAG = /token|key|secret|auth|pass|bearer|header|credential/i
+const TOKEN = /^(gh[pousr]_|github_pat_|sk-|xox[abpr]-|glpat-|AKIA|eyJ)[\w.-]{6,}$/
+export function maskTarget(t: string) {
+  return t
+    .split(' ')
+    .map((w, i, all) => {
+      if (/^[a-z][\w+.-]*:\/\//i.test(w)) return w.replace(/\/\/[^/@\s]*@/, `//${MASK}@`).replace(/([?&][^=&#]+=)[^&#]*/g, `$1${MASK}`)
+      if (TOKEN.test(w)) return MASK
+      if (i > 0 && /^--?[\w-]+$/.test(all[i - 1]!) && SECRET_FLAG.test(all[i - 1]!)) return MASK
+      const kv = w.match(/^(-{0,2}[\w.-]+)=(.+)$/)
+      return kv ? `${kv[1]}=${MASK}` : w
+    })
+    .join(' ')
+}
+
+// Paths as ~/.claude.json keys them: forward slashes, no trailing one, the drive letter in either case
+const pathKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').replace(/^([A-Za-z]):/, (_, d: string) => `${d.toLowerCase()}:`)
+
+// mcp: .mcp.json; claude: ~/.claude.json; settings: the repository's settings.json and settings.local.json and yours;
+// root: the repository
 export function mcpRows(mcp: Json, claude: Json, settings: Json[], root: string): McpRow[] {
-  const project = obj(obj(claude.projects)[root])
+  const projects = obj(claude.projects)
+  const project = obj(projects[Object.keys(projects).find(k => pathKey(k) === pathKey(root)) ?? ''])
   const all = [...settings, project]
   const off = new Set(all.flatMap(j => names(j.disabledMcpjsonServers)))
   const on = new Set(all.flatMap(j => names(j.enabledMcpjsonServers)))
   const allOn = all.some(j => j.enableAllProjectMcpServers === true)
   // Servers switched off with /mcp in this project, whatever their scope
   const muted = new Set(names(project.disabledMcpServers))
+  // One name, one server: local wins over project, project over user; the others are hidden by it
+  const taken = new Set<string>()
   const rows = (servers: unknown, scope: McpScope): McpRow[] =>
     Object.entries(obj(servers)).map(([name, raw]) => {
       const sv = obj(raw) as McpServer
       const kind = sv.type === 'sse' ? 'sse' : sv.type === 'http' || (!sv.command && sv.url) ? 'http' : 'stdio'
-      const state = muted.has(name) || (scope === 'project' && off.has(name)) ? 'off' : scope !== 'project' || allOn || on.has(name) ? 'on' : 'approval'
-      return { key: `${scope}/${name}`, name: plain(name), scope, kind, target: mcpTarget(sv), secrets: [...Object.keys(obj(sv.env)), ...Object.keys(obj(sv.headers))].map(plain), state }
+      const shown = mcpTarget(sv)
+      const target = maskTarget(shown)
+      const state = taken.has(name) ? 'shadowed' : muted.has(name) || (scope === 'project' && off.has(name)) ? 'off' : scope !== 'project' || allOn || on.has(name) ? 'on' : 'approval'
+      taken.add(name)
+      return { key: `${scope}/${name}`, name: plain(name), scope, kind, target, masked: target !== shown, secrets: [...Object.keys(obj(sv.env)), ...Object.keys(obj(sv.headers))].map(plain), state }
     })
-  return [...rows(mcp.mcpServers, 'project'), ...rows(project.mcpServers, 'local'), ...rows(claude.mcpServers, 'user')]
+  const local = rows(project.mcpServers, 'local')
+  const shared = rows(mcp.mcpServers, 'project')
+  return [...shared, ...local, ...rows(claude.mcpServers, 'user')]
 }
 
 // A server typed as one line: a URL is an HTTP server, anything else a command and its arguments
@@ -152,30 +182,41 @@ function serverOf(target: string): McpServer {
   return { command, args }
 }
 
-// Adds a server to .mcp.json, changes one's name or what it runs (its env, headers and other fields kept), or
-// removes one. A name already taken is not overwritten, and a row that no longer matches the file is left alone
+// The names Claude Code accepts for a server; the object keys JSON treats specially are refused too
+export const mcpNameOk = (n: string) => /^[A-Za-z0-9_-]{1,64}$/.test(n) && !['__proto__', 'constructor', 'prototype'].includes(n)
+
+// Adds a server to .mcp.json, changes one's name or what it runs (its env, headers and other fields kept, and what it
+// runs kept exactly when its text is not changed), or removes one, the servers kept in their order. A name already
+// taken or not allowed is refused, a row that no longer matches the file is left alone, and an mcpServers that is
+// not an object is never replaced
 export function changeMcp(j: Json, op: { add: { name: string; target: string } } | { edit: McpRow; name: string; target: string } | { remove: McpRow }): Json {
+  if (j.mcpServers !== undefined && (typeof j.mcpServers !== 'object' || j.mcpServers === null || Array.isArray(j.mcpServers))) return j
   const next = JSON.parse(JSON.stringify(j)) as Json
-  const servers = obj((next.mcpServers ??= {}))
-  next.mcpServers = servers
+  const servers = obj(next.mcpServers)
+  const has = (n: string) => Object.prototype.hasOwnProperty.call(servers, n)
   if ('add' in op) {
     const name = op.add.name.trim()
-    if (!name || !op.add.target.trim() || name in servers) return j
-    servers[name] = serverOf(op.add.target)
+    if (!mcpNameOk(name) || !op.add.target.trim() || has(name)) return j
+    next.mcpServers = { ...servers, [name]: serverOf(op.add.target) }
     return next
   }
   const row = 'edit' in op ? op.edit : op.remove
-  const cur = servers[row.name] as McpServer | undefined
-  if (row.scope !== 'project' || !cur || mcpTarget(cur) !== row.target) return j
-  if ('remove' in op) delete servers[row.name]
+  // Only a server written as an object is changed: anything else in the file is left for you to fix by hand
+  const raw = has(row.name) ? servers[row.name] : undefined
+  const cur = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as McpServer) : undefined
+  if (row.scope !== 'project' || !cur || maskTarget(mcpTarget(cur)) !== row.target) return j
+  const entries = Object.entries(servers)
+  if ('remove' in op) next.mcpServers = Object.fromEntries(entries.filter(([n]) => n !== row.name))
   else {
     const name = op.name.trim() || row.name
-    if (name !== row.name && name in servers) return j
-    // What it runs is replaced; the rest of the server (env, headers, timeouts) stays
+    if ((name !== row.name && (has(name) || !mcpNameOk(name))) || (row.masked && op.target.trim() && op.target.trim() !== row.target)) return j
+    // Its text unchanged (or a masked one, never retyped): what it runs stays exactly as it is
+    const typed = op.target.trim()
+    const same = !typed || typed === row.target
     const { type: _t, command: _c, args: _a, url: _u, ...rest } = cur
-    delete servers[row.name]
-    servers[name] = { ...serverOf(op.target.trim() || row.target), ...rest }
+    const server = same ? cur : { ...serverOf(typed), ...rest }
+    next.mcpServers = Object.fromEntries(entries.map(([n, v]) => (n === row.name ? [name, server] : [n, v])))
   }
-  if (!Object.keys(servers).length) delete next.mcpServers
+  if (!Object.keys(obj(next.mcpServers)).length) delete next.mcpServers
   return next
 }
