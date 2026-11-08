@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
+import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, SessionSpend, ThemeId, PlanItem } from '../../types'
+import { upsertSession } from '../spend'
 import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
@@ -49,7 +50,10 @@ export async function saveHistory($: $) {
   const flows = [...s.past, ...s.flows.filter(f => f.status !== 'running')]
   const agents = [...s.pastAgents, ...s.agents.filter(a => a.status !== 'running').map(summary)]
   const dedupe = <T extends { id: string }>(xs: T[]) => [...new Map(xs.map(x => [x.id, x])).values()]
-  const data = { version: 1, savedAt: await $.clock.now(), flows: dedupe(flows).slice(-200), agents: dedupe(agents).slice(-100), commits: s.commits.slice(0, 50) }
+  const now = await $.clock.now()
+  // This session's spend, kept in place under its start beside the earlier ones
+  const sessions = s.sessionAt ? upsertSession(s.pastSessions ?? [], { id: `s${s.sessionAt}`, startedAt: s.sessionAt, endedAt: now, usd: s.cost, tokens: s.ctx.used, turns: s.flows.length }) : (s.pastSessions ?? [])
+  const data = { version: 1, savedAt: now, flows: dedupe(flows).slice(-200), agents: dedupe(agents).slice(-100), commits: s.commits.slice(0, 50), sessions }
   await $.fs.write(`${dir}/history.json`, JSON.stringify(data, null, 1)).catch(() => null)
 }
 
@@ -59,11 +63,13 @@ export async function loadHistory($: $) {
   const text = await $.fs.read(`${dir}/history.json`).catch(() => '')
   if (!text) return
   try {
-    const d = JSON.parse(text) as { flows?: Flow[]; agents?: Agent[]; commits?: Commit[] }
+    const d = JSON.parse(text) as { flows?: Flow[]; agents?: Agent[]; commits?: Commit[]; sessions?: SessionSpend[] }
     await set($, s => ({
       past: (d.flows ?? []).filter(f => !s.flows.some(x => x.id === f.id)),
       pastAgents: (d.agents ?? []).filter(a => !s.agents.some(x => x.id === a.id)),
       commits: [...s.commits, ...(d.commits ?? []).filter(c => !s.commits.some(x => x.sha === c.sha))].slice(0, 50),
+      // Earlier sessions' spend; this one's own record is rewritten from the live figures at each save
+      pastSessions: (Array.isArray(d.sessions) ? d.sessions : []).filter(x => x && typeof x.usd === 'number' && typeof x.startedAt === 'number' && x.id !== `s${s.sessionAt ?? 0}`),
     }))
   } catch {
     // A history file that does not parse is left as it is and read as empty

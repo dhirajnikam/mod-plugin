@@ -1,6 +1,7 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
+import type { Account, Agent, Decision, GitForm, Ph, SessionSpend, Tab, ThemeId } from '../../types'
+import { costliest, dayOf, spendByDay, upsertSession } from '../spend'
 import {
   inBackground,
   applyAccount,
@@ -128,6 +129,10 @@ export function Overview($: $, v: V) {
     </Button>
   )
   const ctxCol = s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.dim
+  // Spend: every session saved in history, this one with its live figures
+  const sessions: SessionSpend[] = s.sessionAt ? upsertSession(s.pastSessions ?? [], { id: `s${s.sessionAt}`, startedAt: s.sessionAt, endedAt: v.now, usd: s.cost, tokens: s.ctx.used, turns: s.flows.length }) : (s.pastSessions ?? [])
+  const days = spendByDay(sessions, v.now, 14)
+  const peak = Math.max(0.01, ...days.map(d => d.usd))
   const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -437,11 +442,33 @@ export function Overview($: $, v: V) {
           {!isOpen('flows') && flows.length > 3 && <Text color={t.faint} size="footnote">{`+ ${flows.length - 3} earlier`}</Text>}
         </Box>
       )}
-      {s.past.length > 0 && (
+      {(s.past.length > 0 || sessions.length > 0) && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
             <Fold k="past" label="Earlier sessions" n={s.past.length} />
+            {sessions.length > 0 && <Text color={t.faint} size="footnote">{`≈ $${days.reduce((a, d) => a + d.usd, 0).toFixed(2)} in 14 days`}</Text>}
           </Box>
+          {isOpen('past') && sessions.length > 0 && (
+            <Box flexDirection="column">
+              <Text color={t.dim} size="footnote" wrap="wrap">{`Spend, last 14 days ≈ $${days.reduce((a, d) => a + d.usd, 0).toFixed(2)} (Claude Code's estimates)`}</Text>
+              {days.map(d => (
+                <Box key={`spend-${d.day}`} columnGap={sp(v, 1)}>
+                  <Text color={t.faint} size="footnote" mono>{d.day.slice(5)}</Text>
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Text color={d.usd ? t.accent : t.faint} size="footnote" mono wrap="truncate-end">{d.usd ? '█'.repeat(Math.max(1, Math.round((d.usd / peak) * 20))) : '·'}</Text>
+                  </Box>
+                  <Text color={t.dim} size="footnote" mono>{d.usd ? `$${d.usd.toFixed(2)}` : ''}</Text>
+                </Box>
+              ))}
+              <Text color={t.dim} size="footnote">Costliest sessions</Text>
+              {costliest(sessions, 5).map(x => (
+                <Box key={`dear-${x.id}`} columnGap={sp(v, 1)} justifyContent="space-between">
+                  <Text color={t.text} size="footnote" wrap="truncate-end">{`${dayOf(x.startedAt).slice(5)} · ${fmt(x.endedAt - x.startedAt)} · ${x.turns} turn${x.turns === 1 ? '' : 's'}`}</Text>
+                  <Text color={t.accent} size="footnote" mono>{`$${x.usd.toFixed(2)}`}</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
           {isOpen('past') && s.past.slice(-8).reverse().map(f => (
             <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
               <Text color={f.status === 'done' ? t.ok : t.bad}>{f.status === 'done' ? '✓' : '✗'}</Text>

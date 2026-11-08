@@ -6,7 +6,8 @@ the [security policy](../SECURITY.md).
 ## What is kept, and where
 
 - **In the repository**, in `.cockpit/` at its top folder: `history.json` (every finished flow and agent run, and
-  Cockpit's commits, across sessions), the codebase memory (`memory.json`, `MEMORY.md`), hand-off briefs, and the
+  Cockpit's commits, and each session's spend: its start, length, dollars, context tokens and turns, across sessions),
+  the codebase memory (`memory.json`, `MEMORY.md`), hand-off briefs, and the
   autopilot's roadmap. The folder has its own `.gitignore` of `*`, so none of it is committed, auto-commit included.
 - **In Claude Code's plugin store**, across sessions: Focus, the theme, the judges' mode and the Agents settings; the
   Git settings and account, per repository; the agents you made. No token or password is stored: a token you paste

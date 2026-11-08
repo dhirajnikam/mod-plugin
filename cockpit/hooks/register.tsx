@@ -571,6 +571,13 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A session that ends keeps its spend: the figures measured once more and the history saved
+  on('session.end', async ($, e, next) => {
+    await measure($).catch(() => null)
+    await saveHistory($).catch(() => null)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('session.measure', async ($, e, next) => {
     await measure($)
     return next(e)

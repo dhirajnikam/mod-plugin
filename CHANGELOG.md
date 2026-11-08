@@ -5,6 +5,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
+  Overview's Earlier sessions shows what the last 14 days cost, a bar for each day, and the five costliest sessions,
+  marked as Claude Code's estimates.
+
 ## [0.7.0] - 2026-11-08
 
 ### Added

@@ -225,6 +225,9 @@ export type Ph = {
   flows: Flow[]
   // Earlier sessions' flows and agent runs, read from the repository's .cockpit/history.json
   past: Flow[]
+  // What earlier sessions spent, from history.json; and when this one started (session.usage), to record its own
+  pastSessions?: SessionSpend[]
+  sessionAt?: number
   pastAgents: Agent[]
   // Runs you cleared from the list (the engine still lists them, so a sync must not bring them back), and when: a team
   // row shows no run older than that
@@ -369,3 +372,7 @@ export interface PrStatus {
   // unknown: gh's answer could not be read (cut off, gh failed), so the counts say nothing
   checks: { pass: number; fail: number; pending: number; skip: number; failing: { name: string; link: string }[]; unknown?: boolean }
 }
+
+// A session's spend as Claude Code reports it: its start and last saved time, its dollars (as /cost totals them), its
+// context tokens at its last turn (no running token total is reported) and its turns
+export type SessionSpend = { id: string; startedAt: number; endedAt: number; usd: number; tokens: number; turns: number }

@@ -223,3 +223,50 @@ test("a worktree agent's row fits every width, with its confirms", { timeoutMs: 
   }
   expect(bad).toEqual([])
 })
+
+// The Overview's Earlier sessions with spend: a bar per day, the totals and the costliest sessions
+test("the Overview's spend by day and costliest sessions fit every width", { timeoutMs: 20_000 }, async ($, on) => {
+  const day = (d: number, h = 12) => new Date(2026, 10, d, h).getTime()
+  const sessions = [3, 4, 6, 7, 8].map((d, i) => ({ id: `s${d}`, startedAt: day(d), endedAt: day(d) + 9_000_000, usd: [12.34, 0.5, 103.2, 7, 1.25][i], tokens: 1000, turns: 40 + i }))
+  const disk: Record<string, string> = { '/repo/.cockpit/history.json': JSON.stringify({ version: 1, flows: [], agents: [], commits: [], sessions }) }
+  on('clock.now', async () => ({ value: day(8, 18) }))
+  on('clock.every', async () => ({ value: {} }) as never)
+  on('command.register', async () => ({ value: {} }) as never)
+  on('session.start', async () => ({ cwd: '/repo' }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('agent.register', async (_: unknown, e: any) => ({ value: { agent: `cockpit:${e.name}` } }))
+  on('fs.list', async () => ({ value: [] }) as never)
+  on('fs.read', async (_: unknown, e: any) => {
+    if (!(String(e.path) in disk)) throw new Error('ENOENT')
+    return { value: disk[String(e.path)] } as never
+  })
+  on('fs.write', async () => ({ value: undefined }))
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    return { value: { exitCode: cmd.startsWith('git rev-parse --verify') ? 1 : 0, stdout: cmd === 'git rev-parse --show-toplevel' ? '/repo\n' : cmd.startsWith('git status') ? '## main\0' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const bad: string[] = []
+  let opened = false
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const w of WIDTHS) {
+      const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
+      if (!opened) {
+        await pane.press({ key: 'fold-past' })
+        opened = true
+      }
+      const drawn = await pane.drawn()
+      const text = JSON.stringify(drawn)
+      for (const want of ['Spend, last 14 days ≈ $124.29', 'Costliest sessions', '$103.20']) if (!text.includes(want)) bad.push(`${surface} @${w}: no ${want}`)
+      for (const n of wide(drawn, w)) bad.push(`${surface} spend @${w}: ${n}`)
+      await pane.unmount()
+    }
+  }
+  expect(bad).toEqual([])
+})

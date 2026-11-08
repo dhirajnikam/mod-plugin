@@ -31,7 +31,11 @@ with an arrow only where it folds.
   conversation afresh, as `/clear`, after you confirm); the tokens by kind are folded.
 - **Decisions**: one line each, the question and what came of it; the judges' mode and rules are folded. See
   [Judges](judges.md).
-- **Earlier sessions**, folded.
+- **Earlier sessions**, folded, with what the last 14 days cost on its heading. Opened: the spend of each of those days
+  as a bar with its dollars, and the five costliest sessions with their date, length and turns. Each session's spend
+  is kept in `.cockpit/history.json` at every turn's end and when the session ends: its start and last saved time, its
+  dollars as Claude Code's `/cost` totals them, its context tokens at its last turn (Claude Code reports no running
+  token total) and its turns. They are Claude Code's estimates, not a bill.
 
 ## Around the prompt and in the chat
 

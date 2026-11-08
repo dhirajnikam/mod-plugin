@@ -478,6 +478,7 @@ export async function measure($: $) {
   await set($, {
     ctx: { pct, used, window: u.context.window, segs },
     cost: u.cost?.usd ?? 0,
+    ...(u.startedAt ? { sessionAt: u.startedAt } : {}),
   })
 }
 
