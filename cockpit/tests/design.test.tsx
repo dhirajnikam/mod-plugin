@@ -1,5 +1,8 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = openMore
 import { neuralSvg } from '../hooks/logic'
+import { openMore } from './more'
 
 // The layout's promises, each checked by drawing a tab with a pipeline, agents and a changed file
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
@@ -35,6 +38,7 @@ test('Activity tells one story: agents\' events fill the feed, so the tab never 
   await $.tool.call({ tool: 'TodoWrite', agentId: 'ag3', tool_use_id: 'p3', todos: [{ content: 'Read the login diff', status: 'in_progress', activeForm: 'x' }, { content: 'Check the error paths', status: 'pending', activeForm: 'x' }, { content: 'List the findings', status: 'pending', activeForm: 'x' }] } as never)
   await $.command.run({ command: 'cockpit', args: 'tab files' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  await openMore(ui)
   const d = JSON.stringify(await ui.drawn())
   await ui.unmount()
   expect(d).not.toContain('No files found here yet')
@@ -43,13 +47,16 @@ test('Activity tells one story: agents\' events fill the feed, so the tab never 
   // Every empty list says it the same way: the Rules tab's three lists, before anything is added
   await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
   const rules = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  await openMore(rules)
   const r = JSON.stringify(await rules.drawn())
   await rules.unmount()
-  expect(r.split('"None yet."').length - 1).toBe(3)
+  // Hooks, permission rules, MCP servers, skills and instructions, all empty
+  expect(r.split('"None yet."').length - 1).toBe(5)
   expect(r).not.toContain('"None."')
   // A finished agent's result shows once, on its Finished row; its Team row points there
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ag = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  await openMore(ag)
   const a = JSON.stringify(await ag.drawn())
   await ag.unmount()
   expect(a.split('3/3 passed').length - 1).toBe(1)
@@ -96,6 +103,7 @@ test('Checks read plainly: passes are counted in words, and a tester still at wo
   await $.tool.call({ tool: 'TodoWrite', agentId: 'ag3', tool_use_id: 'p3', todos: [{ content: 'Read the login diff', status: 'in_progress', activeForm: 'x' }, { content: 'Check the error paths', status: 'pending', activeForm: 'x' }, { content: 'List the findings', status: 'pending', activeForm: 'x' }] } as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
+  await more(ui)
   const d = JSON.stringify(await ui.drawn())
   await ui.unmount()
   // The Prover passed three; the Breaker is still at work

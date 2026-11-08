@@ -1,5 +1,7 @@
 # Git
 
+> **What you see first.** The tab opens on one plain sentence ("On feat/x · 3 files changed · PR #7 checks running"), then the Pull and Push buttons when there is something to move, a commit waiting for your answer, the pull request, the next commit and the changed files with Commit (the repo picker, when several repositories sit under the folder, stays above it). Refresh, Setup, the account line, the history and the account, patterns and options are behind one **› More** fold (`fold-more-git`), folded by default.
+
 The tab shows the branch with what is unpushed and unpulled, and **↓ Pull** and **↑ Push** buttons only when there is something to pull or push; the next commit as a card (type, message, branch, files, Commit) and the changes with their kind (new, deleted, renamed, edited) and ticks, only while there are changes (a clean tree says so in one line, and Commit shows only with a file ticked); the **history as a git graph** of every branch, remote and tag: each commit a dot on its lane, lines carrying the lanes down, a merge opening a lane and a branch joining one, each lane its own colour; refs as chips on their commit (HEAD's branch filled, local branches tinted, remotes ☁ and tags ⌑), unpushed commits hollow, Cockpit's own marked ✦, and a press opens a commit's author, date, message and changed files. Desktop draws the graph as SVG, the terminal with line characters. The account, patterns and options are folded away.
 
 ## Setup and commits
@@ -12,8 +14,31 @@ The first time you open the Git tab in a repository it asks five things, once: t
 - **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
 - The tab reads the repository and the accounts each time you open it (the repository after every turn too, the accounts every 15 s while the account box shows); **↻ Refresh** reads both again. A login whose token stopped working is named in the account box.
 - **Open pull request** needs a branch other than the base, which the pattern gives you.
+- **The branch's pull request** shows under the account line once there is one: `⇄ #12 title`, then its review
+  (approved, changes requested, review required, draft; closed or merged once it is), and its checks counted,
+  `✓ 3 passed  ✗ 1 failed  ◌ 2 running` (a cancelled check counts as failed), with the first three failing checks
+  named. It is read with `gh pr view` and `gh pr checks` when you open the tab, press ↻, or push. While a check is pending and the pane is open, it is read again every 30 s, so the row turns green or red
+  by itself, and the read that finds the run finished sends one notice ("CI passed on #12" or "CI failed on #12"
+  naming the failing job) while the pane is not on screen and finish notices are on. Nothing is asked once no check
+  is pending, the pull request is closed or you switch branch; after a push from Cockpit it is read for about two
+  minutes although nothing shows pending yet (GitHub takes a while to start the new run), and after ten answers in a
+  row gh could not give, it stops asking until ↻. The base branch is never read: its pull requests
+  are other branches'. When gh cannot answer (offline, not logged in) the row stays as it
+  was; it goes once gh says the branch has no pull request. Checks gh could not list in full say "checks unknown",
+  never "no checks".
+- **Fix failing checks** reads the end of each failing check's log (`gh run view --log-failed`, the last 120 lines,
+  three checks at most; a check from another CI goes with its link) and hands them to Claude as a prompt asking it to
+  find the cause, fix it and run the check locally.
 - Failed pushes, PRs and commits say why in the toast.
 - Git runs from the repository's top folder, and the settings and account are kept per repository, so a session working in a subfolder commits the right paths with the same settings.
+
+## Several repositories
+
+When the session's folder is not itself a repository but holds some, one or two levels down (`~/work/` with `api/` and `web/`), the tab finds them (folders with a `.git`, skipping `node_modules` and dot folders; at most 20) and shows a **Repo** picker above everything else, each name with its branch and changed-file count. With one repository, or a session inside one, there is no picker and nothing changes.
+
+- The chosen repository is where every git and gh command runs (status, commit, push, pull, pull request, turn snapshots), and its settings are kept as for any repository. The choice is remembered per session folder; the first time it is the first repository found.
+- **Auto-follow**: when Claude edits or writes a file inside another found repository, the tab switches to it. A repository you pick by hand stays chosen for the rest of the session.
+- A turn that edited several repositories commits only the chosen one; switch and commit the others.
 
 ## Accounts
 

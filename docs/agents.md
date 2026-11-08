@@ -2,13 +2,15 @@
 
 Start, stop and follow subagents, and read what each found. Each run shows in one place.
 
-![The Agents tab: a Verify pipeline running, the running list, connections and the team](images/agents.png)
+![The Agents tab: a reviewer running, connections, the team with its worktree tick, and a finished tester](images/agents.png)
 
 *A preview drawn from the desktop pane; the app's own spacing differs slightly.*
 
+> **What you see first.** The tab opens on one plain sentence of its own state ("2 agents running · Reviewer found 1 issue") and the Build, Verify and Review buttons, the running pipeline and the running agents. Everything else below sits behind one **› More** fold (`fold-more-agents`), folded by default; Autopilot, + New agent, the run bar, connections, the team, finished runs and Settings (including Choose model and effort for me) are inside it. Every button is still there.
+
 ## The tab, from top to bottom
 
-- **Build, Verify, Review**, **⟳ Autopilot** and **+ New agent** in one row.
+- **Build, Verify, Review** on top; **⟳ Autopilot** and **+ New agent** inside **› More**.
 - **The running pipeline**, as a card: its experts' icons (the current one turning, a finished one with its result,
   `Prover ✓3/3`), the running step's tracker, the hand-off it carries, and ■ Stop.
 - **Running**: every other live run with its tracker (its own task list as a bar, done of all and the task it is on,
@@ -22,7 +24,19 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
   its run (`running ↑`, `done ↓`) instead of repeating it.
 - **Finished**: the three newest runs, each with its result (`3/3 passed`, its report), the rest a press away, each with ↻ Restart and ✎; **Clear** empties the list.
   **■ Stop all**, beside Running, stops every live run.
-- **Settings**, folded: test each agent's work, and Verify after each turn.
+- **Settings**, folded: choose model and effort for me, test each agent's work, Verify after each turn, and **Tell me when work is done**.
+
+## Told when work is done
+
+While the Cockpit pane is not on screen (closed, or behind another tab), each finish sends one
+notice through Claude Code's own notification channel (your terminal's notification or bell; a `Notification` hook
+sees it too): the main turn ("Claude is done", its task, files and +/−, tests), each agent you or Claude started
+(its REPORT line or its tests, and *Bring back ready* for a worktree agent with work to bring back), each pipeline
+("Verify finished", passed or this run's first failing case), and, while the autopilot runs, each cycle (its
+milestones and spend, and whether the run paused, stopped or is done) instead of the turn. Agents that ran together
+send one notice when the last is done, naming each; one you stopped, or a turn you interrupted, sends none. One notice
+per finish, never while the pane is on screen; **Tell me when work is done** in Settings
+turns them off, and the choice is kept across sessions.
 
 ## The experts
 
@@ -50,6 +64,48 @@ folder and name any test they leave in the repository.
   always starts another run; ■ stops every running copy.
 - The subagents Claude starts show here as they work, read from Claude Code's own list of agents, so they appear even
   where another plugin's hook keeps Cockpit from seeing them start. A subagent's edits count in the running flow's +/−.
+
+## Agents in their own worktree
+
+Tick **In its own worktree** (in the New agent form, or beside Team, the same setting) and an agent you start from the
+tab runs in a git worktree of its own, so two agents working at once never step on each other or on your files.
+
+- It uses Claude Code's own worktree isolation. That is set on an agent's definition (`isolation: 'worktree'`), not on
+  a start, so Cockpit registers a twin of each expert, of each agent you made and of a general-purpose agent, named
+  `<name>-in-worktree`, that runs isolated; a ticked start of one of those types starts its twin, Claude Code makes
+  the worktree (and drops it again if the agent changed nothing), and Cockpit finds it in `git worktree list`: only a
+  new one in Claude Code's own `.claude/worktrees/` that no other agent holds (one another session made is never
+  taken); its base is the
+  worktree's own commit. Twin starts go one at a time, so two never share a worktree. A twin is shown, rerun and tested
+  as the agent it is a twin of, and an agent you make gets its twin at once. One whose worktree never shows changed
+  nothing, and says so.
+- Another plugin's agent type, which Cockpit cannot redefine, gets a worktree Cockpit makes itself just before it
+  starts: from your current commit, on a branch `cockpit/<id>`, under `.git/cockpit-worktrees/`, so `git status` and
+  turn snapshots never see it.
+- With no commit yet, or a worktree git refuses to make, the agent runs in your tree and a toast says why; so does one
+  Claude starts for you when Cockpit's own start is refused.
+- Its row shows its branch and, once it finishes, the files and +/− it changed there against the commit it started
+  from (Cockpit's experts never commit, so its files are its work).
+- **⇲ Bring back** asks first, then applies those changes to your working tree's files (never your staged changes):
+  all or nothing, so where they clash with changes of yours it refuses, naming the files, and changes nothing.
+  **Remove worktree** asks first, then removes the worktree and anything in it not brought back; its branch stays.
+  Both wait while the agent is still working.
+- Pipelines (Build, Verify, Review) and the testers always work in your tree, where each expert sees the one before
+  it; a worktree agent's work is tested and committed once you bring it back.
+- A file that is not UTF-8 text cannot be brought back this way (the check refuses it, nothing is changed); copy it
+  from the worktree by hand.
+
+## Model and effort
+
+With **Choose model and effort for me** on (the default), Cockpit picks a model and an effort for each expert and agent
+it starts, and the row shows it, for example `haiku · low — light work (typo, docs)`. The rules are a small table in
+`hooks/pick.ts`: the kind sets the start (planner and reviewer high on opus, builder and testers on sonnet, scribe on
+haiku), light words (rename, typo, docs, readme) step down, hard words (refactor, architecture, security, debug, race)
+and a long brief or eight or more changed files step up. The model goes with the spawn; the effort goes on the expert's
+definition, which is registered again just before the start, because a spawn has no effort of its own. Pipelines run
+one expert at a time, so the helper count the pick returns (two for a big, hard build) is recorded, not used. Off,
+agents start with their own defaults. Cockpit cannot change the main session's model or effort: the plugin API reads
+the model (`$.session.model()`) and sets none, and `$.config.set` would rewrite the person's saved settings.
 
 ## Agent memory
 

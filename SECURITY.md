@@ -13,9 +13,17 @@ Only the latest release is supported with fixes.
 Cockpit runs inside Claude Code with the same reach as Claude Code itself, so this is what a report would be about.
 
 - **Runs git and gh.** Reading: `git status`, `diff`, `log`, `show`, `ls-files`, `rev-parse`, `branch`, `config`, and
-  `gh auth status` and `gh api user`. Changing the repository: `git add`, `commit`, `switch` and `switch -c` (a commit on
+  `gh auth status`, `gh api user`, and for the Git tab's pull request `gh pr view`, `gh pr checks` and
+  `gh run view --log-failed` (only when you press Fix failing checks). Changing the repository: `git add`, `commit`, `switch` and `switch -c` (a commit on
   the base branch cuts a branch by your pattern), `init`, and `git config user.name` / `user.email` when you press
-  **Use for this repo**. These happen when you press a button, or after each turn in Auto-commit mode. `git push`,
+  **Use for this repo**. These happen when you press a button, or after each turn in Auto-commit mode.
+  Around every turn, for **Undo this turn**: `git read-tree`, `add -A`, `write-tree` on a temporary index under
+  `.git/` (never the real one), `commit-tree`, and `update-ref` of Cockpit's own refs under `refs/cockpit/`,
+  dropping those of turns older than the newest 50 (never a branch or tag). Undoing a turn, after you confirm, runs
+  `git restore --worktree` and `git clean` on that turn's files only. For an agent you start **In its own worktree**:
+  `git worktree add -b cockpit/<id>` under `.git/cockpit-worktrees/` (a refused start removes it again, with
+  `git branch -d`, which never deletes a branch holding a commit), the same snapshot commands inside it, and, after
+  you confirm, `git apply` (files only) to bring its work back or `git worktree remove --force` (its branch kept). `git push`,
   `pull` and `gh pr create` run only when you press them or turn push and pull requests on.
 - **Changes your GitHub login on this machine, when you push.** Before a push it runs `gh auth switch` to the account
   you chose (this changes the active GitHub account for the whole machine) and `gh auth setup-git` (git then asks gh for
@@ -25,7 +33,10 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
 - **Writes files.** In `.cockpit/` at the top of each repository (git-ignored by a `.gitignore` Cockpit writes there):
   its history, codebase memory and hand-off briefs. Outside it, only when you press a button in the Rules tab: the
   `settings.json` or `CLAUDE.md` you are looking at, which for **You, everywhere** are `~/.claude/settings.json` and
-  `~/.claude/CLAUDE.md`. It re-reads a file before each change and refuses to overwrite a settings file it cannot parse.
+  `~/.claude/CLAUDE.md`, and the repository's `.mcp.json` for its MCP servers, and a skill's `SKILL.md` (one frontmatter line) when you
+  switch whether Claude loads it. It re-reads a file before each change
+  and refuses to overwrite a settings file it cannot parse. It reads `~/.claude.json` for your MCP servers and never
+  writes it, and it never shows a server's `env` or `headers` values, only their names.
   The autopilot's roadmap, `.cockpit/roadmap.md`, and the product owner's `.cockpit/product.md` are written by Claude
   at Cockpit's request; Cockpit writes only the roadmap's title when a goal starts, keeping the one before in
   `.cockpit/roadmaps/`.

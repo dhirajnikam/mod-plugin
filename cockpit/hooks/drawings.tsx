@@ -4,6 +4,7 @@ import type { Ph } from '../types'
 import { compactNow, confirmPending, inBackground, openPane, set, skipPending } from './actions'
 import { EXPERTS, PIPELINES, base, expertName, fmt, kTok, progress, tally, toOp, verifyState } from './logic'
 import { INITIAL } from './state'
+import { budgetLevel, todaySpend, withCurrent } from './spend'
 import { chatThemeOf, ctxShades, themeOf } from './theme'
 import { Card, seatDots } from './views'
 import type { UI } from './views'
@@ -11,7 +12,7 @@ import type { UI } from './views'
 // Everything Cockpit draws around the chat: the spinner, the band above the prompt, the chat's cards and rows, and the
 // line under the prompt (the side pane is pane.tsx). register.tsx calls this.
 // The state atom is declared here too: the engine reads it from the module that names it
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 // Where a card or a band label leads: the pane, opened on that tab, so a press shows what it names even when it is closed
@@ -90,6 +91,11 @@ export function drawings(on: Parameters<Register>[0]) {
     // Agents at work and the autopilot, which run on between prompts
     const live = liveWords(s)
     const liveLine = live.length > 0 && <Text color={t.dim}>{`  ·  ${live.join('  ·  ')}`}</Text>
+    // A daily budget, once set: today's spend against it, amber from 80%, red from 100% (it only warns)
+    const nowT = await $.clock.now().catch(() => Date.now())
+    const today = todaySpend(withCurrent(s.pastSessions, s.sessionAt, nowT, s.cost, s.ctx.used, s.flows.length), nowT)
+    const level = budgetLevel(today, s.dailyBudget)
+    const budgetLine = level !== 'none' && <Text color={level === 'over' ? t.bad : level === 'near' ? t.busy : t.dim}>{`  ·  $${today.toFixed(2)} of $${s.dailyBudget!.toFixed(2)} today`}</Text>
     // A nearly full context: Compact, a press away, before Claude Code compacts it on its own
     const compact = s.ctx.pct >= 80 && (
       <Button key="ph-compact" plain onPress={() => inBackground($, 'compact', 'Compacting', () => compactNow($))}>
@@ -135,11 +141,12 @@ export function drawings(on: Parameters<Register>[0]) {
         {advice}
         <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
-            <Text color={t.accent}>{`${p.pct}%`}</Text>
-            <Text color={t.dim}>{` ${p.stepName}  ·  context `}</Text>
-            <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`${s.ctx.pct}%`}</Text>
+            <Text color={t.text}>{p.steps.length > 0 && p.total > 0 ? `Step ${Math.min(p.done + 1, p.steps.length)} of ${p.steps.length}` : p.stepName}</Text>
+            {p.steps.length > 0 && p.total > 0 && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}
+            {s.ctx.pct >= 50 && <Text color={s.ctx.pct >= 80 ? t.busy : t.dim}>{`  ·  context ${s.ctx.pct}%`}</Text>}
             {testsLine && <Text color={testsFail ? t.bad : testsLine === 'testing…' ? t.busy : t.ok}>{`  ·  ${testsLine}`}</Text>}
             {liveLine}
+            {budgetLine}
           </Text>
           <Box columnGap={2}>
             {compact}
@@ -185,6 +192,7 @@ export function drawings(on: Parameters<Register>[0]) {
             <Text>
               <Text color={t.faint}>cockpit</Text>
               {liveLine}
+            {budgetLine}
             </Text>
             <Box columnGap={2}>
               {compact}

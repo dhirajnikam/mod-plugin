@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
+import type { Account, Agent, Decision, GitForm, McpRow, Ph, Tab, ThemeId } from '../../types'
 import {
   applyAccount,
   commit,
@@ -75,7 +75,7 @@ import {
 import type { IconState, Neuron } from '../logic'
 import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
 import type { FeatureMark } from '../memory'
-import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeSettings } from '../actions'
+import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeMcp, writeSettings, writeSkill } from '../actions'
 import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
 import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
@@ -127,9 +127,9 @@ export function Rules($: $, v: V) {
         <Text color={t.faint}>{` ${n}`}</Text>
         <Text color={t.faint} bold={false}>{`  ${path}`}</Text>
       </Text>
-      <Button key={`radd-${add}`} plain onPress={() => ui({ ...clear, ruleAdd: s.ui.ruleAdd === add ? '' : add, ruleA: add === 'hook' ? 'PreToolUse' : add === 'perm' ? 'allow' : '' })}>
+      {add !== '' && <Button key={`radd-${add}`} plain onPress={() => ui({ ...clear, ruleAdd: s.ui.ruleAdd === add ? '' : add, ruleA: add === 'hook' ? 'PreToolUse' : add === 'perm' ? 'allow' : '' })}>
         <Text color={t.accent} size="footnote">{s.ui.ruleAdd === add ? '✕ Close' : '+ Add'}</Text>
-      </Button>
+      </Button>}
     </Box>
   )
   if (!f) return <Text color={t.dim}>Reading the rules…</Text>
@@ -137,14 +137,66 @@ export function Rules($: $, v: V) {
   const hooks = hookRows(json)
   const perms = permRows(json)
   const lines = ruleLines(f.md)
+  const mcp = s.rules?.mcp
+  const mcpError = mcp?.error ?? ''
+  const skills = s.rules?.skills?.[scope] ?? []
+  const load = s.rules?.load
+  const servers: McpRow[] = (mcp?.rows ?? []).filter(m => (scope === 'repo' ? m.scope !== 'user' : m.scope === 'user'))
+  const moreOpen = !!s.ui.collapsed['rules-more']
+  const nSkills = load ? load.skills.length : skills.length
+  const state = load
+    ? `${load.files.length} CLAUDE.md file${load.files.length === 1 ? '' : 's'} · ${hooks.length} hook${hooks.length === 1 ? '' : 's'} · ${nSkills} skill${nSkills === 1 ? '' : 's'} load before you type, ≈${kTok(load.total)} tokens`
+    : `${hooks.length} hook${hooks.length === 1 ? '' : 's'} · ${perms.length} permission rule${perms.length === 1 ? '' : 's'} · ${lines.length} instruction${lines.length === 1 ? '' : 's'}`
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
+      <Text color={t.text} bold wrap="wrap">{state}</Text>
       <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
         <Seg v={v} id="rscope" value={scope} items={[['repo', 'This repository'], ['user', 'You, everywhere']]} onPick={k => ui({ ...clear, ruleScope: k as 'repo' | 'user' })} />
-        <Button key="rules-reload" plain onPress={() => loadRules($)}>
-          <Text color={t.dim} size="footnote">↻ Read again</Text>
-        </Button>
       </Box>
+      {load && (
+        <Box flexDirection="column">
+          <Box justifyContent="space-between" columnGap={sp(v, 1)} flexWrap="wrap">
+            <Text color={t.dim} size="footnote" bold>LOADS EVERY SESSION</Text>
+            <Text color={t.accent} size="footnote" bold>{`≈ ${load.total.toLocaleString('en-US')} tokens`}</Text>
+          </Box>
+          {load.files.map(fl => (
+            <Box key={`ld-f-${fl.path}`} columnGap={sp(v, 1)} justifyContent="space-between">
+              <Box flexShrink={1}>
+                <Text color={fl.missing ? t.bad : t.text} size="footnote" wrap="truncate-start">{`${fl.via ? '↳ ' : ''}${fl.label ?? fl.path}`}</Text>
+              </Box>
+              <Text color={fl.missing ? t.bad : fl.long || fl.outside || fl.skipped ? t.busy : t.dim} size="footnote">
+                {fl.missing ? 'missing' : fl.skipped ? `${fl.skipped}, not read` : `${fl.lines} lines · ≈${fl.tokens}${fl.long ? ' · over 200 lines (advised)' : ''}${fl.outside ? ' · outside, loads once approved' : ''}`}
+              </Text>
+            </Box>
+          ))}
+          {load.files.length === 0 && <Text color={t.faint} size="footnote">No CLAUDE.md here or in ~/.claude.</Text>}
+        </Box>
+      )}
+      <Button key="fold-more-rules" plain onPress={() => ui({ collapsed: { ...s.ui.collapsed, 'rules-more': !moreOpen } })}>
+        <Text color={t.dim}>{`${moreOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {moreOpen && (
+        <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
+          <Button key="rules-reload" plain onPress={() => loadRules($)}>
+            <Text color={t.dim} size="footnote">↻ Read again</Text>
+          </Button>
+          {load && (
+            <Box flexDirection="column">
+          <Text color={t.dim} size="footnote" wrap="wrap">{`Skills Claude may load: ${load.skills.length} · ≈${load.skills.reduce((a, k) => a + k.tokens, 0)}`}</Text>
+          {load.largest.map(k => (
+            <Box key={`ld-k-${k.path}`} columnGap={sp(v, 1)} justifyContent="space-between" alignItems="center">
+              <Box flexShrink={1}>
+                <Text color={t.text} size="footnote" wrap="truncate-end">{`  ${k.name} · ≈${k.tokens}`}</Text>
+              </Box>
+              <Button key={`ld-${k.path}`} plain onPress={() => writeSkill($, k.path, false)}>
+                <Text color={t.accent} size="footnote">Call only</Text>
+              </Button>
+            </Box>
+          ))}
+          <Text color={t.dim} size="footnote" wrap="wrap">{`MCP servers on: ${load.mcpOn} · their tools' cost: /context`}</Text>
+          <Text color={t.faint} size="footnote" wrap="wrap">Estimates (characters ÷ 4), before Claude Code's own system prompt and tools.</Text>
+            </Box>
+          )}
       <Text color={t.faint} size="footnote" wrap="wrap">{scope === 'repo' ? 'Shared with everyone who works in this repository (commit them to share them).' : 'Yours, in every repository on this machine.'} Hooks run shell commands: read one before you add it.</Text>
       {error !== '' && <Text color={t.bad} wrap="wrap">{`${f.settingsPath} is ${error}. Hooks and permissions are shown read-only until it is fixed by hand.`}</Text>}
 
@@ -230,6 +282,74 @@ export function Rules($: $, v: V) {
       </Box>
 
       <Box flexDirection="column">
+        {head('MCP servers', servers.length, scope === 'repo' && !mcpError ? 'mcp' : '', scope === 'repo' ? '.mcp.json' : '~/.claude.json')}
+        {mcpError !== '' && scope === 'repo' && <Text color={t.bad} wrap="wrap">{`${mcp?.path} is ${mcpError}. Its servers are shown read-only until it is fixed by hand.`}</Text>}
+        {s.ui.ruleAdd === 'mcp' && (
+          <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+            {field('ruleA', 'Name', 'github', (val: string) => null)}
+            {field('ruleB', 'Command or URL', 'npx -y @modelcontextprotocol/server-github, or https://…/mcp', (val: string) => val.trim() && save(writeMcp($, { add: { name: (s.ui.ruleA ?? '').trim(), target: val.trim() } }, 'Server added')))}
+            <Text color={t.faint} size="footnote" wrap="wrap">A server's env and headers (tokens) are added in .mcp.json by hand; Cockpit never shows their values.</Text>
+            <Button key="rm-go" label="Add server" variant="primary" onPress={() => ((s.ui.ruleA ?? '').trim() && (s.ui.ruleB ?? '').trim() ? save(writeMcp($, { add: { name: (s.ui.ruleA ?? '').trim(), target: (s.ui.ruleB ?? '').trim() } }, 'Server added')) : undefined)} />
+          </Box>
+        )}
+        {servers.length === 0 && s.ui.ruleAdd !== 'mcp' && <Text color={t.faint} size="footnote">None yet.</Text>}
+        {servers.map(m => {
+          const key = `m:${m.key}`
+          const editable = m.scope === 'project' && !mcpError
+          if (editable) rowsDelete.set(key, () => save(writeMcp($, { remove: m }, 'Server deleted')))
+          if (s.ui.ruleEdit === key)
+            return (
+              <Box key={key} flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+                {field('ruleA', 'Name', m.name, (val: string) => null)}
+                {m.masked && <Text color={t.faint} size="footnote" wrap="wrap">What it runs holds a token, so it is not shown here: leave it empty to keep it, or change it in .mcp.json by hand.</Text>}
+                {!m.masked && field('ruleB', 'Command or URL', m.target, (val: string) => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: val.trim() }, 'Server saved')))}
+                <Box columnGap={sp(v, 1)}>
+                  <Button key="rm-save" label="Save" variant="primary" onPress={() => save(writeMcp($, { edit: m, name: (s.ui.ruleA ?? '').trim(), target: (s.ui.ruleB ?? '').trim() }, 'Server saved'))} />
+                  <Button key="rm-cancel" label="Cancel" onPress={() => ui(clear)} />
+                </Box>
+              </Box>
+            )
+          return (
+            <Box key={key} columnGap={sp(v, 1)} alignItems="center">
+              <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+                <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                  <Text color={t.accent} size="footnote" wrap="truncate-end">{m.name}</Text>
+                  <Text color={m.state === 'on' ? t.ok : m.state === 'approval' ? t.busy : t.dim} size="footnote">{MCP_STATE[m.state]}</Text>
+                  <Text color={t.dim} size="footnote">{m.scope === 'local' ? `${m.kind} · local, only you` : m.kind}</Text>
+                </Box>
+                <Text color={t.text} mono wrap="truncate-end">{m.target}</Text>
+                {m.secrets.length > 0 && <Text color={t.faint} size="footnote" wrap="truncate-end">{`secrets: ${m.secrets.join(', ')}`}</Text>}
+              </Box>
+              {/* A masked target is never put in a field: such a server is renamed or deleted here, and what it runs is
+                  changed in .mcp.json by hand */}
+              {editable && actions(key, () => ui({ ...clear, ruleEdit: key, ruleA: m.name, ruleB: m.masked ? '' : m.target }))}
+            </Box>
+          )
+        })}
+      </Box>
+
+      <Box flexDirection="column">
+        {head('Skills', skills.length, '', scope === 'repo' ? '.claude/skills' : '~/.claude/skills')}
+        {skills.length === 0 && <Text color={t.faint} size="footnote">None yet.</Text>}
+        {skills.map(k => (
+          <Box key={`k:${k.path}`} columnGap={sp(v, 1)} alignItems="center">
+            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+              <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                <Text color={t.accent} size="footnote" wrap="truncate-end">{k.name || k.folder}</Text>
+                {!k.error && <Text color={k.auto ? t.ok : t.dim} size="footnote">{k.auto ? 'Claude loads it' : `only when you call /${k.name || k.folder}`}</Text>}
+              </Box>
+              {k.error ? <Text color={t.bad} size="footnote" wrap="wrap">{`SKILL.md: ${k.error}. Shown read only.`}</Text> : <Text color={t.text} size="footnote" wrap="wrap">{k.description || '(no description)'}</Text>}
+            </Box>
+            {!k.error && (
+              <Button key={`sk-${k.path}`} plain onPress={() => writeSkill($, k.path, !k.auto)}>
+                <Text color={t.accent} size="footnote">{k.auto ? 'Call only' : 'Let Claude'}</Text>
+              </Button>
+            )}
+          </Box>
+        ))}
+      </Box>
+
+      <Box flexDirection="column">
         {head('Instructions', lines.length, 'rule', f.mdPath.replace(/^.*\//, ''))}
         {s.ui.ruleAdd === 'rule' && (
           <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
@@ -264,6 +384,10 @@ export function Rules($: $, v: V) {
           )
         })}
       </Box>
+        </Box>
+      )}
     </Box>
   )
 }
+
+const MCP_STATE = { on: 'on', off: 'off', approval: 'needs approval', shadowed: 'hidden by a nearer server of this name' } as const

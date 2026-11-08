@@ -304,8 +304,71 @@ export function Files($: $, v: V) {
   const ago = (at: number) => (at ? fmt(Math.max(0, v.now - at)) : '')
   const { marks, nowFeature } = workMarks(s, live && latest && latest.op !== 'Search' ? latest.path : '')
   const doing = s.isWorking ? s.activity : running.length ? `${running.length} agent${running.length > 1 ? 's' : ''} working: ${running.map(a => a.name).join(', ')}` : s.turnStart ? 'Idle' : 'Ready'
+  const edits = s.ops.filter(o => o.op === 'Write' || o.op === 'Edit' || o.op === 'Delete')
+  const editFiles = new Set(edits.map(o => o.path)).size
+  const state = edits.length
+    ? `${edits.length} edit${edits.length === 1 ? '' : 's'} in ${editFiles} file${editFiles === 1 ? '' : 's'} this session${live ? ` · ${doing}` : ''}`
+    : live ? doing : 'No edits yet this session'
+  const isOpen = !!s.ui.collapsed['act-more']
+  const feedRow = (r: Row, i: number) => {
+    const hot = i === 0 && live && !filter
+    if (r.kind === 'agent') {
+      return (
+        <Box key={r.key} columnGap={sp(v, 1)}>
+          <Text color={r.running ? t.busy : t.faint}>{r.running && blink ? '●' : '○'}</Text>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text wrap="truncate-end">
+              <Text color={r.running ? t.busy : t.accent}>{`${r.glyph} ${r.who}  `}</Text>
+              <Text color={t.text}>{r.text}</Text>
+            </Text>
+          </Box>
+          <Text color={t.dim} size="footnote">{ago(r.at)}</Text>
+        </Box>
+      )
+    }
+    const o = r.op!
+    const open = s.ui.openFile === o.id
+    const name = o.op === 'Search' ? o.path : rel(o.path)
+    return (
+      <Box key={r.key} flexDirection="column">
+        <Box columnGap={sp(v, 1)}>
+          <Text color={hot && blink ? t.busy : opColor(o.op)}>{opGlyph(o.op)}</Text>
+          <Box flexGrow={1} flexShrink={1}>
+            <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
+              <Text color={opColor(o.op)}>{`${o.op} `}</Text>
+              <Text color={hot ? t.text : i < 3 ? t.text : t.dim} wrap="truncate-end">{name}</Text>
+              <Text color={t.dim}>{o.lines.length ? (open ? ' ⌄' : ' ›') : ''}</Text>
+            </Button>
+          </Box>
+          <Box flexShrink={0} columnGap={sp(v, 1)}>
+            <Text color={o.add || o.del ? (o.add >= o.del ? t.ok : t.bad) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
+            <Text color={t.dim} size="footnote">{ago(o.at)}</Text>
+          </Box>
+        </Box>
+        {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={2}>{diffLines(o.id, o.lines)}</Box>}
+      </Box>
+    )
+  }
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
+      <Text color={t.text} bold wrap="wrap">{state}</Text>
+      {rows_.length === 0 && feed.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
+      {feed.length > 0 && (
+        <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+          <Head v={v} label="Feed" {...(filter ? { note: filter } : {})} />
+          {filter ? (
+            <Button key="feed-all" label="show all" plain dimColor onPress={() => set($, st => ({ ui: { ...st.ui, treeSel: '' } }))} />
+          ) : (
+            <Text color={t.dim} size="footnote">{`${feed.length} event${feed.length === 1 ? '' : 's'} · ${s.agents.length} agent${s.agents.length === 1 ? '' : 's'}`}</Text>
+          )}
+        </Box>
+      )}
+      {feed.slice(0, filter ? feed.length : 5).map(feedRow)}
+      <Button key="fold-more-activity" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'act-more': !st.ui.collapsed['act-more'] } } }))}>
+        <Text color={t.dim}>{`${isOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {isOpen && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
       <Box flexDirection="column" borderStyle="round" borderColor={live ? t.busy : t.divider} paddingX={1}>
         <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
           <Text wrap="truncate-end">
@@ -329,7 +392,6 @@ export function Files($: $, v: V) {
       </Box>
       {FeatureMap($, v, marks)}
       {Memory($, v, marks)}
-      {rows_.length === 0 && feed.length === 0 && <Text color={t.dim} wrap="wrap">No files found here yet: send a prompt, and what Claude reads, writes and runs shows here as it happens.</Text>}
       {rows_.length > 0 && (
         <Box flexDirection="column">
           <Button key="fold-tree" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'act-tree': !st.ui.collapsed['act-tree'] } } }))}>
@@ -365,55 +427,10 @@ export function Files($: $, v: V) {
           })}
         </Box>
       )}
-      {feed.length > 0 && (
-        <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-          <Head v={v} label="Feed" {...(filter ? { note: filter } : {})} />
-          {filter ? (
-            <Button key="feed-all" label="show all" plain dimColor onPress={() => set($, st => ({ ui: { ...st.ui, treeSel: '' } }))} />
-          ) : (
-            <Text color={t.dim} size="footnote">{`${feed.length} event${feed.length === 1 ? '' : 's'} · ${s.agents.length} agent${s.agents.length === 1 ? '' : 's'}`}</Text>
-          )}
+      {!filter && feed.length > 5 && <Text color={t.dim}>{`Earlier · ${feed.length - 5} event${feed.length - 5 === 1 ? '' : 's'}`}</Text>}
+      {!filter && feed.slice(5).map((r, i) => feedRow(r, i + 5))}
         </Box>
       )}
-      {feed.map((r, i) => {
-        const hot = i === 0 && live && !filter
-        if (r.kind === 'agent') {
-          return (
-            <Box key={r.key} columnGap={sp(v, 1)}>
-              <Text color={r.running ? t.busy : t.faint}>{r.running && blink ? '●' : '○'}</Text>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text wrap="truncate-end">
-                  <Text color={r.running ? t.busy : t.accent}>{`${r.glyph} ${r.who}  `}</Text>
-                  <Text color={t.text}>{r.text}</Text>
-                </Text>
-              </Box>
-              <Text color={t.dim} size="footnote">{ago(r.at)}</Text>
-            </Box>
-          )
-        }
-        const o = r.op!
-        const open = s.ui.openFile === o.id
-        const name = o.op === 'Search' ? o.path : rel(o.path)
-        return (
-          <Box key={r.key} flexDirection="column">
-            <Box columnGap={sp(v, 1)}>
-              <Text color={hot && blink ? t.busy : opColor(o.op)}>{opGlyph(o.op)}</Text>
-              <Box flexGrow={1} flexShrink={1}>
-                <Button key={`opb-${o.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, openFile: open ? '' : o.id } }))}>
-                  <Text color={opColor(o.op)}>{`${o.op} `}</Text>
-                  <Text color={hot ? t.text : i < 3 ? t.text : t.dim} wrap="truncate-end">{name}</Text>
-                  <Text color={t.dim}>{o.lines.length ? (open ? ' ⌄' : ' ›') : ''}</Text>
-                </Button>
-              </Box>
-              <Box flexShrink={0} columnGap={sp(v, 1)}>
-                <Text color={o.add || o.del ? (o.add >= o.del ? t.ok : t.bad) : t.dim} size="footnote">{o.add || o.del ? `+${o.add} −${o.del}` : o.meta}</Text>
-                <Text color={t.dim} size="footnote">{ago(o.at)}</Text>
-              </Box>
-            </Box>
-            {open && o.lines.length > 0 && <Box flexDirection="column" paddingLeft={2}>{diffLines(o.id, o.lines)}</Box>}
-          </Box>
-        )
-      })}
     </Box>
   )
 }

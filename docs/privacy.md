@@ -6,7 +6,8 @@ the [security policy](../SECURITY.md).
 ## What is kept, and where
 
 - **In the repository**, in `.cockpit/` at its top folder: `history.json` (every finished flow and agent run, and
-  Cockpit's commits, across sessions), the codebase memory (`memory.json`, `MEMORY.md`), hand-off briefs, and the
+  Cockpit's commits, and each session's spend: its start, length, dollars, context tokens and turns, across sessions),
+  the codebase memory (`memory.json`, `MEMORY.md`), hand-off briefs, and the
   autopilot's roadmap. The folder has its own `.gitignore` of `*`, so none of it is committed, auto-commit included.
 - **In Claude Code's plugin store**, across sessions: Focus, the theme, the judges' mode and the Agents settings; the
   Git settings and account, per repository; the agents you made. No token or password is stored: a token you paste
@@ -29,9 +30,21 @@ has no row here.
 
 ## Every command it runs
 
-`git` (status, diff, log, show, ls-files, rev-parse, branch, config; add, commit, switch, init; push and pull) and `gh`
-(auth status, auth login, auth logout, auth switch, auth setup-git, api user, pr create). When each runs, and what it
+`git` (status, diff, log, show, ls-files, rev-parse, branch, config; add, commit, switch, init; push and pull;
+read-tree, write-tree, commit-tree, update-ref and for-each-ref for turn snapshots, restore and clean to undo one;
+worktree add, list, prune and remove, apply, and branch -d for agents in their own worktree) and `gh`
+(auth status, auth login, auth logout, auth switch, auth setup-git, api user, pr create, pr view, pr checks,
+run view). **Fix failing checks** puts the end of each failing CI log into your conversation as a prompt, so it reaches
+the model like anything you paste; GitHub masks the repository's secrets in its logs, but anything else a job prints
+goes with it. When each runs, and what it
 changes on your machine, is in the [security policy](../SECURITY.md#what-cockpit-can-do-on-your-machine).
+
+## Notices
+
+**Tell me when work is done** (on until you turn it off) sends each finish's notice through Claude Code's own
+notification channel, to your terminal and any `Notification` hook you have: a task's first words, file counts, an
+agent's REPORT line or a failing case's name. Nothing leaves your machine through Cockpit; a hook you set up may send
+it on.
 
 ## What costs, and what is on by default
 

@@ -1,3 +1,5 @@
+import type { McpRow, SkillFile, StartupLoad } from '../types'
+
 // Hooks, permission rules and instructions, as Claude Code keeps them: settings.json ("hooks", "permissions") and
 // CLAUDE.md, for the repository and for the user. Pure: the Rules tab reads the files, these read and change their
 // text, and every change keeps the rest of the file as it was
@@ -109,4 +111,288 @@ export function changeRule(md: string, op: { add: string } | { edit: RuleLine; t
   if ('edit' in op) lines[row.line] = `${m[1]}${op.text.trim()}`
   else lines.splice(row.line, 1)
   return lines.join('\n')
+}
+
+// MCP servers, as Claude Code keeps them: the project's in .mcp.json, yours at the top of ~/.claude.json and this
+// project's private ("local") ones under its entry there. A row says what each runs and whether it runs; env and
+// headers hold tokens, so only their names are kept, never their values
+export type McpScope = McpRow['scope']
+type McpServer = { type?: string; command?: string; args?: unknown[]; url?: string; env?: Json; headers?: Json }
+const obj = (x: unknown): Json => (x && typeof x === 'object' && !Array.isArray(x) ? (x as Json) : {})
+const names = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
+// Whatever a config file holds is drawn: control characters (escapes, newlines) become spaces
+const plain = (x: unknown) => String(x ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
+export const mcpTarget = (sv: McpServer) => plain(sv.url ?? [sv.command ?? '', ...(Array.isArray(sv.args) ? sv.args : [])].join(' ').trim())
+
+// What a target shows: tokens a URL or an argument can carry are masked (a URL's login and query values, KEY=value,
+// the word after --token, --api-key or --header, and strings shaped like known tokens)
+const MASK = '•••'
+const SECRET_FLAG = /token|key|secret|auth|pass|bearer|header|credential/i
+const TOKEN = /^(gh[pousr]_|github_pat_|sk-|xox[abpr]-|glpat-|AKIA|eyJ)[\w.-]{6,}$/
+export function maskTarget(t: string) {
+  return t
+    .split(' ')
+    .map((w, i, all) => {
+      if (/^[a-z][\w+.-]*:\/\//i.test(w)) return w.replace(/\/\/[^/@\s]*@/, `//${MASK}@`).replace(/([?&][^=&#]+=)[^&#]*/g, `$1${MASK}`)
+      if (TOKEN.test(w)) return MASK
+      if (i > 0 && /^--?[\w-]+$/.test(all[i - 1]!) && SECRET_FLAG.test(all[i - 1]!)) return MASK
+      const kv = w.match(/^(-{0,2}[\w.-]+)=(.+)$/)
+      return kv ? `${kv[1]}=${MASK}` : w
+    })
+    .join(' ')
+}
+
+// Paths as ~/.claude.json keys them: forward slashes, no trailing one, the drive letter in either case
+const pathKey = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').replace(/^([A-Za-z]):/, (_, d: string) => `${d.toLowerCase()}:`)
+
+// mcp: .mcp.json; claude: ~/.claude.json; settings: the repository's settings.json and settings.local.json and yours;
+// root: the repository
+export function mcpRows(mcp: Json, claude: Json, settings: Json[], root: string): McpRow[] {
+  const projects = obj(claude.projects)
+  const project = obj(projects[Object.keys(projects).find(k => pathKey(k) === pathKey(root)) ?? ''])
+  const all = [...settings, project]
+  const off = new Set(all.flatMap(j => names(j.disabledMcpjsonServers)))
+  const on = new Set(all.flatMap(j => names(j.enabledMcpjsonServers)))
+  const allOn = all.some(j => j.enableAllProjectMcpServers === true)
+  // Servers switched off with /mcp in this project, whatever their scope
+  const muted = new Set(names(project.disabledMcpServers))
+  // One name, one server: local wins over project, project over user; the others are hidden by it
+  const taken = new Set<string>()
+  const rows = (servers: unknown, scope: McpScope): McpRow[] =>
+    Object.entries(obj(servers)).map(([name, raw]) => {
+      const sv = obj(raw) as McpServer
+      const kind = sv.type === 'sse' ? 'sse' : sv.type === 'http' || (!sv.command && sv.url) ? 'http' : 'stdio'
+      const shown = mcpTarget(sv)
+      const target = maskTarget(shown)
+      const state = taken.has(name) ? 'shadowed' : muted.has(name) || (scope === 'project' && off.has(name)) ? 'off' : scope !== 'project' || allOn || on.has(name) ? 'on' : 'approval'
+      taken.add(name)
+      return { key: `${scope}/${name}`, name: plain(name), scope, kind, target, masked: target !== shown, secrets: [...Object.keys(obj(sv.env)), ...Object.keys(obj(sv.headers))].map(plain), state }
+    })
+  const local = rows(project.mcpServers, 'local')
+  const shared = rows(mcp.mcpServers, 'project')
+  return [...shared, ...local, ...rows(claude.mcpServers, 'user')]
+}
+
+// A server typed as one line: a URL is an HTTP server, anything else a command and its arguments
+// ponytail: arguments split at spaces, no quoting; a server needing quoted arguments is edited in .mcp.json by hand
+function serverOf(target: string): McpServer {
+  const t = target.trim()
+  if (/^https?:\/\//i.test(t)) return { type: 'http', url: t }
+  const [command = '', ...args] = t.split(/\s+/)
+  return { command, args }
+}
+
+// The names Claude Code accepts for a server; the object keys JSON treats specially are refused too
+export const mcpNameOk = (n: string) => /^[A-Za-z0-9_-]{1,64}$/.test(n) && !['__proto__', 'constructor', 'prototype'].includes(n)
+
+// Adds a server to .mcp.json, changes one's name or what it runs (its env, headers and other fields kept, and what it
+// runs kept exactly when its text is not changed), or removes one, the servers kept in their order. A name already
+// taken or not allowed is refused, a row that no longer matches the file is left alone, and an mcpServers that is
+// not an object is never replaced
+export function changeMcp(j: Json, op: { add: { name: string; target: string } } | { edit: McpRow; name: string; target: string } | { remove: McpRow }): Json {
+  if (j.mcpServers !== undefined && (typeof j.mcpServers !== 'object' || j.mcpServers === null || Array.isArray(j.mcpServers))) return j
+  const next = JSON.parse(JSON.stringify(j)) as Json
+  const servers = obj(next.mcpServers)
+  const has = (n: string) => Object.prototype.hasOwnProperty.call(servers, n)
+  if ('add' in op) {
+    const name = op.add.name.trim()
+    if (!mcpNameOk(name) || !op.add.target.trim() || has(name)) return j
+    next.mcpServers = { ...servers, [name]: serverOf(op.add.target) }
+    return next
+  }
+  const row = 'edit' in op ? op.edit : op.remove
+  // Only a server written as an object is changed: anything else in the file is left for you to fix by hand
+  // The name as the file has it (a row's name is cleaned for drawing; its key keeps the original)
+  const id = row.key.slice(row.key.indexOf('/') + 1)
+  const raw = has(id) ? servers[id] : undefined
+  const cur = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as McpServer) : undefined
+  if (row.scope !== 'project' || !cur || maskTarget(mcpTarget(cur)) !== row.target) return j
+  const entries = Object.entries(servers)
+  if ('remove' in op) next.mcpServers = Object.fromEntries(entries.filter(([n]) => n !== id))
+  else {
+    const name = op.name.trim() || id
+    if ((name !== id && (has(name) || !mcpNameOk(name))) || (row.masked && op.target.trim() && op.target.trim() !== row.target)) return j
+    // Its text unchanged (or a masked one, never retyped): what it runs stays exactly as it is
+    const typed = op.target.trim()
+    const same = !typed || typed === row.target
+    const { type: _t, command: _c, args: _a, url: _u, ...rest } = cur
+    const server = same ? cur : { ...serverOf(typed), ...rest }
+    next.mcpServers = Object.fromEntries(entries.map(([n, v]) => (n === id ? [name, server] : [n, v])))
+  }
+  if (!Object.keys(obj(next.mcpServers)).length) delete next.mcpServers
+  return next
+}
+
+// Skills: a folder with a SKILL.md whose YAML frontmatter (between --- lines at its top) names it, says what it is
+// for, and may hold `disable-model-invocation: true` (Claude does not load it by itself; you call it as /name). Only
+// the flat keys Claude Code reads are parsed; the file is otherwise never interpreted
+export type Skill = { name: string; description: string; auto: boolean; error: string }
+const INVOKE = 'disable-model-invocation'
+const INVOKE_LINE = new RegExp(`^${INVOKE}\\s*:`)
+// The frontmatter's lines with the ending each had (a file can mix them), where it closes, or why it cannot be read.
+// It opens with --- on the first line (a byte-order mark before it is kept) and closes with --- at the start of a
+// later line; every line between is a key, an indented line under one, a comment or blank, as YAML's flat keys are
+function front(text: string): { lines: string[]; ends: string[]; close: number; error: string } {
+  const parts = text.split(/(\r?\n)/)
+  const lines = parts.filter((_, i) => i % 2 === 0)
+  const ends = parts.filter((_, i) => i % 2 === 1)
+  if (lines[0]?.replace(/^﻿/, '').trim() !== '---') return { lines, ends, close: -1, error: 'it has no frontmatter (--- at its top)' }
+  const close = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(l))
+  if (close < 0) return { lines, ends, close, error: 'its frontmatter is not closed (no second ---)' }
+  const odd = lines.slice(1, close).findIndex(l => !/^([A-Za-z][\w-]*\s*:.*|[ ]+\S.*|\s*#.*|\s*)$/.test(l))
+  return odd >= 0 ? { lines, ends, close, error: `its frontmatter line ${odd + 2} is not YAML Cockpit can read` } : { lines, ends, close, error: '' }
+}
+const joinLines = (lines: string[], ends: string[]) => lines.map((l, i) => l + (ends[i] ?? '')).join('')
+export function skillOf(text: string): Skill {
+  const { lines, close, error } = front(text)
+  if (error) return { name: '', description: '', auto: true, error }
+  const keys: Record<string, string> = {}
+  for (let i = 1; i < close; i++) {
+    const m = lines[i]!.match(/^([A-Za-z][\w-]*)\s*:\s*(.*?)\s*$/)
+    if (!m) continue
+    let value = m[2]!
+    // A folded (>) or literal (|) block: the indented lines under it, read as one line
+    if (/^[>|][+-]?$/.test(value)) {
+      const block: string[] = []
+      while (i + 1 < close && /^\s+\S/.test(lines[i + 1]!)) block.push(lines[++i]!.trim())
+      value = block.join(' ')
+    } else if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1).replace(/\\"/g, '"').replace(/''/g, "'")
+    // A comment after a plain value is not part of it
+    else value = value.replace(/\s+#.*$/, '')
+    keys[m[1]!] = value
+  }
+  return { name: plain(keys.name ?? ''), description: plain(keys.description ?? ''), auto: (keys[INVOKE] ?? '').toLowerCase() !== 'true', error: '' }
+}
+
+// Lets Claude load the skill by itself (the line goes: that is the default) or keeps it for /name only (the line is
+// set, or added before the frontmatter closes). Only that line changes; null when the frontmatter cannot be read
+export function setInvocation(text: string, auto: boolean): string | null {
+  const { lines, ends, close, error } = front(text)
+  if (error) return null
+  const at = lines.map((l, i) => (i > 0 && i < close && INVOKE_LINE.test(l) ? i : -1)).filter(i => i >= 0)
+  if (auto && !at.length) return text
+  // Every copy of the key goes, the first one set again when it is to stay
+  const drop = new Set(auto ? at : at.slice(1))
+  if (!auto && at.length) lines[at[0]!] = `${INVOKE}: true`
+  const keep = lines.map((l, i) => [l, ends[i]] as const).filter((_, i) => !drop.has(i))
+  if (!auto && !at.length) {
+    // Added before the frontmatter closes, ending as the line before it does
+    const c = keep.findIndex((_, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(keep[i]![0]))
+    keep.splice(c, 0, [`${INVOKE}: true`, keep[c - 1]![1] ?? '\n'])
+  }
+  return joinLines(keep.map(k => k[0]), keep.map(k => k[1] ?? ''))
+}
+
+// A SKILL.md the Rules tab listed, in either scope: the only files a skill's switch may write
+export const skillListed = (path: string, skills?: { repo: SkillFile[]; user: SkillFile[] }) =>
+  path.endsWith('/SKILL.md') && [...(skills?.repo ?? []), ...(skills?.user ?? [])].some(k => k.path === path)
+
+// What loads into every session before you type: the CLAUDE.md files and what they @import, the descriptions of the
+// skills Claude may load by itself, and the MCP servers that are on. Tokens are estimated (characters ÷ 4)
+
+// The @imports in a memory file, as Claude Code reads them: @path at a word's start, outside HTML comments, code spans
+// and fenced blocks (a fence closes only on its own marker, at least as long); an email address is not one, and
+// sentence punctuation after a path is not part of it
+export function importsOf(text: string): string[] {
+  const out: string[] = []
+  let fence = ''
+  for (const line of text.replace(/<!--[\s\S]*?-->/g, ' ').split(/\r?\n/)) {
+    const f = line.match(/^\s*(`{3,}|~{3,})/)?.[1]
+    if (f && (!fence || (f[0] === fence[0] && f.length >= fence.length && /^\s*[`~]+\s*$/.test(line)))) {
+      fence = fence ? '' : f
+      continue
+    }
+    if (fence) continue
+    for (const m of line.replace(/`[^`]*`/g, ' ').matchAll(/(?:^|\s)@((?:~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/])?[\w.\-/~\\]+)/g)) {
+      const p = m[1]!.replace(/[.,;:]+$/, '')
+      if (p && !/^[\\/.]*$/.test(p)) out.push(p)
+    }
+  }
+  return out
+}
+
+// A path made whole, with forward slashes: from ~/, absolute, or relative to the folder of the file that names it;
+// . and .. folded away
+export const slashes = (p: string) => p.replace(/\\/g, '/')
+function joinPath(from: string, p: string, home: string) {
+  const q = slashes(p)
+  const base = q.startsWith('~/') ? `${slashes(home)}/${q.slice(2)}` : q.startsWith('/') || /^[A-Za-z]:\//.test(q) ? q : `${slashes(from).replace(/\/[^/]*$/, '')}/${q}`
+  const parts: string[] = []
+  for (const seg of base.split('/')) {
+    if (seg === '..') parts.length > 1 && parts.pop()
+    else if (seg !== '.' && (seg !== '' || !parts.length)) parts.push(seg)
+  }
+  return parts.join('/')
+}
+
+// The memory files Claude Code looks for at start: in the folder it runs in and each folder above it (not the
+// filesystem's root), CLAUDE.md, .claude/CLAUDE.md and CLAUDE.local.md, nearest last as it reads them; then yours
+export function memoryStarts(cwd: string, home: string): string[] {
+  const dirs: string[] = []
+  let d = slashes(cwd).replace(/\/+$/, '')
+  while (d && d !== '/' && !/^[A-Za-z]:$/.test(d)) {
+    dirs.unshift(d)
+    const up = d.replace(/\/[^/]*$/, '')
+    if (up === d) break
+    d = up
+  }
+  return [...dirs.flatMap(x => [`${x}/CLAUDE.md`, `${x}/.claude/CLAUDE.md`, `${x}/CLAUDE.local.md`]), ...(home ? [`${slashes(home)}/.claude/CLAUDE.md`] : [])]
+}
+
+// skipped: not read (too large, not text); outside: an import beyond the repository and your home, which Claude Code
+// asks before loading
+export type MemoryFile = { path: string; text: string; via?: string; missing?: boolean; skipped?: string; outside?: boolean }
+// What a reader hands back for a file: its text, null when there is none, or why it was not read
+export type MemoryRead = string | null | { skipped: string }
+// Every memory file that loads: the ones that exist of `starts`, then what they import, breadth first so each file is
+// expanded at the fewest hops it is reached in, up to the 5 Claude Code follows, each file once (so a cycle ends). A
+// missing import is kept only when it is plainly a path (./, ../, ~/, / or a file name with an extension), since an
+// @word may be a package or a person. `within`: the repository and your home; an import beyond them is marked
+export async function resolveMemory(starts: string[], read: (path: string) => Promise<MemoryRead>, home: string, within: string[] = []): Promise<MemoryFile[]> {
+  const seen = new Set<string>()
+  const out: MemoryFile[] = []
+  const inside = (p: string) => !within.length || within.some(w => w && (p === slashes(w) || p.startsWith(`${slashes(w).replace(/\/+$/, '')}/`)))
+  let level: { path: string; via?: string; raw?: string }[] = starts.map(p => ({ path: slashes(p) }))
+  for (let depth = 0; depth <= 5 && level.length; depth++) {
+    const next: typeof level = []
+    for (const { path, via, raw } of level) {
+      if (seen.has(path)) continue
+      seen.add(path)
+      const r = await read(path).catch(() => null)
+      const tag = { ...(via ? { via } : {}), ...(via && !inside(path) ? { outside: true } : {}) }
+      if (r === null) {
+        if (via && raw && /^(~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:)|\.\w+$/.test(raw)) out.push({ path, text: '', ...tag, missing: true })
+        continue
+      }
+      if (typeof r !== 'string' || r.includes('\u0000')) {
+        out.push({ path, text: '', ...tag, skipped: typeof r === 'string' ? 'not text' : r.skipped })
+        continue
+      }
+      out.push({ path, text: r, ...tag })
+      if (depth < 5)
+        for (const imp of importsOf(r)) if (home || !/^~[\\/]/.test(imp)) next.push({ path: joinPath(path, imp, home), via: path, raw: imp })
+    }
+    level = next
+  }
+  return out
+}
+
+export const tokensOf = (text: string) => Math.ceil(text.length / 4)
+// The figures: each file's lines and tokens (over 200 lines is flagged, as Claude Code's guidance draws the line),
+// each skill Claude may load by the tokens of its name and description, the servers on, and one total of files and
+// skills. MCP servers are counted, not priced: what their tools cost depends on how Claude Code loads them
+export function startupLoad(files: MemoryFile[], skills: SkillFile[], mcp: McpRow[]): StartupLoad {
+  const f = files.map(x => {
+    const lines = x.text ? x.text.replace(/\r?\n$/, '').split(/\r?\n/).length : 0
+    return { path: x.path, ...(x.via ? { via: x.via } : {}), ...(x.missing ? { missing: true } : {}), ...(x.skipped ? { skipped: x.skipped } : {}), ...(x.outside ? { outside: true } : {}), lines, tokens: tokensOf(x.text), long: lines > 200 }
+  })
+  const k = skills.filter(s => s.auto && !s.error).map(s => ({ path: s.path, name: s.name || s.folder, tokens: tokensOf(`${s.name || s.folder}: ${s.description}`) }))
+  return {
+    files: f,
+    skills: k,
+    largest: [...k].sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name)).slice(0, 3),
+    mcpOn: mcp.filter(m => m.state === 'on').length,
+    // An import Claude Code asks about first is not counted: it loads only once you approve it
+    total: f.filter(x => !x.outside).reduce((a, x) => a + x.tokens, 0) + k.reduce((a, x) => a + x.tokens, 0),
+  }
 }

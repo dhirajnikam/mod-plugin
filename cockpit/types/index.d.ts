@@ -61,9 +61,31 @@ export type Agent = {
   parent?: string
   // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
   provider?: string
+  // Its own git worktree, when it ran in one: where, on which branch, from which commit, and what it changed there
+  // claude: made by Claude Code's own isolation (path '' and `before` set while Cockpit has yet to find it)
+  worktree?: { path: string; branch: string; base: string; claude?: boolean; before?: string[]; nothing?: boolean; snap?: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
+  // The model and effort Cockpit chose for it, with why: "sonnet · medium — small docs change"
+  pick?: string
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
+// An MCP server Claude Code would start here: env and header names only, never their values
+// target: what it runs with tokens masked (masked: some were); shadowed: a server of the same name in a nearer scope wins
+export type McpRow = { key: string; name: string; scope: 'project' | 'local' | 'user'; kind: 'stdio' | 'http' | 'sse'; target: string; masked: boolean; secrets: string[]; state: 'on' | 'off' | 'approval' | 'shadowed' }
+// What loads into every session before you type: each memory file (label: its path from the repository, or from ~),
+// the skills Claude may load by itself, the largest three, the MCP servers on, and the estimated tokens of files and skills
+export type StartupLoad = {
+  files: { path: string; label?: string; via?: string; missing?: boolean; skipped?: string; outside?: boolean; lines: number; tokens: number; long: boolean }[]
+  skills: { path: string; name: string; tokens: number }[]
+  largest: { path: string; name: string; tokens: number }[]
+  mcpOn: number
+  total: number
+}
+// A skill's SKILL.md: its folder, what its frontmatter says, and why it cannot be changed, if so
+export type SkillFile = { path: string; folder: string; name: string; description: string; auto: boolean; error: string }
+// The project's .mcp.json (its path, the only one Cockpit writes, and why it cannot be changed, if so) and every server
+// that applies here; no file's text is kept, since env values live in it
+export type McpFiles = { path: string; error: string; rows: McpRow[] }
 
 // The autopilot: Claude works on a goal cycle after cycle until the judges agree it is done, a limit is hit, or you stop it
 export type Autopilot = {
@@ -144,6 +166,8 @@ export type Pending = { type: string; branch: string; msg: string; files: string
 // One prompt's work: its steps, time, changes, decisions and commit
 export type Flow = {
   id: string
+  // The turn's snapshots under refs/cockpit/turns/<id>/: taken before and after it, so it can be undone
+  snap?: { before?: boolean; after?: boolean; undone?: boolean }
   task: string
   startedAt: number
   endedAt?: number
@@ -189,7 +213,7 @@ export type Ph = {
   goal?: { text: string; at: number }
   autopilot?: Autopilot
   // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
-  rules?: { repo: RuleFiles; user: RuleFiles }
+  rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles; skills?: { repo: SkillFile[]; user: SkillFile[] }; load?: StartupLoad }
   // Slow work a press started, running past the press: its kind and the words that say it ("Pushing")
   busy?: Record<string, string>
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current
@@ -203,6 +227,12 @@ export type Ph = {
   flows: Flow[]
   // Earlier sessions' flows and agent runs, read from the repository's .cockpit/history.json
   past: Flow[]
+  // What earlier sessions spent, from history.json; and when this one started (session.usage), to record its own
+  pastSessions?: SessionSpend[]
+  // A daily budget in dollars (absent: none), and the last day and level it warned at, so each warns once a day
+  dailyBudget?: number
+  budgetWarned?: { day: string; level: 'near' | 'over'; budget?: number }
+  sessionAt?: number
   pastAgents: Agent[]
   // Runs you cleared from the list (the engine still lists them, so a sync must not bring them back), and when: a team
   // row shows no run older than that
@@ -225,16 +255,22 @@ export type Ph = {
   ops: FileOp[]
   // Every path of the project, relative to the root: the Activity tree's skeleton
   project: string[]
+  // The codebase guide Claude writes on request: its path, and when the file was last written (0 while it is not there)
+  guide?: { path: string; at: number; exists?: boolean }
   decisions: Decision[]
   waiting: string
   // Run the Verify experts after each turn that changes files
   autoVerify: boolean
   // Run the positive and the negative tester on each agent's run that changed files
   testAgents: boolean
+  // Choose each expert's model and effort from the task (hooks/pick.ts); off: the agent's own defaults
+  chooseModel: boolean
+  // Tell me when work is done: a notice for each finish while the pane is not watched (absent: on)
+  notifyDone?: boolean
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by
-  starting: { name: string; type: string; task: string } | null
+  starting: { name: string; type: string; task: string; worktree?: boolean; pick?: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   // The tabs an add-on said it draws; absent, Cockpit draws every tab
@@ -243,9 +279,14 @@ export type Ph = {
   custom: { type: string; name: string; what: string }[]
   // A description being turned into an agent right now
   creating: string
+  // Several repos under the session folder (empty otherwise): the chosen one, and whether the person picked it by hand
+  repos: { dir: string; name: string; branch: string; changed: number }[]
+  repoDir: string
+  repoHand: boolean
   git: GitForm
   // log: the recent commits of every branch, remote and tag, in graph order; unpushed: the current branch's commits its upstream lacks
-  repo: { isRepo: boolean; current: string; ahead: number; behind: number; changed: Changed[]; branches: string[]; log: LogCommit[]; unpushed: string[] }
+  // pr: the current branch's pull request as gh reports it; null when it has none, absent before gh was asked
+  repo: { isRepo: boolean; current: string; ahead: number; behind: number; changed: Changed[]; branches: string[]; log: LogCommit[]; unpushed: string[]; pr?: PrStatus | null }
   staged: Record<string, boolean>
   pending: Pending | null
   // The commit a model wrote from the diff of the ticked files (sig names them and their counts); busy while it writes
@@ -262,6 +303,15 @@ export type Ph = {
     openDec: string
     openAgent: string
     openFlow: string
+    // Agents started from the Agents tab run in a git worktree of their own
+    agentWorktree?: boolean
+    // A worktree agent's Bring back or Remove waiting for its confirm: back:<id> or rm:<id>
+    wtAsk?: string
+    // The earlier flow whose Undo this turn is waiting for Undo? / Keep
+    undoAsk?: string
+    // What is typed into the daily budget field
+    budgetText?: string
+    guideText?: string
     // The commit opened in the graph, and what git show said of it
     openCommit: string
     commitInfo: string
@@ -326,3 +376,19 @@ declare module 'claude-code' {
     cockpit: { s: Shaped<Ph> }
   }
 }
+
+// The current branch's pull request, from `gh pr view` and `gh pr checks`
+export interface PrStatus {
+  number: number
+  title: string
+  url: string
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  // approved, changes requested, review required, draft, or '' when the repository asks for no review
+  review: 'approved' | 'changes' | 'required' | 'draft' | ''
+  // unknown: gh's answer could not be read (cut off, gh failed), so the counts say nothing
+  checks: { pass: number; fail: number; pending: number; skip: number; failing: { name: string; link: string }[]; unknown?: boolean }
+}
+
+// A session's spend as Claude Code reports it: its start and last saved time, its dollars (as /cost totals them), its
+// context tokens at its last turn (no running token total is reported) and its turns
+export type SessionSpend = { id: string; startedAt: number; endedAt: number; usd: number; tokens: number; turns: number }

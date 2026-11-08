@@ -1,6 +1,7 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
+import type { Account, Agent, Decision, GitForm, Ph, SessionSpend, Tab, ThemeId } from '../../types'
+import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, withCurrent } from '../spend'
 import {
   inBackground,
   applyAccount,
@@ -25,6 +26,8 @@ import {
   useAccount,
   refreshRepo,
   refreshGit,
+  undoFlow,
+  setBudget,
   set,
   startPipeline,
   setTheme,
@@ -84,10 +87,11 @@ import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
 import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
+import { Guide } from './guide'
 import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
 export function Overview($: $, v: V) {
-  const { Box, Button, Text, Svg } = v.ui
+  const { Box, Button, Input, Text, Svg } = v.ui
   const { s, t, w } = v
   const p = progress(s)
   const cur = s.flows[s.flows.length - 1]
@@ -127,6 +131,33 @@ export function Overview($: $, v: V) {
     </Button>
   )
   const ctxCol = s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.dim
+  // Spend: every session saved in history, this one with its live figures
+  const sessions: SessionSpend[] = withCurrent(s.pastSessions, s.sessionAt, v.now, s.cost, s.ctx.used, s.flows.length)
+  const days = spendByDay(sessions, v.now, 14)
+  const peak = Math.max(0.01, ...days.map(d => d.usd))
+  const spent = days.reduce((a, d) => a + d.usd, 0)
+  const level = budgetLevel(todaySpend(sessions, v.now), s.dailyBudget)
+  const running = s.agents.filter(a => a.status === 'running').length
+  const pr = s.repo.pr
+  const stepAt = p.steps.findIndex(x => x.st === 'active')
+  const nowLine = [
+    s.isWorking ? s.activity : s.flows.length ? 'Idle' : 'Ready',
+    p.steps.length > 0 && p.total > 0 ? `step ${(stepAt >= 0 ? stepAt : Math.min(p.done, p.steps.length - 1)) + 1} of ${p.steps.length}` : '',
+    running > 0 ? `${running} agent${running === 1 ? '' : 's'} running` : '',
+    `$${todaySpend(sessions, v.now).toFixed(2)} today`,
+  ].filter(Boolean).join(' · ')
+  // One decision as a plain sentence: what was chosen, over what, and why
+  const approachLine = (d: Decision) => {
+    const tl = tally(d)
+    const win = tl.top >= 0 ? d.opts[tl.top] : undefined
+    if (d.status === 'you') return `You chose ${d.result.replace(/^You chose · /, '')}: ${d.q}`
+    if (d.status === 'decided' && win) {
+      const over = d.opts.filter((_, i) => i !== tl.top).slice(0, 2).join(' or ')
+      const why = d.reasons?.find((r, i) => d.votes[i] === tl.top && r) ?? ''
+      return `Chose ${win}${over ? ` over ${over}` : ''}${why ? ` because ${why.charAt(0).toLowerCase()}${why.slice(1).replace(/\.+$/, '')}` : ''}`
+    }
+    return `${d.status === 'advised' ? 'Judges advise' : 'Deciding'}: ${d.q}`
+  }
   const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -192,6 +223,77 @@ export function Overview($: $, v: V) {
           </Box>
         )
       })()}
+      {/* Now: one plain sentence of what Claude is doing, then the few rows that matter */}
+      <Box flexDirection="column" gap={sp(v, 1)}>
+        <Text color={t.text} bold wrap="wrap">{nowLine}</Text>
+        <Box flexDirection="column">
+          {changed > 0 && (
+            <Box columnGap={sp(v, 1)} flexWrap="wrap">
+              <Text color={t.dim}>{`${changed} file${changed === 1 ? '' : 's'} changed`}</Text>
+              {(adds || dels) > 0 && <Text><Text color={t.ok}>{`+${adds}`}</Text><Text color={t.bad}>{` −${dels}`}</Text></Text>}
+              <Button key="changed-git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshGit($)])}>
+                <Text color={t.dim}>Open Git ›</Text>
+              </Button>
+            </Box>
+          )}
+      {(vs.cases.length > 0 || vs.running || err) && (
+        <Box flexDirection="column">
+          <Label label={err || vs.fail ? 'Checks · failing' : 'Checks'} {...(err || vs.fail ? { color: t.bad } : {})} />
+          {err && (
+            <Text wrap="wrap">
+              <Text color={t.bad}>{`✗ ${err.tool} `}</Text>
+              <Text color={t.text}>{err.text}</Text>
+              <Text color={t.faint}>{` · ${fmt(v.now - err.at)} ago`}</Text>
+            </Text>
+          )}
+          {(vs.cases.length > 0 || vs.running) && (
+            <Text wrap="truncate-end">
+              <Text color={t.dim}>Tests </Text>
+              {/* Words beside each mark, so a count of passes never reads as the running test's result */}
+              {vs.pass > 0 && <Text color={t.ok}>{`✓ ${vs.pass} passed  `}</Text>}
+              {vs.fail > 0 && <Text color={t.bad}>{`✗ ${vs.fail} failed  `}</Text>}
+              {vs.running ? <Text color={t.busy}>{vs.cases.length ? '· more running' : 'running'}</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
+            </Text>
+          )}
+        </Box>
+      )}
+          {running > 0 && (
+            <Box columnGap={sp(v, 1)}>
+              <Text color={t.dim}>{`${running} agent${running === 1 ? '' : 's'} running`}</Text>
+              <Button key="ov-agents" plain onPress={() => set($, { tab: 'agents' })}>
+                <Text color={t.dim}>Open Agents ›</Text>
+              </Button>
+            </Box>
+          )}
+          {pr && <Text color={pr.checks.fail > 0 || pr.review === 'changes' ? t.bad : t.dim} wrap="truncate-end">{`PR #${pr.number} ${pr.state.toLowerCase()}${pr.review ? ` · ${pr.review === 'changes' ? 'changes requested' : pr.review === 'required' ? 'review needed' : pr.review}` : ''}${pr.checks.unknown ? '' : ` · checks ${pr.checks.fail ? `${pr.checks.fail} failing` : pr.checks.pending ? 'running' : 'passing'}`}`}</Text>}
+        </Box>
+      </Box>
+      {/* The Codebase guide, just under Now */}
+      {Guide($, v)}
+      {p.steps.length > 0 && (
+        <Box flexDirection="column">
+          <Text color={t.dim}>Steps</Text>
+          {p.steps.map((x, i) => (
+            <Text key={`step-${i}-${x.name}`} color={x.st === 'active' ? t.text : x.st === 'done' ? t.dim : t.faint} bold={x.st === 'active'} wrap="truncate-end">
+              {`${x.st === 'done' ? '✓' : x.st === 'active' ? '◌' : x.st === 'skipped' ? '↷' : '·'} ${x.name}`}
+            </Text>
+          ))}
+        </Box>
+      )}
+      {decs.length > 0 && (
+        <Box flexDirection="column">
+          <Text color={t.dim}>Approach</Text>
+          {decs.slice(0, 3).map(d => (
+            <Text key={`ap-${d.id}`} color={t.text} wrap="wrap">{approachLine(d)}</Text>
+          ))}
+          {decs.length > 3 && <Text color={t.faint}>{`+ ${decs.length - 3} more under More`}</Text>}
+        </Box>
+      )}
+      <Button key="fold-more" plain onPress={() => toggle('more')}>
+        <Text color={t.dim}>{`${isOpen('more') ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {isOpen('more') && (
+        <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
       <Box columnGap={sp(v, 2)} flexWrap="wrap">
         {Svg ? (
           <Svg source={ringSvg(p.pct, '', { accent: t.accent, track: t.track, text: t.text, dim: t.dim })} alt={`${p.pct}% · ${p.stepName}`} width={96} height={96} />
@@ -248,27 +350,6 @@ export function Overview($: $, v: V) {
           </Button>
         )}
       </Box>
-      {(vs.cases.length > 0 || vs.running || err) && (
-        <Box flexDirection="column">
-          <Label label={err || vs.fail ? 'Checks · failing' : 'Checks'} {...(err || vs.fail ? { color: t.bad } : {})} />
-          {err && (
-            <Text wrap="wrap">
-              <Text color={t.bad}>{`✗ ${err.tool} `}</Text>
-              <Text color={t.text}>{err.text}</Text>
-              <Text color={t.faint}>{` · ${fmt(v.now - err.at)} ago`}</Text>
-            </Text>
-          )}
-          {(vs.cases.length > 0 || vs.running) && (
-            <Text wrap="truncate-end">
-              <Text color={t.dim}>Tests </Text>
-              {/* Words beside each mark, so a count of passes never reads as the running test's result */}
-              {vs.pass > 0 && <Text color={t.ok}>{`✓ ${vs.pass} passed  `}</Text>}
-              {vs.fail > 0 && <Text color={t.bad}>{`✗ ${vs.fail} failed  `}</Text>}
-              {vs.running ? <Text color={t.busy}>{vs.cases.length ? '· more running' : 'running'}</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
-            </Text>
-          )}
-        </Box>
-      )}
       {s.flows.length > 0 && isOpen('flowpick') && (
         <Box flexDirection="column">
           <Seg v={v} id="flow" value={p.flow.name} items={[...(cur?.plan?.length ? [['plan', 'Plan'] as [string, string]] : []), ...(cur?.steps?.length ? [['task', 'Task'] as [string, string]] : []), ...FLOWS.map(f => [f.name, f.label] as [string, string])]} onPick={k => pickFlow($, k)} />
@@ -299,7 +380,7 @@ export function Overview($: $, v: V) {
           <Box flexDirection="column">
             <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
               <Label label="Agents" n={busy.length} />
-              <Button key="ov-agents" plain onPress={() => set($, { tab: 'agents' })}>
+              <Button key="ov-agents-more" plain onPress={() => set($, { tab: 'agents' })}>
                 <Text color={t.accent} size="footnote">{`${ran.length ? `${ran.length} finished · ` : ''}${mem.length ? `${mem.length} remembered · ` : ''}Open Agents ›`}</Text>
               </Button>
             </Box>
@@ -344,7 +425,7 @@ export function Overview($: $, v: V) {
                 </Text>
               )}
             </Box>
-            <Button key="changed-git" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshGit($)])}>
+            <Button key="changed-git-more" plain onPress={() => Promise.all([set($, { tab: 'git' }), refreshGit($)])}>
               <Text color={t.accent} size="footnote">Open Git ›</Text>
             </Button>
           </Box>
@@ -406,6 +487,28 @@ export function Overview($: $, v: V) {
                   <Box flexDirection="column" paddingLeft={2}>
                     <Text color={t.dim} size="footnote" wrap="wrap">{`${fmt(took)} · ${fp.pct}% · ${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
                     <Text color={t.dim} size="footnote">{`${(f.turns ?? 1) > 1 ? `${f.turns} turns · ` : ''}${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
+                    {f.snap?.undone ? (
+                      <Text color={t.faint} size="footnote" wrap="wrap">{`↶ undone · the files just before: refs/cockpit/turns/${f.id}/undone`}</Text>
+                    ) : !live && f.snap?.before && f.snap?.after && (
+                      // Undo asks first: it changes files in the working tree
+                      s.ui.undoAsk === f.id ? (
+                        <Box columnGap={sp(v, 1)} flexWrap="wrap">
+                          <Text color={t.busy} size="footnote">Undo the files this turn changed?</Text>
+                          <Button key={`undo-yes-${f.id}`} plain onPress={() => inBackground($, 'undo', 'Undoing the turn', () => undoFlow($, f.id))}>
+                            <Text color={t.bad} size="footnote">Undo</Text>
+                          </Button>
+                          <Button key={`undo-no-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, undoAsk: '' } }))}>
+                            <Text color={t.dim} size="footnote">Keep</Text>
+                          </Button>
+                        </Box>
+                      ) : (
+                        <Box columnGap={sp(v, 1)}>
+                          <Button key={`undo-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, undoAsk: f.id } }))}>
+                            <Text color={t.accent} size="footnote">↶ Undo this turn</Text>
+                          </Button>
+                        </Box>
+                      )
+                    )}
                   </Box>
                 )}
               </Box>
@@ -414,11 +517,45 @@ export function Overview($: $, v: V) {
           {!isOpen('flows') && flows.length > 3 && <Text color={t.faint} size="footnote">{`+ ${flows.length - 3} earlier`}</Text>}
         </Box>
       )}
-      {s.past.length > 0 && (
+      {(s.past.length > 0 || sessions.length > 0) && (
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
             <Fold k="past" label="Earlier sessions" n={s.past.length} />
+            {spent > 0 && <Text color={t.faint} size="footnote">{`≈ $${spent.toFixed(2)} in 14 days`}</Text>}
           </Box>
+          {isOpen('past') && sessions.length > 0 && (
+            <Box flexDirection="column">
+              <Text color={t.dim} size="footnote" wrap="wrap">{spent > 0 ? `Spend, last 14 days ≈ $${spent.toFixed(2)} (estimates)` : 'Nothing spent in the last 14 days'}</Text>
+              {days.map(d => (
+                <Box key={`spend-${d.day}`} columnGap={sp(v, 1)}>
+                  <Text color={t.faint} size="footnote" mono>{d.day.slice(5)}</Text>
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Text color={d.usd ? t.accent : t.faint} size="footnote" mono wrap="truncate-end">{d.usd ? '█'.repeat(Math.max(1, Math.round((d.usd / peak) * 20))) : '·'}</Text>
+                  </Box>
+                  <Text color={t.dim} size="footnote" mono>{d.usd ? `$${d.usd.toFixed(2)}` : ''}</Text>
+                </Box>
+              ))}
+              <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
+                <Input key="budget-input" label="Daily budget ($)" placeholder="none" value={s.ui.budgetText ?? (s.dailyBudget ? String(s.dailyBudget) : '')} submitLabel="set" onInput={(val: string) => set($, st => ({ ui: { ...st.ui, budgetText: val } }))} onSubmit={(val: string) => setBudget($, val)} />
+                {s.dailyBudget ? (
+                  <Text color={level === 'over' ? t.bad : level === 'near' ? t.busy : t.dim} size="footnote">{`$${todaySpend(sessions, v.now).toFixed(2)} of $${s.dailyBudget.toFixed(2)} today`}</Text>
+                ) : null}
+                {s.dailyBudget ? (
+                  <Button key="budget-clear" plain onPress={() => set($, st => ({ dailyBudget: undefined, ui: { ...st.ui, budgetText: '' } }))}>
+                    <Text color={t.dim} size="footnote">Clear</Text>
+                  </Button>
+                ) : null}
+              </Box>
+              <Text color={t.faint} size="footnote" wrap="wrap">It warns at 80% and 100%, once each a day; nothing is ever stopped.</Text>
+              <Text color={t.dim} size="footnote">Costliest sessions</Text>
+              {costliest(sessions, 5).map(x => (
+                <Box key={`dear-${x.id}`} columnGap={sp(v, 1)} justifyContent="space-between">
+                  <Text color={t.text} size="footnote" wrap="truncate-end">{`${dayOf(x.startedAt).slice(5)} · ${fmt(x.endedAt - x.startedAt)} · ${x.turns} turn${x.turns === 1 ? '' : 's'}`}</Text>
+                  <Text color={t.accent} size="footnote" mono>{`$${x.usd.toFixed(2)}`}</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
           {isOpen('past') && s.past.slice(-8).reverse().map(f => (
             <Box key={`pf-${f.id}`} columnGap={sp(v, 1)}>
               <Text color={f.status === 'done' ? t.ok : t.bad}>{f.status === 'done' ? '✓' : '✗'}</Text>
@@ -535,6 +672,8 @@ export function Overview($: $, v: V) {
         })}
         {!isOpen('dec') && decs.length > 3 && <Text color={t.faint} size="footnote">{`+ ${decs.length - 3} earlier`}</Text>}
       </Box>
+        </Box>
+      )}
     </Box>
   )
 }

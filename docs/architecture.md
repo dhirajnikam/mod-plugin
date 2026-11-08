@@ -20,8 +20,9 @@ Claude Code events ──▶ register.tsx (hooks) ──▶ ops/ (what to do) �
 - **What Cockpit does** is in `hooks/ops/`, one file per concern: `core.ts` (the state, `set()`, notes, paths,
   history), `git.ts` (git, gh, commits, accounts), `agents.ts` (experts, pipelines, hand-offs, testers),
   `decisions.ts` (the judges and the autopilot, which call each other), `memory-io.ts` (mapping the codebase, writing
-  flow steps) and `rules-io.ts` (the Rules tab's files). Every arrow points at `core.ts`, and `agents.ts` also uses
-  `git.ts`: there are no import cycles. `hooks/actions.ts` re-exports them all, so the rest imports from `./actions`.
+  flow steps), `rules-io.ts` (the Rules tab's files), `notify.ts` (finish notices and the daily budget) and
+  `explain.ts` (the codebase guide). Every arrow points at `core.ts`, `agents.ts` also uses `git.ts`, and `git.ts`
+  uses `notify.ts`: there are no import cycles. `hooks/actions.ts` re-exports them all, so the rest imports from `./actions`.
 - **State** is one atom, its type `Ph` in `cockpit/types/index.d.ts`, its first value in `hooks/state.ts`. Claude
   Code reads an atom from its literal plugin and key in the module that names it, so every module that reads the state
   declares the same atom (`atom({ plugin: 'cockpit', key: 's' }, …)`) rather than importing it. Every change goes

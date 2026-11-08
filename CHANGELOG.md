@@ -5,6 +5,89 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/ops/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
+  a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
+  (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
+  folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
+- **The same for Activity, Agents, Git and Rules**: each tab opens on one plain sentence of its own state (`12 edits in 4 files this session`, `2 agents running · Reviewer found 1 issue`,
+  `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
+  (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
+  Everything else is behind one **More** fold per tab, folded by default; no button was removed.
+
+### Added
+- **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
+  `docs/CODEBASE.md` (what the project is for, layout, data flow, design decisions, how to build and run it); the row then
+  offers Refresh and a box to ask Claude to change the guide.
+- **Model and effort chosen**: Cockpit chooses the model and effort for the experts and agents it starts, from the kind of agent, the task's words
+  and size, and the files touched; each agent's row says what it chose and why (`sonnet · medium — a usual task`).
+  **Choose model and effort for me** in the Agents settings turns it off.
+- **Several repositories**: the Git tab works from a folder that holds several repositories (`~/work/` with `api/` and `web/`): a Repo picker
+  shows each one's branch and changes, every git and gh command follows the chosen one, and an edit in another
+  repository switches to it unless you picked by hand.
+- **Live pull request**: while a CI check is pending, the Git tab reads it again every 30 s, turns green or red by
+  itself, and sends one notice when the run finishes ("CI failed on #12" names the job).
+- **Daily budget**: set dollars a day in the Overview's Earlier sessions; the band shows today's spend against it,
+  amber from 80% and red from 100%, and crossing each sends one notice that day. It only warns; nothing is stopped.
+- **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
+  Overview's Earlier sessions shows what the last 14 days cost, a bar for each day, and the five costliest sessions,
+  marked as Claude Code's estimates.
+
+## [0.7.0] - 2026-11-08
+
+### Added
+- **Told when work is done**: while you are not watching the pane, the main turn, each agent (with *Bring back ready*
+  for a worktree agent), each pipeline and each autopilot cycle sends one notice through Claude Code's notification
+  channel, saying what finished and how it went. **Tell me when work is done** in the Agents tab's Settings turns it
+  off.
+- **Agents in their own worktree**: with **In its own worktree** ticked (New agent form, or beside Team), an agent runs
+  in a worktree of its own through Claude Code's worktree isolation (each expert, agent you made and a general-purpose
+  agent has a `-in-worktree` twin registered with `isolation: 'worktree'`; another plugin's type gets a worktree
+  Cockpit makes), so agents working at once never collide.
+  Its row shows its branch and what it changed; **Bring back** applies that to your files after you confirm (a clash
+  refuses and changes nothing), **Remove worktree** removes it and keeps the branch. `scripts/check_worktrees.py`
+  proves the git commands on a real repository, in CI.
+- **Undo this turn**, in each of the Overview's Earlier flows: after you confirm, the files that turn changed are put
+  back as they were before it, whatever changed them (Edit, Write, a shell command, a script, a subagent), and the
+  files it created are deleted. It refuses when one of them changed since the turn ended. Cockpit snapshots the
+  working tree before and after every turn under `refs/cockpit/turns/`, from a temporary index, never touching the
+  working tree, the index or branches; the newest 50 turns keep theirs. `scripts/check_turn_undo.py` proves the git
+  commands on a real repository, in CI.
+- The Rules tab opens with what loads into every session: each `CLAUDE.md` that applies and the files it `@import`s
+  (5 hops, each once, missing ones marked) with its lines and estimated tokens, a file over 200 lines marked; the
+  skills Claude may load by itself, with **Call only** beside the three largest; the MCP servers on; and one estimated
+  total of files and skills.
+- The Rules tab lists the skills in `.claude/skills` and `~/.claude/skills`, each with its name, description and
+  whether Claude loads it by itself or only when you call `/name`. **Call only** and **Let Claude** set or remove
+  `disable-model-invocation` in its `SKILL.md`, changing nothing else; a `SKILL.md` whose frontmatter cannot be read
+  is shown read only.
+- The Rules tab lists the MCP servers that apply here: the project's from `.mcp.json`, this project's local ones and
+  yours from `~/.claude.json`, each with its kind, what it runs, and whether it is on, off or needs approval. The
+  project's can be added, edited and deleted in `.mcp.json`, the rest of the file kept and a file that is not valid
+  JSON refused; `~/.claude.json` is only read. A server's env and header values (tokens) are never shown, only their
+  names, and tokens in a URL or in its arguments are masked.
+- The Git tab shows the current branch's pull request: its number and title, its review (approved, changes requested,
+  review required, draft, or closed and merged), and its checks counted (✓ passed, ✗ failed, ◌ running) with each
+  failing check named. **Fix failing checks** hands Claude each failing check's name and the end of its failed log
+  (`gh run view --log-failed`) as a prompt. It is read with `gh pr view` and `gh pr checks` when the tab opens, on ↻,
+  and after a push; not on the base branch. A pull request title or check name with control characters draws with
+  spaces in their place.
+
+### Fixed
+- Agents in their own worktree: a twin shows as the agent it is (its name, a pipeline's links, the testers, and Rerun,
+  which no longer makes a second worktree); two started together never share a worktree, and only Claude Code's own
+  worktrees (`.claude/worktrees/`) are ever taken, never one another session made; one that changed nothing says so instead of waiting for ever; the base is the worktree's
+  own commit; an agent made in the session gets its twin at once.
+- The Agents tab's Connections header wraps in a narrow pane instead of running past it.
+- The Agents tab no longer marks Cockpit's own experts ↗ (from outside Cockpit) when Claude starts them and the
+  engine names their plugin as itself or with its marketplace.
+- A long branch name no longer runs past a narrow pane: the Git tab's header, the pane's header and the commit card
+  cut it with an ellipsis.
+- A repository with no `origin` and no main, master or develop branch no longer keeps the branch you first opened
+  the Git tab on as its base (which hid that branch's pull request); the base stays empty until you pick one, and a
+  base saved that way earlier is let go. With no base, a commit with pull requests on says to pick one instead of
+  asking gh for a pull request from the branch into itself.
+
 ### Removed
 - The parts: `cockpit-core` and its add-ons (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`, `-chat`)
   are gone from the marketplace, along with `scripts/split.py`. Install `cockpit`, which holds all of them; if you

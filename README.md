@@ -8,7 +8,7 @@ prompt that show each task's progress, the agents at work and what they found, y
 the controls to act on all of it. It can also work on a goal by itself, cycle after cycle, until a panel of judges
 agrees it is done.
 
-![Cockpit's Overview: the autopilot, the current task's progress, checks, and the agents at work as a neural view](docs/images/overview.png)
+![Cockpit's Overview: a commit to confirm, the current task's progress, checks, the agents at work as a neural view, changed files and an earlier flow](docs/images/overview.png)
 
 *A preview of the Overview, drawn from the desktop pane.*
 
@@ -27,11 +27,11 @@ at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin up
 
 | Tab | What you see and do |
 |---|---|
-| [**Overview**](docs/overview.md) | The task's progress ring and steps, checks that turn red when something fails, the agents at work as a neural view with what is remembered from similar tasks, changed files, context with Compact and Clear, and the judges' decisions |
+| [**Overview**](docs/overview.md) | The task's progress ring and steps, checks that turn red when something fails, the agents at work as a neural view with what is remembered from similar tasks, changed files, context with Compact and Clear, the judges' decisions, and **Undo this turn** on each earlier flow (whatever made its changes) |
 | [**Activity**](docs/activity.md) | A live feed of every file read, edited or searched; your codebase's features as a map, with what is being worked on lit; the impact of a change |
-| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change |
-| [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch |
-| [**Rules**](docs/rules.md) | The hooks, permission rules and `CLAUDE.md` instructions of the repository or of you, to add, edit and delete |
+| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change; agents **in their own worktree** (Claude Code's isolation) with Bring back and Remove; a notice when work is done while you are not watching |
+| [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch; the branch's **pull request** with its review and CI checks, and Fix failing checks |
+| [**Rules**](docs/rules.md) | What loads into every session, with its estimated tokens; the hooks, permission rules, MCP servers, skills and `CLAUDE.md` instructions of the repository or of you, to add, edit, delete or switch |
 
 Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in
 the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
@@ -55,6 +55,7 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 | `/cockpit product [$budget] [hours h] <vision>` | lead the product toward a vision, goal after goal, the judges choosing each; `stop`, `resume` |
 | `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |
 | `/cockpit test` | run the Verify pipeline now |
+| `/cockpit explain` | Claude writes (or refreshes) a [codebase guide](docs/overview.md#codebase-guide) at `docs/CODEBASE.md` that you can then ask it to change |
 | `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
 | `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current task on another [flow](docs/flows.md) (where its steps come from) |
 | `/cockpit focus [on\|off]` | hide or show Claude's tool activity in the chat |

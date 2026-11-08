@@ -35,6 +35,8 @@ import {
   runMany,
   stopAll,
   clearFinished,
+  bringBack,
+  removeWorktree,
   testAgent,
   TESTERS,
 } from '../actions'
@@ -92,7 +94,9 @@ export function agentGraph(agents: Agent[]) {
   const label = new Map<string, string>()
   const seen: Record<string, number> = {}
   for (const a of agents) {
-    const outside = a.provider ? a.provider !== 'cockpit' : !a.type.startsWith('cockpit:')
+    // Cockpit's own types are its own whoever started them; the engine may name the plugin with its marketplace
+    // (cockpit@mod-plugin), so the name before the @ is what counts
+    const outside = !a.type.startsWith('cockpit:') && (a.provider ? a.provider.split('@')[0] !== 'cockpit' : true)
     const base = `${outside ? '↗ ' : ''}${a.name}`
     seen[base] = (seen[base] ?? 0) + 1
     label.set(a.id, seen[base] > 1 ? `${base} #${seen[base]}` : base)
@@ -119,7 +123,7 @@ function AgentMap($: $, v: V, agents: Agent[]) {
   const open = !s.ui.collapsed['ag-map']
   return (
     <Box flexDirection="column">
-      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)} flexWrap="wrap">
         <Button key="ag-map" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-map': open } } }))}>
           <Text size="footnote" bold>
             <Text color={t.faint}>{open ? '⌄ ' : '› '}</Text>
@@ -243,7 +247,13 @@ export function Agents($: $, v: V) {
                       {a.for !== undefined && <Text color={t.dim} size="footnote" wrap="truncate-end">{`testing the ${s.agents.find(x => x.id === a.for)?.name ?? 'agent'}'s work`}</Text>}
                       {/* A finished run says what it found (its REPORT line), or else what it was asked */}
                       {live ? <Tracker v={v} a={a} /> : (!a.for || reportOf(a)) && <Text color={t.dim} size="footnote" wrap="truncate-end">{reportOf(a) || a.task}</Text>}
+                      {a.pick && <Text color={t.faint} size="footnote" wrap="truncate-end">{a.pick}</Text>}
                       {testLine(a.id, `rl-${a.id}`)}
+                      {a.worktree && (
+                        <Text color={t.dim} size="footnote" wrap="truncate-end">
+                          {`⎇ ${a.worktree.branch || 'its own worktree'}${a.worktree.files ? ` · ${a.worktree.files.length} file${a.worktree.files.length === 1 ? '' : 's'} +${a.worktree.add ?? 0} −${a.worktree.del ?? 0}` : live ? ' · working in its own worktree' : ''}${a.worktree.back ? ' · brought back' : ''}${a.worktree.nothing ? ' · changed nothing (Claude Code removed its worktree)' : a.worktree.removed ? ' · removed, branch kept' : ''}`}
+                        </Text>
+                      )}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
                       {/* The count stands for the result only when the run finished; a stopped or failed run says so first */}
@@ -264,6 +274,32 @@ export function Agents($: $, v: V) {
                       <Text color={t.faint}>✎</Text>
                     </Button>
                   </Box>
+                  {/* Its worktree's controls on a line of their own, under the row */}
+                  {a.worktree && !live && !a.worktree.removed && (
+                    // Both change files: each asks first
+                    s.ui.wtAsk === `back:${a.id}` || s.ui.wtAsk === `rm:${a.id}` ? (
+                      <Box columnGap={sp(v, 1)} flexWrap="wrap">
+                        <Text color={t.busy} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Apply its changes to your files?' : 'Remove the worktree (its branch stays)?'}</Text>
+                        <Button key={`wt-yes-${a.id}`} plain onPress={() => ((s.ui.wtAsk ?? '').startsWith('back') ? inBackground($, 'wt', 'Bringing the work back', () => bringBack($, a.id)) : inBackground($, 'wt', 'Removing the worktree', () => removeWorktree($, a.id)))}>
+                          <Text color={t.bad} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Bring back' : 'Remove'}</Text>
+                        </Button>
+                        <Button key={`wt-no-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: '' } }))}>
+                          <Text color={t.dim} size="footnote">Keep</Text>
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                        {!a.worktree.back && (
+                          <Button key={`wt-back-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `back:${a.id}` } }))}>
+                            <Text color={t.accent} size="footnote">⇲ Bring back</Text>
+                          </Button>
+                        )}
+                        <Button key={`wt-rm-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `rm:${a.id}` } }))}>
+                          <Text color={t.dim} size="footnote">Remove worktree</Text>
+                        </Button>
+                      </Box>
+                    )
+                  )}
                   {s.ui.rerunFor === a.id && instructions(a.id, `Run the ${a.name.toLowerCase()} again, and…`)}
                   {(open ? a.cases : failing).map((c, i) => (
                     <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
@@ -302,14 +338,19 @@ export function Agents($: $, v: V) {
       {extra !== '' && <Text color={t.faint}>{`  ${extra}`}</Text>}
     </Text>
   )
+  // One plain sentence of the team's state: who is running, and what the latest finished run found
+  const lastRun = s.agents.filter(a => a.status === 'done' && shown(a)).pop()
+  const found = lastRun ? lastRun.cases.filter(c => c.st === 'fail').length : 0
+  const state = [
+    running > 0 ? `${running} agent${running === 1 ? '' : 's'} running` : 'No agents running',
+    lastRun ? (found > 0 ? `${lastRun.name} found ${found} issue${found === 1 ? '' : 's'}` : `${lastRun.name} done`) : '',
+  ].filter(Boolean).join(' · ')
+  const moreOpen = !!s.ui.collapsed['ag-more']
   return (
-    <Box flexDirection="column" gap={sp(v, 2)}>
-      <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'sm' : 0}>
-        <Box flexWrap="wrap" columnGap={sp(v, 1)}>
-          {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, false, () => startPipeline($, p.name)))}
-        </Box>
-        {pill('ap-toggle', s.ui.apOpen ? '✕ Close' : '⟳ Autopilot', false, () => set($, st => ({ ui: { ...st.ui, apOpen: !st.ui.apOpen } })))}
-        {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', false, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Text color={t.text} bold wrap="wrap">{state}</Text>
+      <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+        {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, false, () => startPipeline($, p.name)))}
       </Box>
       {pipe && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
@@ -353,6 +394,26 @@ export function Agents($: $, v: V) {
           )}
         </Box>
       )}
+      {live_.length > 0 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            {section('Running', String(live_.length))}
+            <Button key="stop-all" plain onPress={() => stopAll($)}>
+              <Text color={t.dim} size="footnote">■ Stop all</Text>
+            </Button>
+          </Box>
+          {live_.map(runRow)}
+        </Box>
+      )}
+      <Button key="fold-more-agents" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-more': !st.ui.collapsed['ag-more'] } } }))}>
+        <Text color={t.dim}>{`${moreOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {moreOpen && (
+        <Box flexDirection="column" gap={sp(v, 2)}>
+          <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+            {pill('ap-toggle', s.ui.apOpen ? '✕ Close' : '⟳ Autopilot', false, () => set($, st => ({ ui: { ...st.ui, apOpen: !st.ui.apOpen } })))}
+            {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', false, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
+          </Box>
       {s.ui.apOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
           <Seg v={v} id="ap-role" value={s.ui.apRole ?? 'task'} items={[['task', '⟳ Task'], ['product', '◈ Product owner']]} onPick={k => set($, st => ({ ui: { ...st.ui, apRole: k as 'task' | 'product' } }))} />
@@ -402,6 +463,7 @@ export function Agents($: $, v: V) {
             <Input key="spawn-type-custom" label="or any type" placeholder="my-plugin:reviewer" value={s.ui.spawnTypeText ?? ''} submitLabel="use" onInput={val => set($, st => ({ ui: { ...st.ui, spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} onSubmit={val => set($, st => ({ ui: { ...st.ui, spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') } }))} />
             <Button key="spawn-go" label="Start" onPress={() => (s.ui.spawnTask.trim() ? spawnAgent($, s.ui.spawnTask.trim(), s.ui.spawnType) : undefined)} />
           </Box>
+          <Check v={v} id="spawn-wt" on={!!s.ui.agentWorktree} label="In its own worktree (its own branch; bring its work back when you choose)" onPress={() => set($, st => ({ ui: { ...st.ui, agentWorktree: !st.ui.agentWorktree } }))} />
         </Box>
       )}
       {Object.values(s.ui.selected).some(Boolean) && (
@@ -425,20 +487,10 @@ export function Agents($: $, v: V) {
           />
         </Box>
       )}
-      {live_.length > 0 && (
-        <Box flexDirection="column" gap={sp(v, 1)}>
-          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
-            {section('Running', String(live_.length))}
-            <Button key="stop-all" plain onPress={() => stopAll($)}>
-              <Text color={t.dim} size="footnote">■ Stop all</Text>
-            </Button>
-          </Box>
-          {live_.map(runRow)}
-        </Box>
-      )}
       {AgentMap($, v, [...s.agents.filter(a => a.status === 'running'), ...done_.slice(0, 8)].filter(a => !s.cleared.includes(a.id)))}
       <Box flexDirection="column" gap={sp(v, 1)}>
         {section('Team', `${team.length} agents`)}
+        <Check v={v} id="team-wt" on={!!s.ui.agentWorktree} label="Runs in their own worktree" onPress={() => set($, st => ({ ui: { ...st.ui, agentWorktree: !st.ui.agentWorktree } }))} />
         {team.map(x => {
           const a = latestOf(x.type)
           const st = stateOf(a)
@@ -501,12 +553,16 @@ export function Agents($: $, v: V) {
           <Text size="footnote" bold>
             <Text color={t.faint}>{s.ui.collapsed['ag-settings'] ? '⌄ ' : '› '}</Text>
             <Text color={t.dim}>SETTINGS</Text>
-            <Text color={t.faint} bold={false}>{`  both testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'}`}</Text>
+            <Text color={t.faint} bold={false}>{`  both testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'} · notices ${s.notifyDone !== false ? 'on' : 'off'}`}</Text>
           </Text>
         </Button>
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />}
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="choosemodel" on={s.chooseModel} label="Choose model and effort for me" onPress={() => set($, st => ({ chooseModel: !st.chooseModel }))} />}
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />}
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="notify-done" on={s.notifyDone !== false} label="Tell me when work is done (while I am not watching this pane; a daily budget warns regardless)" onPress={() => set($, st => ({ notifyDone: st.notifyDone === false }))} />}
       </Box>
+        </Box>
+      )}
     </Box>
   )
 }

@@ -9,7 +9,7 @@
       "name": "cockpit",
       "source": "./cockpit",
       "description": "Progress, an autopilot that works on a goal until the judges agree it is done, agents with trackers, memory and testers, a feature map of your codebase, a Rules tab for hooks, permissions and instructions, and a git graph, around the prompt and in a side pane",
-      "version": "0.6.0"
+      "version": "0.7.0"
     }
   ]
 }

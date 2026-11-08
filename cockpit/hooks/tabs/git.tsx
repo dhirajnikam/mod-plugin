@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
+import type { Account, Agent, Decision, GitForm, Ph, PrStatus, Tab, ThemeId } from '../../types'
 import {
   inBackground,
   applyAccount,
@@ -14,6 +14,7 @@ import {
   ghLoginToken,
   ghLoginWeb,
   planCommit,
+  pickRepo,
   pushNow,
   pullNow,
   showCommit,
@@ -25,6 +26,7 @@ import {
   useAccount,
   refreshRepo,
   refreshGit,
+  fixChecks,
   set,
   startPipeline,
   setTheme,
@@ -85,7 +87,21 @@ import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
 import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
+// With several repos under the session folder, a picker above the tab
 export function Git($: $, v: V) {
+  const { Box, Select } = v.ui
+  const { repos, repoDir } = v.s
+  if (repos.length < 2) return GitBody($, v)
+  const label = (r: Ph['repos'][number]) => `${r.name}${r.branch ? `  ⎇ ${r.branch}` : ''}${r.changed ? `  ·  ${r.changed} changed` : ''}`
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Select key="git-repo" label="Repo" value={repoDir} options={repos.map(r => ({ value: r.dir, label: label(r) }))} onSelect={val => pickRepo($, val)} />
+      {GitBody($, v)}
+    </Box>
+  )
+}
+
+function GitBody($: $, v: V) {
   const { Box, Button, Input, Select, Text } = v.ui
   const { s, t } = v
   const g = s.git
@@ -109,28 +125,30 @@ export function Git($: $, v: V) {
   const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
   const when = g.commitMode === 'manual' ? '' : `  ·  ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
   const newBranch = plan.branch !== s.repo.current
+  const pr = s.repo.pr
+  const state = [
+    `On ${s.repo.current || '(no branch)'}`,
+    s.repo.changed.length ? `${s.repo.changed.length} file${s.repo.changed.length === 1 ? '' : 's'} changed` : 'working tree clean',
+    s.repo.ahead > 0 ? `${s.repo.ahead} to push` : '',
+    s.repo.behind > 0 ? `${s.repo.behind} to pull` : '',
+    pr ? `PR #${pr.number}${pr.checks.unknown ? '' : ` checks ${pr.checks.fail ? 'failing' : pr.checks.pending ? 'running' : 'passing'}`}` : '',
+  ].filter(Boolean).join(' · ')
+  const moreOpen = !!s.ui.collapsed['git-more']
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
-      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        <Text>
-          <Text color={t.accent} bold>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
-          {s.repo.ahead > 0 && <Text color={t.busy}>{`  ↑${s.repo.ahead} to push`}</Text>}
-          {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
-          {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
-        </Text>
+      <Text color={t.text} bold wrap="truncate-end">{state}</Text>
+      {(s.repo.behind > 0 || s.repo.ahead > 0) && (
         <Box gap={sp(v, 1)} flexWrap="wrap">
           {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => inBackground($, 'pull', 'Pulling', () => pullNow($))} />}
           {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => inBackground($, 'push', 'Pushing', () => pushNow($))} />}
-          <Button key="git-refresh" label="↻" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
-          <Button key="git-setup" label="⚙" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
         </Box>
-      </Box>
-      <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
+      )}
+      {s.repo.pr && PrStatusRow($, v, s.repo.pr)}
       {s.pending && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.busy} paddingX={1}>
           <Text color={t.busy} bold>Commit this?</Text>
           <Text color={t.hi} mono wrap="truncate-end">{s.pending.msg}</Text>
-          <Text color={t.dim} size="footnote">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
+          <Text color={t.dim} size="footnote" wrap="truncate-end">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
           <Box gap={sp(v, 1)}>
             <Button key="pend-commit" label="Commit" variant="primary" onPress={() => inBackground($, 'commit', 'Committing', () => confirmPending($))} />
             <Button key="pend-skip" label="Skip" onPress={() => skipPending($)} />
@@ -157,7 +175,7 @@ export function Git($: $, v: V) {
         <Text color={plan.msg ? t.hi : t.dim} mono wrap="truncate-end">{plan.msg || 'Send a prompt, or change a file'}</Text>
         <Text size="footnote" wrap="truncate-end">
           <Text color={newBranch ? t.ok : t.dim}>{newBranch ? `⎇ new ${plan.branch}` : `⎇ ${plan.branch}`}</Text>
-          <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : ''}`}</Text>
+          <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base || 'no base picked'}` : ''}`}</Text>
         </Text>
         <Box justifyContent="flex-end">
           {staged > 0 ? <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => inBackground($, 'commit', g.push ? 'Committing and pushing' : 'Committing', () => commit($, false))} /> : <Text color={t.dim} size="footnote">Tick a file to commit it</Text>}
@@ -190,6 +208,16 @@ export function Git($: $, v: V) {
         ))}
       </Box>
       )}
+      <Button key="fold-more-git" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'git-more': !st.ui.collapsed['git-more'] } } }))}>
+        <Text color={t.dim}>{`${moreOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {moreOpen && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box gap={sp(v, 1)} flexWrap="wrap">
+            <Button key="git-refresh" label="↻ Refresh" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
+            <Button key="git-setup" label="⚙ Setup" plain onPress={() => Promise.all([setGit({ setupDone: false }), set($, st => ({ ui: { ...st.ui, gitStep: 0 } }))])} />
+          </Box>
+          <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
       {s.repo.log.length > 0 && History($, v)}
       <Box justifyContent="space-between">
         <Button key="git-more" plain onPress={() => set($, st => ({ ui: { ...st.ui, more: !st.ui.more } }))}>
@@ -198,6 +226,8 @@ export function Git($: $, v: V) {
         <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
       </Box>
       {s.ui.more && Options($, v)}
+        </Box>
+      )}
     </Box>
   )
 }
@@ -451,6 +481,42 @@ function Options($: $, v: V) {
           <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit({ [key]: !g[key] } as Partial<GitForm>)} />
         ))}
       </Box>
+    </Box>
+  )
+}
+
+// The branch's pull request: number and title, its review (or closed, merged), its checks counted, each failing one named
+const REVIEW_WORDS = { approved: 'approved', changes: 'changes requested', required: 'review required', draft: 'draft', '': 'open' } as const
+function PrStatusRow($: $, v: V, pr: PrStatus) {
+  const { Box, Button, Text } = v.ui
+  const { t } = v
+  const c = pr.checks
+  const status = pr.state === 'OPEN' ? REVIEW_WORDS[pr.review] : pr.state.toLowerCase()
+  const tone = pr.state === 'MERGED' || pr.review === 'approved' ? t.ok : pr.review === 'changes' ? t.bad : t.dim
+  const none = !c.unknown && c.pass + c.fail + c.pending + c.skip === 0
+  return (
+    <Box flexDirection="column">
+      <Text wrap="truncate-end">
+        <Text color={t.accent} bold>{`⇄ #${pr.number}`}</Text>
+        <Text>{` ${pr.title}`}</Text>
+      </Text>
+      <Box flexWrap="wrap" columnGap={sp(v, 2)}>
+        <Text color={tone} size="footnote">{status}</Text>
+        {c.pass > 0 && <Text color={t.ok} size="footnote">{`✓ ${c.pass} passed`}</Text>}
+        {c.fail > 0 && <Text color={t.bad} size="footnote">{`✗ ${c.fail} failed`}</Text>}
+        {c.pending > 0 && <Text color={t.busy} size="footnote">{`◌ ${c.pending} running`}</Text>}
+        {none && <Text color={t.dim} size="footnote">no checks</Text>}
+        {c.unknown && <Text color={t.dim} size="footnote">checks unknown</Text>}
+      </Box>
+      {c.failing.slice(0, 3).map((f, i) => (
+        <Text key={`pr-fail-${i}`} color={t.bad} size="footnote" wrap="truncate-end">{`  ✗ ${f.name}`}</Text>
+      ))}
+      {c.failing.length > 3 && <Text color={t.dim} size="footnote">{`  +${c.failing.length - 3} more failed`}</Text>}
+      {c.failing.length > 0 && pr.state === 'OPEN' && (
+        <Box>
+          <Button key="pr-fix" label="Fix failing checks" plain onPress={() => inBackground($, 'pr-fix', 'Reading the failed logs', () => fixChecks($))} />
+        </Box>
+      )}
     </Box>
   )
 }
