@@ -49,11 +49,15 @@ function stand(on: any, o: { dirty?: () => boolean; now: () => number; checks: (
     }
     return out('', cmd.startsWith('git rev-parse --verify') ? 1 : 0)
   })
+  // One tick: wait for the timer to be waiting, fire it, and wait until it asks for its next period (its work done)
+  const ready = async () => {
+    for (let i = 0; i < 200 && !waiting.length; i++) await sleep(25)
+    if (!waiting.length) throw new Error('the 15 s timer is not waiting')
+  }
   return async () => {
-    const r = waiting.shift()
-    if (!r) throw new Error('the 15 s timer is not waiting')
-    r()
-    await sleep(80)
+    await ready()
+    waiting.shift()!()
+    await ready()
   }
 }
 

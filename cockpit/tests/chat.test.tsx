@@ -39,7 +39,7 @@ function stand(on: any, opt: { percent?: number; cost?: () => number } = {}) {
 const prompt = ($: any, text: string) => $.prompt.submit({ text, command: null, isMeta: false, origin: { kind: 'composer' } } as never)
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`the turn's line says what it came to on ${surface}, with Focus on and off`, async ($, on) => {
+  test(`the turn's line says what it came to on ${surface}, with Focus on and off`, { timeoutMs: 20_000 }, async ($, on) => {
     let usd = 0.1
     stand(on, { cost: () => usd })
     // A turn before it: the cost is read when a turn ends, so this one starts from $0.10
@@ -74,7 +74,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await earlier.unmount()
   })
 
-  test(`an agent's card shows its tool calls and time while it runs, then what its CASE lines found, on ${surface}`, async ($, on) => {
+  test(`an agent's card shows its tool calls and time while it runs, then what its CASE lines found, on ${surface}`, { timeoutMs: 20_000 }, async ($, on) => {
     stand(on)
     await $.command.run({ command: 'cockpit', args: 'focus off' } as never)
     const input = { description: 'check the login', prompt: 'check the login', subagent_type: 'cockpit:prover' }

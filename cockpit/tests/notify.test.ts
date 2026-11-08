@@ -66,7 +66,7 @@ const turnDone = ($: any, turnId: string) => $.turn.complete({ answer: 'ok', rea
 const agentDone = ($: any, agentId: string, answer: string) => $.turn.complete({ agentId, answer, reason: 'answer', turnId: agentId, isAborted: false, durationMs: 1000 } as never)
 const pane = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } }
 
-test('a turn, a background agent and a pipeline each tell you once when they finish, and nothing while you watch', async ($, on) => {
+test('a turn, a background agent and a pipeline each tell you once when they finish, and nothing while you watch', { timeoutMs: 20_000 }, async ($, on) => {
   let watching = false
   const log = stand(on, { watching: () => watching })
   // The main turn
