@@ -26,7 +26,7 @@ test("a worktree's place, its changes and what will not apply are read from git'
 })
 
 // A session that spawns from the Agents tab; git answers as a repository with a commit, or none (fresh)
-function stand(on: any, opt: { fresh?: boolean } = {}) {
+function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => boolean } = {}) {
   const log = { ran: [] as string[], spawned: [] as { type: string; cwd?: string }[], toasts: [] as string[] }
   on('clock.now', async () => ({ value: 1_700_000_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
@@ -37,7 +37,10 @@ function stand(on: any, opt: { fresh?: boolean } = {}) {
   on('fs.list', async () => ({ value: [] }) as never)
   on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
   on('tool.check', async () => ({ decision: 'allow' }) as never)
-  on('agent.spawn', async (_: unknown, e: any) => (log.spawned.push({ type: e.subagentType, cwd: e.cwd }), { model: 'haiku', agentId: `ag${log.spawned.length}` }))
+  on('agent.spawn', async (_: unknown, e: any) => (log.spawned.push({ type: e.subagentType, cwd: e.cwd }), opt.deny ? { deny: 'refused by a rule' } : { model: 'haiku', agentId: `ag${log.spawned.length}` }))
+  on('turn.complete', async () => ({ text: '' }))
+  on('session.measure', async () => ({ changed: [] }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000, percent: 1, breakdown: { categories: [], totalTokens: 1000 } }, rateLimits: [], cost: { usd: 0 } } }))
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (e.argv as string[]).join(' ')
     log.ran.push(`${cmd}${e.init?.cwd ? ` @${e.init.cwd}` : ''}`)
@@ -46,6 +49,12 @@ function stand(on: any, opt: { fresh?: boolean } = {}) {
     if (cmd === 'git rev-parse --verify -q HEAD') return opt.fresh ? out('', 1) : out('head1\n')
     if (cmd === 'git rev-parse --git-common-dir') return out('.git\n')
     if (cmd.startsWith('git status')) return out('## main\0')
+    if (cmd === 'git rev-parse --git-path cockpit-index') return out('.git/cockpit-index\n')
+    if (cmd === 'git write-tree') return out('tree1\n')
+    if (cmd.startsWith('git commit-tree')) return out('snap1\n')
+    if (cmd.startsWith('git diff --numstat')) return out('2\t1\tsrc/a.ts\0')
+    if (cmd.startsWith('git diff --binary')) return out('diff --git a/src/a.ts b/src/a.ts\n')
+    if (cmd.startsWith('git apply --check')) return opt.clash?.() ? { value: { exitCode: 1, stdout: '', stderr: 'error: patch failed: src/a.ts:3\nerror: src/a.ts: patch does not apply', isStdoutTruncated: false, isStderrTruncated: false } } : out('')
     return out('')
   })
   return log
@@ -61,8 +70,8 @@ test('ticked In its own worktree, an agent from the New agent form runs in a wor
   await ui.press({ key: 'spawn-wt' })
   await (ui as any).input({ key: 'spawn-task', text: 'tidy the docs', kind: 'change' })
   await ui.press({ key: 'spawn-go' })
-  const wt = '/repo/.git/cockpit-worktrees/ag1700000000000'
-  expect(log.ran).toContain(`git worktree add -q -b cockpit/ag1700000000000 ${wt} head1 @/repo`)
+  const wt = '/repo/.git/cockpit-worktrees/ag1700000000000-1'
+  expect(log.ran).toContain(`git worktree add -q -b cockpit/ag1700000000000-1 ${wt} head1 @/repo`)
   expect(log.spawned.at(-1)?.cwd).toBe(wt)
   // The tick also sits beside Team runs, the same setting
   expect(JSON.stringify(await ui.drawn())).toContain('Runs in their own worktree')
@@ -87,5 +96,85 @@ test('with the tick off, or no commit to start a worktree from, the agent runs i
   expect(log.ran.some(r => r.startsWith('git worktree add'))).toBe(false)
   expect(log.spawned.at(-1)?.cwd).toBe(undefined)
   expect(log.toasts.join('\n')).toContain('Runs in your tree: the repository has no commit yet')
+  await ui.unmount()
+})
+
+test('a start that is refused leaves no worktree or branch behind, and a pipeline never gets a worktree', async ($, on) => {
+  const log = stand(on, { deny: true })
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await ui.press({ key: 'spawn-wt' })
+  await (ui as any).input({ key: 'spawn-task', text: 'refused one', kind: 'change' })
+  await ui.press({ key: 'spawn-go' })
+  const made = log.ran.find(r => r.startsWith('git worktree add'))!
+  const [, , , , , branch, path] = made.split(' ')
+  expect(log.ran).toContain(`git worktree remove --force ${path} @/repo`)
+  // The safe delete: it refuses a branch with a commit of its own
+  expect(log.ran).toContain(`git branch -d ${branch} @/repo`)
+  await ui.unmount()
+})
+
+test("a pipeline's experts work in your tree whatever the tick says", async ($, on) => {
+  const log = stand(on)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'team-wt' })
+  await $.command.run({ command: 'cockpit', args: 'test' } as never)
+  expect(log.spawned.length).toBeGreaterThan(0)
+  expect(log.ran.some(r => r.startsWith('git worktree add'))).toBe(false)
+  expect(log.spawned.every(x => x.cwd === undefined)).toBe(true)
+  await ui.unmount()
+})
+
+test("a worktree agent's row shows what it changed; Bring back and Remove each ask first, a clash changes nothing, and the branch is kept", async ($, on) => {
+  let clash = false
+  const log = stand(on, { clash: () => clash })
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await ui.press({ key: 'spawn-wt' })
+  await (ui as any).input({ key: 'spawn-task', text: 'refactor the login', kind: 'change' })
+  await ui.press({ key: 'spawn-go' })
+  const wt = '/repo/.git/cockpit-worktrees/ag1700000000000-1'
+  // The engine's own spawn event for it, naming the folder it runs in (the kit hands no id back to Cockpit's start)
+  await $.agent.spawn({ tool_use_id: 's1', prompt: 'refactor the login', description: 'refactor the login', subagentType: 'general-purpose', cwd: wt, provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: true, fork: false } as never)
+  // It finishes: its worktree is snapshotted inside the worktree and compared with where it started
+  await $.turn.complete({ agentId: 'ag2', answer: 'REPORT: done', reason: 'answer', turnId: 'x', isAborted: false, durationMs: 1000 } as never)
+  expect(log.ran).toContain(`git add -A @${wt}`)
+  expect(log.ran).toContain('git diff --numstat --no-renames -z head1 snap1 @/repo')
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('⎇ cockpit/ag1700000000000-1 · 1 file +2 −1')
+  // Bring back: asks, and nothing applies before the confirm
+  const mark = log.ran.length
+  await ui.press({ key: 'wt-back-ag2' })
+  expect(JSON.stringify(await ui.drawn())).toContain('Apply its changes to your files?')
+  expect(log.ran.slice(mark).some(r => r.startsWith('git apply'))).toBe(false)
+  await ui.press({ key: 'wt-no-ag2' })
+  // A clash with your own changes: refused, naming the file, nothing applied
+  clash = true
+  await ui.press({ key: 'wt-back-ag2' })
+  await ui.press({ key: 'wt-yes-ag2' })
+  expect(log.ran.some(r => r === 'git apply --whitespace=nowarn - @/repo')).toBe(false)
+  expect(log.toasts.join('\n')).toContain('Not brought back, nothing changed: src/a.ts')
+  // No clash: checked, then applied to your files only
+  clash = false
+  await ui.press({ key: 'wt-back-ag2' })
+  await ui.press({ key: 'wt-yes-ag2' })
+  expect(log.ran).toContain('git apply --check --whitespace=nowarn - @/repo')
+  expect(log.ran).toContain('git apply --whitespace=nowarn - @/repo')
+  expect(log.toasts.join('\n')).toContain('Brought back: 1 file +2 −1 from cockpit/ag1700000000000-1')
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('brought back')
+  expect(d).not.toContain('wt-back-ag2')
+  // Remove: asks, then removes the worktree and keeps its branch
+  await ui.press({ key: 'wt-rm-ag2' })
+  expect(JSON.stringify(await ui.drawn())).toContain('Remove the worktree (its branch stays)?')
+  await ui.press({ key: 'wt-yes-ag2' })
+  expect(log.ran).toContain(`git worktree remove --force ${wt} @/repo`)
+  expect(log.ran.some(r => r.startsWith('git branch -d'))).toBe(false)
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('removed, branch kept')
+  expect(d).not.toContain('wt-rm-ag2')
   await ui.unmount()
 })

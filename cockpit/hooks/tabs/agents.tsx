@@ -35,6 +35,8 @@ import {
   runMany,
   stopAll,
   clearFinished,
+  bringBack,
+  removeWorktree,
   testAgent,
   TESTERS,
 } from '../actions'
@@ -246,6 +248,36 @@ export function Agents($: $, v: V) {
                       {/* A finished run says what it found (its REPORT line), or else what it was asked */}
                       {live ? <Tracker v={v} a={a} /> : (!a.for || reportOf(a)) && <Text color={t.dim} size="footnote" wrap="truncate-end">{reportOf(a) || a.task}</Text>}
                       {testLine(a.id, `rl-${a.id}`)}
+                      {a.worktree && (
+                        <Text color={t.dim} size="footnote" wrap="truncate-end">
+                          {`⎇ ${a.worktree.branch}${a.worktree.files ? ` · ${a.worktree.files.length} file${a.worktree.files.length === 1 ? '' : 's'} +${a.worktree.add ?? 0} −${a.worktree.del ?? 0}` : live ? ' · working in its own worktree' : ''}${a.worktree.back ? ' · brought back' : ''}${a.worktree.removed ? ' · removed, branch kept' : ''}`}
+                        </Text>
+                      )}
+                      {a.worktree && !live && !a.worktree.removed && (
+                        // Both change files: each asks first
+                        s.ui.wtAsk === `back:${a.id}` || s.ui.wtAsk === `rm:${a.id}` ? (
+                          <Box columnGap={sp(v, 1)} flexWrap="wrap">
+                            <Text color={t.busy} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Apply its changes to your files?' : 'Remove the worktree (its branch stays)?'}</Text>
+                            <Button key={`wt-yes-${a.id}`} plain onPress={() => ((s.ui.wtAsk ?? '').startsWith('back') ? inBackground($, 'wt', 'Bringing the work back', () => bringBack($, a.id)) : inBackground($, 'wt', 'Removing the worktree', () => removeWorktree($, a.id)))}>
+                              <Text color={t.bad} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Bring back' : 'Remove'}</Text>
+                            </Button>
+                            <Button key={`wt-no-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: '' } }))}>
+                              <Text color={t.dim} size="footnote">Keep</Text>
+                            </Button>
+                          </Box>
+                        ) : (
+                          <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                            {!a.worktree.back && (
+                              <Button key={`wt-back-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `back:${a.id}` } }))}>
+                                <Text color={t.accent} size="footnote">⇲ Bring back</Text>
+                              </Button>
+                            )}
+                            <Button key={`wt-rm-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `rm:${a.id}` } }))}>
+                              <Text color={t.dim} size="footnote">Remove worktree</Text>
+                            </Button>
+                          </Box>
+                        )
+                      )}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
                       {/* The count stands for the result only when the run finished; a stopped or failed run says so first */}

@@ -7,7 +7,7 @@ import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryM
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
 import { snapshot, turnRef, undoTurn } from '../turns'
-import { WORKTREE_COMMANDS, fillArgs, worktreeFor } from '../worktrees'
+import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, worktreeFor } from '../worktrees'
 import type { Run } from '../turns'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -553,4 +553,61 @@ export async function makeWorktree($: $, id: string): Promise<{ path: string; br
   const add = await run(fillArgs(WORKTREE_COMMANDS.add, { branch: w.branch, path: w.path, base }), {})
   if (add.exitCode !== 0) return { error: `git worktree add failed: ${(add.stderr || add.stdout).trim().split('\n')[0] ?? ''}` }
   return { path: w.path, branch: w.branch, base }
+}
+
+// What a worktree agent changed: its worktree's files snapshotted with the turn plan run inside it, against the commit
+// it started from. Cockpit's experts never commit, so the files are the work
+export async function measureWorktree($: $, agentId: string) {
+  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  if (!w || w.removed) return null
+  const inside: Run = (argv, env, stdin) => $.process.run(argv, { cwd: w.path, env, timeoutMs: 30_000, ...(stdin !== undefined ? { stdin } : {}) })
+  const snap = await snapshot(`refs/cockpit/worktrees/${w.path.split('/').pop()}`, inside)
+  if (!snap.commit) return null
+  const run = await turnRun($)
+  const st = parseStat((await run(fillArgs(WORKTREE_COMMANDS.stat, { base: w.base, snap: snap.commit }), {})).stdout)
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, snap: snap.commit, files: st.files, add: st.add, del: st.del } } : a)) }))
+  return { snap: snap.commit, ...st }
+}
+
+// Bring back, once you confirmed: the worktree's changes applied to your working tree's files (never the index), all or
+// nothing; a clash with your own changes refuses, naming the files, and changes nothing
+export async function bringBack($: $, agentId: string) {
+  await set($, s => ({ ui: { ...s.ui, wtAsk: '' } }))
+  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  if (!w || w.removed) return toast($, 'That worktree is gone')
+  const m = await measureWorktree($, agentId)
+  if (!m) return toast($, 'Not brought back: its worktree could not be read')
+  if (!m.files.length) return toast($, 'Nothing to bring back: the agent changed no files')
+  const run = await turnRun($)
+  const patch = (await run(fillArgs(WORKTREE_COMMANDS.diff, { base: w.base, snap: m.snap }), {})).stdout
+  const check = await run(WORKTREE_COMMANDS.check, C_LOCALE, patch)
+  if (check.exitCode !== 0) {
+    const why = applyRefusal(check.stderr ?? '')
+    return toast($, `Not brought back, nothing changed: ${why.length ? why.slice(0, 3).join(', ') + (why.length > 3 ? ` and ${why.length - 3} more` : '') : (check.stderr || check.stdout).trim().split('\n')[0] || 'git apply refused it'}`)
+  }
+  const done = await run(WORKTREE_COMMANDS.apply, C_LOCALE, patch)
+  if (done.exitCode !== 0) return toast($, `Not brought back: ${(done.stderr || done.stdout).trim().split('\n')[0] ?? ''}`)
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, back: true } } : a)) }))
+  await refreshRepo($)
+  await toast($, `Brought back: ${m.files.length} file${m.files.length === 1 ? '' : 's'} +${m.add} −${m.del} from ${w.branch}`)
+}
+
+// Remove, once you confirmed: the worktree goes (with anything in it not brought back), its branch stays
+export async function removeWorktree($: $, agentId: string) {
+  await set($, s => ({ ui: { ...s.ui, wtAsk: '' } }))
+  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  if (!w || w.removed) return
+  const run = await turnRun($)
+  const r = await run(fillArgs(WORKTREE_COMMANDS.remove, { path: w.path }), {})
+  if (r.exitCode !== 0) return toast($, `Not removed: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? ''}`)
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, removed: true } } : a)) }))
+  await toast($, `Worktree removed; its branch ${w.branch} is kept`)
+}
+
+// A worktree made for a start that never happened: removed, and its branch with it. `branch -d` refuses a branch with a
+// commit of its own, so nothing anyone made is lost
+export async function dropWorktree($: $, w: { path: string; branch: string }) {
+  const run = await turnRun($)
+  await run(fillArgs(WORKTREE_COMMANDS.remove, { path: w.path }), {})
+  await run(fillArgs(WORKTREE_COMMANDS.dropBranch, { branch: w.branch }), {})
 }

@@ -62,7 +62,7 @@ export type Agent = {
   // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
   provider?: string
   // Its own git worktree, when it ran in one: where, on which branch, from which commit, and what it changed there
-  worktree?: { path: string; branch: string; base: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
+  worktree?: { path: string; branch: string; base: string; snap?: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
@@ -286,6 +286,8 @@ export type Ph = {
     openFlow: string
     // Agents started from the Agents tab run in a git worktree of their own
     agentWorktree?: boolean
+    // A worktree agent's Bring back or Remove waiting for its confirm: back:<id> or rm:<id>
+    wtAsk?: string
     // The earlier flow whose Undo this turn is waiting for Undo? / Keep
     undoAsk?: string
     // The commit opened in the graph, and what git show said of it

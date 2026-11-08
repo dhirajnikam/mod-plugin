@@ -42,6 +42,7 @@ import {
   pickFlow,
   refreshRepo,
   snapTurn,
+  measureWorktree,
   refreshGit,
   registerExperts,
   set,
@@ -449,7 +450,7 @@ export const register: Register = on => {
       // Who started it: Cockpit's own start is a pipeline's step or yours (a press, a command); else another agent or Claude
       const s0 = await read($, S)
       const by = own ? (s0.pipeline && !s0.pipeline.agentId && s0.pipeline.steps[s0.pipeline.index] === type ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
-      await trackAgent($, { id, name: own?.name ?? (expertName(type) !== type ? expertName(type) : e.description || type), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}) })
+      await trackAgent($, { id, name: own?.name ?? (expertName(type) !== type ? expertName(type) : e.description || type), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
       // A pipeline's expert whose start hands no id back: the id is known here
       await set($, s => ({
         agentTypes: s.agentTypes.includes(type) ? s.agentTypes : [...s.agentTypes, type],
@@ -476,12 +477,16 @@ export const register: Register = on => {
       // A pipeline's own step is tested by the pipeline (Build ends in both testers); any other run that changed files is tested here
       const isStep = (await read($, S)).pipeline?.agentId === e.agentId
       await finishAgent($, e.agentId, e.answer, e.isAborted, e.reason === 'error')
+      // One that ran in its own worktree: what it changed there, against where it started
+      const inWorktree = !!(await read($, S)).agents.find(x => x.id === e.agentId)?.worktree
+      if (inWorktree) await measureWorktree($, e.agentId).catch(() => null)
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
-      if (!isStep && !e.isAborted) await testAgent($, e.agentId, true)
+      // Its work is in its worktree, not your tree: the testers and auto-commit, which work on your tree, wait for Bring back
+      if (!isStep && !e.isAborted && !inWorktree) await testAgent($, e.agentId, true)
       // Its work is committed as a turn's is (after the testers instead, where commits wait for them)
       const s = await read($, S)
       const a = s.agents.find(x => x.id === e.agentId)
-      if (!isStep && !e.isAborted && a && changedFiles(a) && !TESTERS.includes(a.type) && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') {
+      if (!isStep && !e.isAborted && !inWorktree && a && changedFiles(a) && !TESTERS.includes(a.type) && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') {
         await refreshRepo($)
         await decideCommit($)
       }

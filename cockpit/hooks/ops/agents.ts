@@ -9,7 +9,7 @@ import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { cockpitDir, note, saveHistory, set, summary, toast } from './core'
-import { decideCommit, makeWorktree, refreshRepo } from './git'
+import { decideCommit, dropWorktree, makeWorktree, refreshRepo } from './git'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
@@ -169,15 +169,15 @@ export async function handOff($: $, items: { type: string; brief: string }[]) {
   return true
 }
 
-export async function runExpert($: $, type: string, prior: string[] = [], opts: { task?: string; batch?: { type: string; brief: string }[] } = {}) {
+export async function runExpert($: $, type: string, prior: string[] = [], opts: { task?: string; batch?: { type: string; brief: string }[]; inTree?: boolean } = {}) {
   const s0 = await read($, S)
   const s = opts.task ? { ...s0, task: opts.task } : s0
   const name = expertName(type)
-  await set($, { starting: { name, type, task: s.task || name, ...(s.ui.agentWorktree ? { worktree: true } : {}) } })
-  const wt = await worktreeToRun($)
+  await set($, { starting: { name, type, task: s.task || name, ...(s.ui.agentWorktree && !opts.inTree ? { worktree: true } : {}) } })
+  const wt = opts.inTree ? null : await worktreeToRun($)
   const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type, ...(wt ? { cwd: wt.path } : {}) })
   await set($, { starting: null })
-  if ('agentId' in r) await keepWorktree($, r.agentId ?? '', wt)
+  await keepWorktree($, 'deny' in r ? null : (r.agentId ?? ''), wt)
   if ('deny' in r) {
     // Refused for want of a request: Claude starts it instead; '' keeps a pipeline waiting on this step
     if (/no verdict/i.test(r.deny ?? '')) {
@@ -213,7 +213,8 @@ export async function startPipeline($: $, name: string, opts: { for?: string; pr
       ...(st.flows.length ? { reached: st.reached.includes('Verify') ? st.reached : [...st.reached, 'Verify'] } : {}),
       flows: st.flows.map((f, i) => (i === st.flows.length - 1 && !f.reached.includes('Verify') ? { ...f, reached: [...f.reached, 'Verify'] } : f)),
     }))
-    await bindExpert($, await runExpert($, def.steps[0] ?? '', opts.prior ?? []))
+    // A pipeline's experts hand their work on through your tree: never a worktree of their own
+    await bindExpert($, await runExpert($, def.steps[0] ?? '', opts.prior ?? [], { inTree: true }))
   } finally {
     startingPipeline = false
   }
@@ -251,7 +252,7 @@ export async function advancePipeline($: $, agentId: string, answer: string, abo
     return
   }
   await set($, { pipeline: { ...p, index, reports, agentId: '' } })
-  await bindExpert($, await runExpert($, next, reports))
+  await bindExpert($, await runExpert($, next, reports, { inTree: true }))
 }
 
 // An agent's answer arrived: its cases and report go on its record
@@ -276,7 +277,7 @@ const takeEarly = (id: string) => {
   return p ? { plan: p } : {}
 }
 
-export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'> & Partial<Pick<Agent, 'by' | 'parent' | 'provider'>>) {
+export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'> & Partial<Pick<Agent, 'by' | 'parent' | 'provider'>> & { cwd?: string }) {
   const at = await $.clock.now()
   // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count.
   // A tester a Verify pipeline started on an agent's work is tagged with that agent
@@ -284,7 +285,10 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
     const was = s.agents.find(x => x.id === a.id)
     const p = s.pipeline
     const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
-    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...takeEarly(a.id), ...was, ...a, status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
+    const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(a.cwd) ? a.cwd : ''
+    const wt = key ? pendingWorktrees.get(key) : undefined
+    if (key) pendingWorktrees.delete(key)
+    return { agents: [...s.agents.filter(x => x.id !== a.id), { ...takeEarly(a.id), ...(wt ? { worktree: wt } : {}), ...was, ...(({ cwd: _c, ...rest }) => rest)(a), status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
   })
 }
 
@@ -328,7 +332,7 @@ export async function spawnAgent($: $, task: string, type: string) {
   const wt = await worktreeToRun($)
   const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type, ...(wt ? { cwd: wt.path } : {}) })
   await set($, { starting: null })
-  if ('agentId' in r) await keepWorktree($, r.agentId ?? '', wt)
+  await keepWorktree($, 'deny' in r ? null : (r.agentId ?? ''), wt)
   if ('deny' in r) {
     if (/no verdict/i.test(r.deny ?? '') && (await handOff($, [{ type, brief: task }]))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
@@ -445,16 +449,25 @@ export async function measure($: $) {
 }
 
 // With "In its own worktree" ticked, the worktree an agent starts in: made from HEAD on a branch of its own; none (and
-// a toast saying why) when it cannot be, so the agent runs in your tree
+// a toast saying why) when it cannot be, so the agent runs in your tree. The id is the time and a count, never reused
+let worktrees = 0
 async function worktreeToRun($: $) {
   if (!(await read($, S)).ui.agentWorktree) return null
-  const wt = await makeWorktree($, `ag${await $.clock.now()}`).catch(e => ({ error: String(e) }))
+  const wt = await makeWorktree($, `ag${await $.clock.now()}-${++worktrees}`).catch(e => ({ error: String(e) }))
   if ('error' in wt) {
     await toast($, `Runs in your tree: ${wt.error}`)
     return null
   }
   return wt
 }
-async function keepWorktree($: $, id: string, wt: { path: string; branch: string; base: string } | null) {
-  if (wt && id) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: wt } : a)) }))
+// The agent it started for keeps it: by id, or, where the start hands no id back, by the folder its spawn event names;
+// one whose record is not made yet gets it when it is. A start that was refused (null), or handed to Claude (who starts
+// it in your tree), leaves no worktree or branch behind
+const pendingWorktrees = new Map<string, NonNullable<Agent['worktree']>>()
+async function keepWorktree($: $, id: string | null, wt: { path: string; branch: string; base: string } | null) {
+  if (!wt) return
+  if (id === null) return dropWorktree($, wt)
+  const key = id || wt.path
+  if (id && (await read($, S)).agents.some(a => a.id === id)) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: wt } : a)) }))
+  else pendingWorktrees.set(key, wt)
 }

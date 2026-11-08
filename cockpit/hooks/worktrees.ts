@@ -14,7 +14,8 @@ export const WORKTREE_COMMANDS = {
   "diff": ["git", "diff", "--binary", "--no-renames", "{base}", "{snap}"],
   "check": ["git", "apply", "--check", "--whitespace=nowarn", "-"],
   "apply": ["git", "apply", "--whitespace=nowarn", "-"],
-  "remove": ["git", "worktree", "remove", "--force", "{path}"]
+  "remove": ["git", "worktree", "remove", "--force", "{path}"],
+  "dropBranch": ["git", "branch", "-d", "{branch}"]
 }
 // wt:end
 
