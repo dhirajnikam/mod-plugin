@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""A release is ready to ship: the plugin and its marketplace entry carry one version, the CHANGELOG's newest numbered
-section is that version with a date, [Unreleased] is empty, and every feature that section names in bold is described
-in the README or the docs. Claude Code sends a plugin update only when the version changes, so this is what a release
-must get right."""
+"""The release is consistent: the plugin and its marketplace entry carry one version, the CHANGELOG's newest numbered
+section is that version with a date, and every feature that section names in bold is described in the README or the
+docs. Claude Code sends a plugin update only when the version changes, so this is what a release must get right.
+Between releases [Unreleased] fills up, as it should; `--releasing` (when cutting one) also requires it empty.
+
+    python3 scripts/check_release.py              # always, in CI
+    python3 scripts/check_release.py --releasing  # when cutting a release
+"""
 import json, os, re, sys
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
@@ -26,7 +30,7 @@ else:
     if not re.search(r'\d{4}-\d{2}-\d{2}', rest):
         problems.append(f'the {newest} section has no date')
 unreleased = re.search(r'^## \[Unreleased\]\n(.*?)(?=^## \[)', log, re.M | re.S)
-if unreleased and re.search(r'^- ', unreleased.group(1), re.M):
+if '--releasing' in sys.argv and unreleased and re.search(r'^- ', unreleased.group(1), re.M):
     problems.append('[Unreleased] still has entries')
 
 # Every feature the newest section names in bold is described somewhere a person reads
@@ -41,4 +45,4 @@ if numbered:
 if problems:
     print('The release is not ready:\n- ' + '\n- '.join(problems))
     sys.exit(1)
-print(f'Release {plugin} is ready: one version, a dated changelog section, nothing unreleased, every feature described.')
+print(f'Release {plugin} is consistent: one version, a dated changelog section, every feature described' + (', nothing unreleased.' if '--releasing' in sys.argv else '.'))

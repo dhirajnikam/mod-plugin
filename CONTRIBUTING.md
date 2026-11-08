@@ -31,6 +31,7 @@ python3 scripts/check_privacy.py             # every model call is documented in
 python3 scripts/check_turn_undo.py           # turn undo's git commands, run on a real temporary repository
 python3 scripts/check_worktrees.py           # agents in worktrees: bring back and remove, on a real repository
 python3 scripts/check_release.py             # one version in plugin.json and the marketplace, a dated changelog, features described
+                                             # (add --releasing when cutting a release: [Unreleased] must then be empty)
 ```
 
 The type-check needs the types Claude Code writes into `cockpit/.claude-plugin/types/` (git-ignored) when it loads the
