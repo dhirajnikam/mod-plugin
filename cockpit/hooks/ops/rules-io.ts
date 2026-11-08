@@ -10,6 +10,8 @@ import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { repoRoot, set, toast } from './core'
 
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+
 // The Rules tab: the hooks, permission rules and instructions of the repository and of the user, read from their files
 // and written back with the rest of each file kept. Each change reads the file again first, and a settings file that is
 // not valid JSON is never written
@@ -39,7 +41,7 @@ async function mcpFiles($: $, files: { repo: RuleFiles; user: RuleFiles }) {
 async function skillFiles($: $, dir: string): Promise<SkillFile[]> {
   if (!dir) return []
   // ponytail: the first 200 folders; a skills folder past that is not one a person reads in a tab
-  const folders = (await $.fs.list(dir).catch(() => [])).filter(e => e.kind !== 'file' && !e.name.startsWith('.')).slice(0, 200)
+  const folders = (await $.fs.list(dir).catch(() => [])).filter(e => e.kind !== 'file' && !e.name.startsWith('.')).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 200)
   const out = await Promise.all(
     folders.map(async e => {
       const path = `${dir}/${e.name}/SKILL.md`
@@ -52,13 +54,18 @@ async function skillFiles($: $, dir: string): Promise<SkillFile[]> {
 export async function loadRules($: $) {
   const files = await ruleFiles($)
   const root = (await repoRoot($)) || '.'
-  const home = (await $.env.get('HOME').catch(() => undefined)) ?? (await $.env.get('USERPROFILE').catch(() => undefined)) ?? ''
-  const [mcp, repo, user] = await Promise.all([mcpFiles($, files), skillFiles($, `${root}/.claude/skills`), skillFiles($, home ? `${home}/.claude/skills` : '')])
+  const home = ((await $.env.get('HOME').catch(() => undefined)) ?? (await $.env.get('USERPROFILE').catch(() => undefined)) ?? '').replace(/\\/g, '/')
+  // The repository being your home folder: its skills are yours, listed once
+  const mine = home && home.replace(/\/+$/, '') !== root.replace(/\\/g, '/').replace(/\/+$/, '') ? `${home}/.claude/skills` : ''
+  const [mcp, repo, user] = await Promise.all([mcpFiles($, files), skillFiles($, `${root}/.claude/skills`), skillFiles($, mine)])
   await set($, { rules: { ...files, mcp: mcp.file, skills: { repo, user } } })
 }
 // A skill switched between Claude loading it by itself and /name only: its SKILL.md read again first, only that
 // line changed, and a file whose frontmatter cannot be read never written
 export async function writeSkill($: $, path: string, auto: boolean) {
+  // Only a SKILL.md the tab listed is ever written
+  const listed = (await read($, S)).rules?.skills
+  if (!path.endsWith('/SKILL.md') || ![...(listed?.repo ?? []), ...(listed?.user ?? [])].some(k => k.path === path)) return loadRules($)
   const text = await $.fs.read(path).then(String).catch(() => null)
   if (text === null) return Promise.all([loadRules($), toast($, `${path} is gone: the skills were read again`)])
   const next = setInvocation(text, auto)

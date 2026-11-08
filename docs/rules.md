@@ -34,8 +34,9 @@ description sits in every session's context so Claude can pick it) or it runs **
 
 - **Call only** adds `disable-model-invocation: true` to the frontmatter; **Let Claude** takes the line out again.
   Nothing else in the file changes, and switching back leaves it exactly as it was (line endings too).
-- The `SKILL.md` is read again before each switch; one whose frontmatter cannot be read (no `---` at its top, or
-  never closed) is shown read only with why, never written.
+- The `SKILL.md` is read again before each switch; one whose frontmatter cannot be read (no `---` at its top, never
+  closed, or a line that is not a `key: value`, an indented line under one, a comment or blank) is shown read only with
+  why, never written. Every copy of the key is changed together, and each line keeps its own line ending.
 - Skills a plugin brings are not listed here; the Agents tab shows the agents plugins add.
 
 ![The Rules tab](images/rules.png)

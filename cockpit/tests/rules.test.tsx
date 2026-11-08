@@ -309,6 +309,29 @@ test('skills: name, description and invocation read from the frontmatter, and th
   expect(skillOf('---\nname: x\n').error).toContain('not closed')
   expect(setInvocation('# Just markdown', false)).toBe(null)
   expect(setInvocation('---\nname: x\n', false)).toBe(null)
+  // YAML as people write it: a byte-order mark, spaces after ---, a space before the colon, a comment, any case of true
+  const bom = '\uFEFF---  \nname: b\ndisable-model-invocation : True # keep it for /b\n---\nbody'
+  expect(skillOf(bom)).toMatchObject({ name: 'b', auto: false, error: '' })
+  expect(setInvocation(bom, true)).toBe('\uFEFF---  \nname: b\n---\nbody')
+  expect(skillOf('---\ndisable-model-invocation: "true"\n---\n').auto).toBe(false)
+  expect(skillOf('---\ndescription: a # b\n---\n').description).toBe('a')
+  expect(skillOf('---\ndescription: "a # b"\n---\n').description).toBe('a # b')
+  // A key written twice: off sets the first and drops the other, on drops both
+  const twice = '---\ndisable-model-invocation: false\nname: t\ndisable-model-invocation: false\n---\n'
+  expect(setInvocation(twice, false)).toBe('---\ndisable-model-invocation: true\nname: t\n---\n')
+  expect(setInvocation('---\ndisable-model-invocation: true\nname: t\ndisable-model-invocation: true\n---\n', true)).toBe('---\nname: t\n---\n')
+  // Mixed line endings: each line keeps its own, and the added line ends as the one before it
+  const mixed = '---\r\nname: m\n---\r\nbody\r\n'
+  expect(setInvocation(mixed, false)).toBe('---\r\nname: m\ndisable-model-invocation: true\n---\r\nbody\r\n')
+  expect(setInvocation(setInvocation(mixed, false)!, true)).toBe(mixed)
+  // An indented --- inside a block is not the end; a line that is not YAML's flat keys makes it unreadable
+  const block = '---\nname: d\ndescription: |\n  ---\n  dashes\n---\nbody'
+  expect(skillOf(block).description).toBe('--- dashes')
+  expect(setInvocation(block, false)).toBe('---\nname: d\ndescription: |\n  ---\n  dashes\ndisable-model-invocation: true\n---\nbody')
+  expect(skillOf('---\nname: x\n\tbad: tab\n---\n').error).toContain('line 3')
+  expect(setInvocation('---\n[not, a, key]\n---\n', false)).toBe(null)
+  // The line in the body is not the frontmatter's
+  expect(skillOf('---\nname: x\n---\ndisable-model-invocation: true\n').auto).toBe(true)
 })
 
 test("the Rules tab lists each scope's skills and switches one between Claude loading it and /name only, writing only that SKILL.md", { timeoutMs: 20_000 }, async ($, on) => {

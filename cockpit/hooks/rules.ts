@@ -228,20 +228,27 @@ export function changeMcp(j: Json, op: { add: { name: string; target: string } }
 // the flat keys Claude Code reads are parsed; the file is otherwise never interpreted
 export type Skill = { name: string; description: string; auto: boolean; error: string }
 const INVOKE = 'disable-model-invocation'
-const eolOf = (text: string) => (text.includes('\r\n') ? '\r\n' : '\n')
-// The frontmatter's lines and where it closes, or why it cannot be read
-function front(text: string): { lines: string[]; close: number; error: string } {
-  const lines = text.split(eolOf(text))
-  if (lines[0]?.trim() !== '---') return { lines, close: -1, error: 'it has no frontmatter (--- at its top)' }
-  const close = lines.findIndex((l, i) => i > 0 && (l.trim() === '---' || l.trim() === '...'))
-  return close < 0 ? { lines, close, error: 'its frontmatter is not closed (no second ---)' } : { lines, close, error: '' }
+const INVOKE_LINE = new RegExp(`^${INVOKE}\\s*:`)
+// The frontmatter's lines with the ending each had (a file can mix them), where it closes, or why it cannot be read.
+// It opens with --- on the first line (a byte-order mark before it is kept) and closes with --- at the start of a
+// later line; every line between is a key, an indented line under one, a comment or blank, as YAML's flat keys are
+function front(text: string): { lines: string[]; ends: string[]; close: number; error: string } {
+  const parts = text.split(/(\r?\n)/)
+  const lines = parts.filter((_, i) => i % 2 === 0)
+  const ends = parts.filter((_, i) => i % 2 === 1)
+  if (lines[0]?.replace(/^﻿/, '').trim() !== '---') return { lines, ends, close: -1, error: 'it has no frontmatter (--- at its top)' }
+  const close = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(l))
+  if (close < 0) return { lines, ends, close, error: 'its frontmatter is not closed (no second ---)' }
+  const odd = lines.slice(1, close).findIndex(l => !/^([A-Za-z][\w-]*\s*:.*|[ ]+\S.*|\s*#.*|\s*)$/.test(l))
+  return odd >= 0 ? { lines, ends, close, error: `its frontmatter line ${odd + 2} is not YAML Cockpit can read` } : { lines, ends, close, error: '' }
 }
+const joinLines = (lines: string[], ends: string[]) => lines.map((l, i) => l + (ends[i] ?? '')).join('')
 export function skillOf(text: string): Skill {
   const { lines, close, error } = front(text)
   if (error) return { name: '', description: '', auto: true, error }
   const keys: Record<string, string> = {}
   for (let i = 1; i < close; i++) {
-    const m = lines[i]!.match(/^([A-Za-z][\w-]*):\s*(.*?)\s*$/)
+    const m = lines[i]!.match(/^([A-Za-z][\w-]*)\s*:\s*(.*?)\s*$/)
     if (!m) continue
     let value = m[2]!
     // A folded (>) or literal (|) block: the indented lines under it, read as one line
@@ -250,21 +257,28 @@ export function skillOf(text: string): Skill {
       while (i + 1 < close && /^\s+\S/.test(lines[i + 1]!)) block.push(lines[++i]!.trim())
       value = block.join(' ')
     } else if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1).replace(/\\"/g, '"').replace(/''/g, "'")
+    // A comment after a plain value is not part of it
+    else value = value.replace(/\s+#.*$/, '')
     keys[m[1]!] = value
   }
-  return { name: plain(keys.name ?? ''), description: plain(keys.description ?? ''), auto: keys[INVOKE] !== 'true', error: '' }
+  return { name: plain(keys.name ?? ''), description: plain(keys.description ?? ''), auto: (keys[INVOKE] ?? '').toLowerCase() !== 'true', error: '' }
 }
 
 // Lets Claude load the skill by itself (the line goes: that is the default) or keeps it for /name only (the line is
 // set, or added before the frontmatter closes). Only that line changes; null when the frontmatter cannot be read
 export function setInvocation(text: string, auto: boolean): string | null {
-  const { lines, close, error } = front(text)
+  const { lines, ends, close, error } = front(text)
   if (error) return null
-  const at = lines.findIndex((l, i) => i > 0 && i < close && new RegExp(`^${INVOKE}:`).test(l))
-  if (auto) {
-    if (at < 0) return text
-    lines.splice(at, 1)
-  } else if (at >= 0) lines[at] = `${INVOKE}: true`
-  else lines.splice(close, 0, `${INVOKE}: true`)
-  return lines.join(eolOf(text))
+  const at = lines.map((l, i) => (i > 0 && i < close && INVOKE_LINE.test(l) ? i : -1)).filter(i => i >= 0)
+  if (auto && !at.length) return text
+  // Every copy of the key goes, the first one set again when it is to stay
+  const drop = new Set(auto ? at : at.slice(1))
+  if (!auto && at.length) lines[at[0]!] = `${INVOKE}: true`
+  const keep = lines.map((l, i) => [l, ends[i]] as const).filter((_, i) => !drop.has(i))
+  if (!auto && !at.length) {
+    // Added before the frontmatter closes, ending as the line before it does
+    const c = keep.findIndex((_, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(keep[i]![0]))
+    keep.splice(c, 0, [`${INVOKE}: true`, keep[c - 1]![1] ?? '\n'])
+  }
+  return joinLines(keep.map(k => k[0]), keep.map(k => k[1] ?? ''))
 }
