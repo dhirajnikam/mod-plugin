@@ -918,3 +918,20 @@ test('slow work a press starts runs on after it: the press returns at once, one 
   expect(JSON.stringify(await ui.drawn())).not.toContain('⟳ Compacting')
   await ui.unmount()
 })
+
+test("Cockpit's own experts started by Claude are not marked as from outside Cockpit; another plugin's agents and Claude's own are", async ($, on) => {
+  stand($, on)
+  // However the engine names the provider: as itself, or as the plugin with its marketplace
+  await $.agent.spawn({ tool_use_id: 'r1', prompt: 'review the diff', description: 'review the diff', subagentType: 'cockpit:reviewer', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: false, fork: false } as never)
+  await $.agent.spawn({ tool_use_id: 'b1', prompt: 'break it', description: 'break it', subagentType: 'cockpit:breaker', provider: { plugin: 'cockpit@mod-plugin', tier: 'user' }, parentModel: 'x', background: false, fork: false } as never)
+  await $.agent.spawn({ tool_use_id: 'e1', prompt: 'look around', description: 'look around', subagentType: 'Explore', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: false, fork: false } as never)
+  await $.agent.spawn({ tool_use_id: 'o1', prompt: 'other work', description: 'other work', subagentType: 'other:helper', provider: { plugin: 'other', tier: 'user' }, parentModel: 'x', background: false, fork: false } as never)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane('agents') as never)
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).not.toContain('↗ Reviewer')
+  expect(drawn).not.toContain('↗ Breaker')
+  expect(drawn).toContain('↗ look around')
+  expect(drawn).toContain('↗ other work')
+  await ui.unmount()
+})

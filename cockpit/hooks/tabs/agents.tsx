@@ -92,7 +92,9 @@ export function agentGraph(agents: Agent[]) {
   const label = new Map<string, string>()
   const seen: Record<string, number> = {}
   for (const a of agents) {
-    const outside = a.provider ? a.provider !== 'cockpit' : !a.type.startsWith('cockpit:')
+    // Cockpit's own types are its own whoever started them; the engine may name the plugin with its marketplace
+    // (cockpit@mod-plugin), so the name before the @ is what counts
+    const outside = !a.type.startsWith('cockpit:') && (a.provider ? a.provider.split('@')[0] !== 'cockpit' : true)
     const base = `${outside ? '↗ ' : ''}${a.name}`
     seen[base] = (seen[base] ?? 0) + 1
     label.set(a.id, seen[base] > 1 ? `${base} #${seen[base]}` : base)
