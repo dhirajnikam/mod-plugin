@@ -44,3 +44,7 @@ jobs:
 
       - name: Every model call is documented
         run: python3 scripts/check_privacy.py
+
+      # The test kit cannot start processes, so turn undo's git commands are proven here, on a real repository
+      - name: Turn undo on real git
+        run: python3 scripts/check_turn_undo.py
