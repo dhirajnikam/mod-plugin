@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Live pull request**: while a CI check is pending, the Git tab reads it again every 30 s, turns green or red by
+  itself, and sends one notice when the run finishes ("CI failed on #12" names the job).
 - **Daily budget**: set dollars a day in the Overview's Earlier sessions; the band shows today's spend against it,
   amber from 80% and red from 100%, and crossing each sends one notice that day. It only warns; nothing is stopped.
 - **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
