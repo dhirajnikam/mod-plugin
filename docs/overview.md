@@ -64,15 +64,15 @@ with an arrow only where it folds.
 ## Undoing a turn
 
 Before each turn starts (before Claude's first tool call) and after it ends, Cockpit keeps the whole working tree as a
-snapshot: a commit under `refs/cockpit/turns/<flow>/before` and `after`, built from a temporary index, so your working
+snapshot: a commit under `refs/cockpit/turns/<n>/before` and `after` (`<n>` is the turn's id), built from a temporary index, so your working
 tree, your staged changes and your branches are never touched. The newest 50 turns keep theirs.
 
 - **Undo this turn** puts back what that turn changed: files it edited or deleted come back as they were before it,
   files it created are deleted (and folders that leaves empty), a file that became a folder or a folder a file is put
   back. Files the turn did not touch, staged or not, stay as they are.
 - It refuses, naming them, when any of the turn's files changed after the turn ended, so later work is never written
-  over. Your files just before the undo are kept as `refs/cockpit/turns/<flow>/undone`; `git restore
-  --source=refs/cockpit/turns/<flow>/undone --worktree -- <path>` brings one back.
+  over. Your files just before the undo are kept as `refs/cockpit/turns/<n>/undone`; `git restore
+  --source=refs/cockpit/turns/<n>/undone --worktree -- <path>` brings one back.
 - Not covered: files your `.gitignore` leaves out (a build folder, `.env`), changes inside submodules, and a
   background agent that finishes after its turn ended (its changes land in the next turn). An undo after the turn was
   committed undoes the files only: the commit stays, and the undo shows as changes to commit.

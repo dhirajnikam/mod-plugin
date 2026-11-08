@@ -1,5 +1,5 @@
 // Turn snapshots: before and after each turn, the whole working tree (tracked and untracked files, .gitignore
-// honoured) is kept as a commit under refs/cockpit/turns/<flow>/, so a turn can be undone whatever made its changes:
+// honoured) is kept as a commit under refs/cockpit/turns/<n>/ (<n>: the turn's id, its flow's), so a turn can be undone whatever made its changes:
 // Edit and Write, a shell command, a script, a subagent. The commit is built from a temporary index, so the working
 // tree, the real index and every branch stay exactly as they are.
 
