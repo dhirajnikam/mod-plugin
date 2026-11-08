@@ -6,11 +6,14 @@ The Rules tab shows the hooks, permission rules and instructions Claude Code fol
 
 At the top of the tab, before either scope: an estimate of what Claude Code puts in context before you type.
 
-- **Each `CLAUDE.md` that loads**: the repository's `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, and
-  `~/.claude/CLAUDE.md`, then every file they pull in with `@path` (relative to the file, from `~/`, or absolute; not
-  inside code), up to 5 hops as Claude Code follows them, each file once. Each shows its lines and estimated tokens;
-  one over 200 lines is marked (Claude Code's guidance is to keep it shorter and move reference material into
-  skills), an import that cannot be read is marked *missing*, and an imported file is marked ↳.
+- **Each `CLAUDE.md` that loads**: `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md` in the folder Claude Code
+  runs in and every folder above it, and `~/.claude/CLAUDE.md`; then every file they pull in with `@path` (relative to
+  the file, from `~/`, or absolute; not inside code or HTML comments), up to 5 hops as Claude Code follows them, each
+  file once and at the fewest hops it is reached in. Each shows its lines and estimated tokens; one over 200 lines is
+  marked *advised* (Claude Code's guidance is to keep it shorter and move reference material into skills). An
+  imported file is marked ↳; one that cannot be read and is plainly a path is *missing* (an `@word` may be a package or
+  a person); a file over 1 MB, or not text, is listed but not read; an import beyond the repository and your home is
+  marked, and left out of the total, since Claude Code asks before loading it.
 - **Skills Claude may load**: how many, and the estimated tokens of their names and descriptions; the three largest
   each have **Call only**, which keeps that skill out of context until you call `/name` (see Skills below).
 - **MCP servers on**: counted, not priced. What their tools cost depends on how Claude Code loads them (names only, or

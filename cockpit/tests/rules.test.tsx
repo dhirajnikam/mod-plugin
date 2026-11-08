@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf, importsOf, resolveMemory, startupLoad } from '../hooks/rules'
+import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf, importsOf, memoryStarts, resolveMemory, startupLoad } from '../hooks/rules'
+import type { MemoryRead } from '../hooks/rules'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -443,19 +444,35 @@ test('what loads every session: @imports followed as Claude Code does, and the f
   }
   const read = async (p: string) => disk[p] ?? null
   const files = await resolveMemory(['/repo/CLAUDE.md', '/repo/.claude/CLAUDE.md', '/home/me/.claude/CLAUDE.md'], read, '/home/me')
+  // Breadth first: the start files, then each hop; .claude/CLAUDE.md does not exist and is left out
   expect(files.map(f => `${f.path}${f.via ? ` < ${f.via}` : ''}${f.missing ? ' (missing)' : ''}`)).toEqual([
     '/repo/CLAUDE.md',
+    '/home/me/.claude/CLAUDE.md',
     '/repo/docs/style.md < /repo/CLAUDE.md',
+    '/home/me/.claude/shared.md < /repo/CLAUDE.md',
+    '/repo/gone.md < /repo/CLAUDE.md (missing)',
     // The cycle back to CLAUDE.md is not followed again; 4.md is the fifth hop, so 5.md is not read
     '/repo/docs/deep/1.md < /repo/docs/style.md',
     '/repo/docs/deep/2.md < /repo/docs/deep/1.md',
     '/repo/docs/deep/3.md < /repo/docs/deep/2.md',
     '/repo/docs/deep/4.md < /repo/docs/deep/3.md',
-    '/home/me/.claude/shared.md < /repo/CLAUDE.md',
-    '/repo/gone.md < /repo/CLAUDE.md (missing)',
-    // .claude/CLAUDE.md does not exist and was not imported: left out
-    '/home/me/.claude/CLAUDE.md',
   ])
+  // A file reached deep first and shallow later is still expanded at its shallowest: x is one hop from 0 here
+  const chain: Record<string, string> = { '/r/0.md': '@1.md\n@x.md', '/r/1.md': '@2.md', '/r/2.md': '@3.md', '/r/3.md': '@4.md', '/r/4.md': '@x.md', '/r/x.md': '@y.md', '/r/y.md': '@z.md', '/r/z.md': 'end' }
+  expect((await resolveMemory(['/r/0.md'], async p => chain[p] ?? null, '')).map(f => f.path)).toContain('/r/z.md')
+  // Parsing as Claude Code reads it: no HTML comments, fences close on their own marker, backslashes and drives, no bare @/
+  expect(importsOf('<!-- @hidden.md -->\n~~~\n@a.md\n```\n@b.md\n~~~\n@c.md\n@docs\\x.md @C:\\w\\y.md @/ @.')).toEqual(['c.md', 'docs\\x.md', 'C:\\w\\y.md'])
+  // An @word that is not plainly a path is not a missing import; a file over the size cap, or binary, is listed, not read;
+  // an import beyond the repository and your home is marked; ~/ with no home is skipped
+  const odd: Record<string, MemoryRead> = { '/r/CLAUDE.md': '@types/node @alice @big.log @bin.dat @/etc/team.md @~/x.md @docs\\y.md', '/r/big.log': { skipped: 'over 1 MB' }, '/r/bin.dat': 'a\u0000b', '/etc/team.md': 'team', '/r/docs/y.md': 'win' }
+  expect((await resolveMemory(['/r/CLAUDE.md'], async p => odd[p] ?? null, '', ['/r'])).map(f => `${f.path}${f.skipped ? ` [${f.skipped}]` : ''}${f.outside ? ' [outside]' : ''}`)).toEqual(['/r/CLAUDE.md', '/r/big.log [over 1 MB]', '/r/bin.dat [not text]', '/etc/team.md [outside]', '/r/docs/y.md'])
+  // Where Claude Code looks: the folder it runs in and each above it (not /), then yours; Windows paths too
+  expect(memoryStarts('/Users/me/work/repo/sub', '/Users/me')).toEqual([
+    ...['/Users', '/Users/me', '/Users/me/work', '/Users/me/work/repo', '/Users/me/work/repo/sub'].flatMap(d => [`${d}/CLAUDE.md`, `${d}/.claude/CLAUDE.md`, `${d}/CLAUDE.local.md`]),
+    '/Users/me/.claude/CLAUDE.md',
+  ])
+  expect(memoryStarts('C:\\work\\repo\\', 'C:\\Users\\me')).toEqual([...['C:/work', 'C:/work/repo'].flatMap(d => [`${d}/CLAUDE.md`, `${d}/.claude/CLAUDE.md`, `${d}/CLAUDE.local.md`]), 'C:/Users/me/.claude/CLAUDE.md'])
+  expect(memoryStarts('/', '')).toEqual([])
   // The figures
   const skill = (name: string, description: string, auto = true, error = '') => ({ path: `/s/${name}/SKILL.md`, folder: name, name, description, auto, error })
   const skills = [skill('a', 'x'.repeat(398)), skill('b', 'short'), skill('c', 'y'.repeat(98)), skill('d', 'z'.repeat(40)), skill('off', 'q'.repeat(1000), false), skill('bad', 'w'.repeat(1000), true, 'broken')]
@@ -472,6 +489,8 @@ test('what loads every session: @imports followed as Claude Code does, and the f
   expect(load.largest.map(s => s.name)).toEqual(['a', 'c', 'd'])
   expect(load.mcpOn).toBe(2)
   expect(load.total).toBe(3 + 252 + 101 + 2 + 26 + 11)
+  // An import outside the repository and your home, which loads only once approved, is not counted
+  expect(startupLoad([{ path: '/etc/t.md', text: 'x'.repeat(400), via: '/r/CLAUDE.md', outside: true }], [], []).total).toBe(0)
   // Switching a skill to call only takes exactly its tokens off the total
   const lighter = startupLoad([{ path: '/repo/CLAUDE.md', text: 'abcdefgh\nij' }, long], skills.map(s => (s.name === 'a' ? { ...s, auto: false } : s)), mcp)
   expect(load.total - lighter.total).toBe(101)
@@ -481,7 +500,9 @@ test('the Rules tab shows what loads every session, from the real files and thei
   const bigSkill = '---\nname: big\ndescription: ' + 'A long description. '.repeat(20) + '\n---\n'
   const disk: Record<string, string> = {
     '/repo/CLAUDE.md': '# Repo\n- Run the tests\n@docs/style.md\n@gone.md\n',
-    '/repo/docs/style.md': 'Use tabs.\n',
+    '/repo/docs/style.md': 'Use tabs.\n@/etc/team.md\n@big.log\n',
+    '/etc/team.md': 'Team rules from outside the repository\n',
+    '/repo/docs/big.log': 'x'.repeat(1_100_000),
     '/repo/CLAUDE.local.md': 'mine\n'.repeat(250),
     '/home/me/.claude/CLAUDE.md': '- Be brief\n',
     '/repo/.claude/skills/big/SKILL.md': bigSkill,
@@ -506,6 +527,12 @@ test('the Rules tab shows what loads every session, from the real files and thei
     for (const p of Object.keys(disk)) if (p.startsWith(dir)) { const [first, ...rest] = p.slice(dir.length).split('/'); kids.set(first!, rest.length ? 'dir' : 'file') }
     return { value: [...kids].map(([name, kind]) => ({ name, kind })) } as never
   })
+  on('fs.stat', async (_: unknown, e: any) => {
+    const p = posix(e.path)
+    if (p in disk) return { value: { kind: 'file', size: disk[p]!.length, mtimeMs: 0, isLink: false } } as never
+    if (Object.keys(disk).some(k => k.startsWith(`${p}/`))) return { value: { kind: 'dir', size: 0, mtimeMs: 0, isLink: false } } as never
+    throw new Error('ENOENT')
+  })
   on('fs.read', async (_: unknown, e: any) => {
     if (!(posix(e.path) in disk)) throw new Error('ENOENT')
     return { value: disk[posix(e.path)] } as never
@@ -529,12 +556,17 @@ test('the Rules tab shows what loads every session, from the real files and thei
   expect(d).toContain('"missing"')
   expect(d).toContain('250 lines · ≈313 · over 200')
   expect(d).toContain('~/.claude/CLAUDE.md')
+  // A file over 1 MB is listed, not read; an import beyond the repository and home waits for approval, uncounted
+  expect(d).toContain('↳ docs/big.log')
+  expect(d).toContain('over 1 MB, not read')
+  expect(d).toContain('↳ /etc/team.md')
+  expect(d).toContain('outside, loads once approved')
   // Skills Claude may load: big and small, not the call-only one; the servers on, not the one waiting for approval
   expect(d).toContain('Skills Claude may load: 2')
   expect(d).not.toContain('quiet · ≈')
   expect(d).toContain('MCP servers on: 1')
   // Every figure adds up to the total shown
-  const files = 12 + 3 + 313 + 3
+  const files = 12 + 9 + 313 + 3
   const big = Math.ceil(`big: ${'A long description. '.repeat(20).trim()}`.length / 4)
   const small = Math.ceil('small: tiny'.length / 4)
   expect(total(d)).toBe(files + big + small)

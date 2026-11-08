@@ -161,7 +161,9 @@ export function Rules($: $, v: V) {
               <Box flexShrink={1}>
                 <Text color={fl.missing ? t.bad : t.text} size="footnote" wrap="truncate-start">{`${fl.via ? '↳ ' : ''}${fl.label ?? fl.path}`}</Text>
               </Box>
-              <Text color={fl.missing || fl.long ? t.bad : t.dim} size="footnote">{fl.missing ? 'missing' : `${fl.lines} lines · ≈${fl.tokens}${fl.long ? ' · over 200' : ''}`}</Text>
+              <Text color={fl.missing ? t.bad : fl.long || fl.outside || fl.skipped ? t.busy : t.dim} size="footnote">
+                {fl.missing ? 'missing' : fl.skipped ? `${fl.skipped}, not read` : `${fl.lines} lines · ≈${fl.tokens}${fl.long ? ' · over 200 lines (advised)' : ''}${fl.outside ? ' · outside, loads once approved' : ''}`}
+              </Text>
             </Box>
           ))}
           {load.files.length === 0 && <Text color={t.faint} size="footnote">No CLAUDE.md here or in ~/.claude.</Text>}

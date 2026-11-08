@@ -290,53 +290,90 @@ export const skillListed = (path: string, skills?: { repo: SkillFile[]; user: Sk
 // What loads into every session before you type: the CLAUDE.md files and what they @import, the descriptions of the
 // skills Claude may load by itself, and the MCP servers that are on. Tokens are estimated (characters ÷ 4)
 
-// The @imports in a memory file, as Claude Code reads them: @path at a word's start, outside code spans and fenced
-// blocks; an email address is not one
+// The @imports in a memory file, as Claude Code reads them: @path at a word's start, outside HTML comments, code spans
+// and fenced blocks (a fence closes only on its own marker, at least as long); an email address is not one, and
+// sentence punctuation after a path is not part of it
 export function importsOf(text: string): string[] {
   const out: string[] = []
-  let fenced = false
-  for (const line of text.split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced
+  let fence = ''
+  for (const line of text.replace(/<!--[\s\S]*?-->/g, ' ').split(/\r?\n/)) {
+    const f = line.match(/^\s*(`{3,}|~{3,})/)?.[1]
+    if (f && (!fence || (f[0] === fence[0] && f.length >= fence.length && /^\s*[`~]+\s*$/.test(line)))) {
+      fence = fence ? '' : f
       continue
     }
-    if (fenced) continue
-    for (const m of line.replace(/`[^`]*`/g, ' ').matchAll(/(?:^|\s)@((?:~\/|\.{1,2}\/|\/)?[\w.\-/~]+)/g)) out.push(m[1]!.replace(/[.,;:]+$/, ''))
+    if (fence) continue
+    for (const m of line.replace(/`[^`]*`/g, ' ').matchAll(/(?:^|\s)@((?:~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:[\\/])?[\w.\-/~\\]+)/g)) {
+      const p = m[1]!.replace(/[.,;:]+$/, '')
+      if (p && !/^[\\/.]*$/.test(p)) out.push(p)
+    }
   }
   return out
 }
 
-// A path made whole: from ~/, absolute, or relative to the folder of the file that names it; . and .. folded away
+// A path made whole, with forward slashes: from ~/, absolute, or relative to the folder of the file that names it;
+// . and .. folded away
+export const slashes = (p: string) => p.replace(/\\/g, '/')
 function joinPath(from: string, p: string, home: string) {
-  const base = p.startsWith('~/') ? `${home}/${p.slice(2)}` : p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) ? p : `${from.replace(/[\\/][^\\/]*$/, '')}/${p}`
+  const q = slashes(p)
+  const base = q.startsWith('~/') ? `${slashes(home)}/${q.slice(2)}` : q.startsWith('/') || /^[A-Za-z]:\//.test(q) ? q : `${slashes(from).replace(/\/[^/]*$/, '')}/${q}`
   const parts: string[] = []
-  for (const seg of base.replace(/\\/g, '/').split('/')) {
+  for (const seg of base.split('/')) {
     if (seg === '..') parts.length > 1 && parts.pop()
     else if (seg !== '.' && (seg !== '' || !parts.length)) parts.push(seg)
   }
   return parts.join('/')
 }
 
-export type MemoryFile = { path: string; text: string; via?: string; missing?: boolean }
-// Every memory file that loads: the ones that exist of `starts`, then what they import, up to 5 hops as Claude Code
-// follows them, each file once however often it is named (so a cycle ends). An import that cannot be read is kept,
-// marked missing
-export async function resolveMemory(starts: string[], read: (path: string) => Promise<string | null>, home: string): Promise<MemoryFile[]> {
+// The memory files Claude Code looks for at start: in the folder it runs in and each folder above it (not the
+// filesystem's root), CLAUDE.md, .claude/CLAUDE.md and CLAUDE.local.md, nearest last as it reads them; then yours
+export function memoryStarts(cwd: string, home: string): string[] {
+  const dirs: string[] = []
+  let d = slashes(cwd).replace(/\/+$/, '')
+  while (d && d !== '/' && !/^[A-Za-z]:$/.test(d)) {
+    dirs.unshift(d)
+    const up = d.replace(/\/[^/]*$/, '')
+    if (up === d) break
+    d = up
+  }
+  return [...dirs.flatMap(x => [`${x}/CLAUDE.md`, `${x}/.claude/CLAUDE.md`, `${x}/CLAUDE.local.md`]), ...(home ? [`${slashes(home)}/.claude/CLAUDE.md`] : [])]
+}
+
+// skipped: not read (too large, not text); outside: an import beyond the repository and your home, which Claude Code
+// asks before loading
+export type MemoryFile = { path: string; text: string; via?: string; missing?: boolean; skipped?: string; outside?: boolean }
+// What a reader hands back for a file: its text, null when there is none, or why it was not read
+export type MemoryRead = string | null | { skipped: string }
+// Every memory file that loads: the ones that exist of `starts`, then what they import, breadth first so each file is
+// expanded at the fewest hops it is reached in, up to the 5 Claude Code follows, each file once (so a cycle ends). A
+// missing import is kept only when it is plainly a path (./, ../, ~/, / or a file name with an extension), since an
+// @word may be a package or a person. `within`: the repository and your home; an import beyond them is marked
+export async function resolveMemory(starts: string[], read: (path: string) => Promise<MemoryRead>, home: string, within: string[] = []): Promise<MemoryFile[]> {
   const seen = new Set<string>()
   const out: MemoryFile[] = []
-  const visit = async (path: string, depth: number, via?: string) => {
-    if (seen.has(path)) return
-    seen.add(path)
-    const text = await read(path)
-    if (text === null) {
-      if (via) out.push({ path, text: '', via, missing: true })
-      return
+  const inside = (p: string) => !within.length || within.some(w => w && (p === slashes(w) || p.startsWith(`${slashes(w).replace(/\/+$/, '')}/`)))
+  let level: { path: string; via?: string; raw?: string }[] = starts.map(p => ({ path: slashes(p) }))
+  for (let depth = 0; depth <= 5 && level.length; depth++) {
+    const next: typeof level = []
+    for (const { path, via, raw } of level) {
+      if (seen.has(path)) continue
+      seen.add(path)
+      const r = await read(path).catch(() => null)
+      const tag = { ...(via ? { via } : {}), ...(via && !inside(path) ? { outside: true } : {}) }
+      if (r === null) {
+        if (via && raw && /^(~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:)|\.\w+$/.test(raw)) out.push({ path, text: '', ...tag, missing: true })
+        continue
+      }
+      if (typeof r !== 'string' || r.includes('\u0000')) {
+        out.push({ path, text: '', ...tag, skipped: typeof r === 'string' ? 'not text' : r.skipped })
+        continue
+      }
+      out.push({ path, text: r, ...tag })
+      if (depth < 5)
+        for (const imp of importsOf(r)) if (home || !/^~[\\/]/.test(imp)) next.push({ path: joinPath(path, imp, home), via: path, raw: imp })
     }
-    out.push({ path, text, ...(via ? { via } : {}) })
-    if (depth >= 5) return
-    for (const imp of importsOf(text)) await visit(joinPath(path, imp, home), depth + 1, path)
+    level = next
   }
-  for (const s of starts) await visit(s, 0)
   return out
 }
 
@@ -347,7 +384,7 @@ export const tokensOf = (text: string) => Math.ceil(text.length / 4)
 export function startupLoad(files: MemoryFile[], skills: SkillFile[], mcp: McpRow[]): StartupLoad {
   const f = files.map(x => {
     const lines = x.text ? x.text.replace(/\r?\n$/, '').split(/\r?\n/).length : 0
-    return { path: x.path, ...(x.via ? { via: x.via } : {}), ...(x.missing ? { missing: true } : {}), lines, tokens: tokensOf(x.text), long: lines > 200 }
+    return { path: x.path, ...(x.via ? { via: x.via } : {}), ...(x.missing ? { missing: true } : {}), ...(x.skipped ? { skipped: x.skipped } : {}), ...(x.outside ? { outside: true } : {}), lines, tokens: tokensOf(x.text), long: lines > 200 }
   })
   const k = skills.filter(s => s.auto && !s.error).map(s => ({ path: s.path, name: s.name || s.folder, tokens: tokensOf(`${s.name || s.folder}: ${s.description}`) }))
   return {
@@ -355,6 +392,7 @@ export function startupLoad(files: MemoryFile[], skills: SkillFile[], mcp: McpRo
     skills: k,
     largest: [...k].sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name)).slice(0, 3),
     mcpOn: mcp.filter(m => m.state === 'on').length,
-    total: f.reduce((a, x) => a + x.tokens, 0) + k.reduce((a, x) => a + x.tokens, 0),
+    // An import Claude Code asks about first is not counted: it loads only once you approve it
+    total: f.filter(x => !x.outside).reduce((a, x) => a + x.tokens, 0) + k.reduce((a, x) => a + x.tokens, 0),
   }
 }

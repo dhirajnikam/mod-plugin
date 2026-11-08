@@ -129,6 +129,12 @@ test("the Rules tab's startup load, MCP servers and skills fit every width", { t
     for (const p of Object.keys(disk)) if (p.startsWith(dir)) { const [first, ...rest] = p.slice(dir.length).split('/'); kids.set(first!, rest.length ? 'dir' : 'file') }
     return { value: [...kids].map(([name, kind]) => ({ name, kind })) } as never
   })
+  on('fs.stat', async (_: unknown, e: any) => {
+    const p = String(e.path)
+    if (p in disk) return { value: { kind: 'file', size: disk[p]!.length, mtimeMs: 0, isLink: false } } as never
+    if (Object.keys(disk).some(k => k.startsWith(`${p}/`))) return { value: { kind: 'dir', size: 0, mtimeMs: 0, isLink: false } } as never
+    throw new Error('ENOENT')
+  })
   on('fs.read', async (_: unknown, e: any) => {
     if (!(String(e.path) in disk)) throw new Error('ENOENT')
     return { value: disk[String(e.path)] } as never

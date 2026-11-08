@@ -1,8 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
+import type { MemoryRead } from '../rules'
 import type { Account, Agent, Autopilot, Changed, RuleFiles, SkillFile, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { changeMcp, mcpRows, parseSettings, resolveMemory, setInvocation, settingsText, skillListed, skillOf, startupLoad } from '../rules'
+import { changeMcp, mcpRows, memoryStarts, parseSettings, resolveMemory, slashes, setInvocation, settingsText, skillListed, skillOf, startupLoad } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
@@ -59,10 +60,19 @@ export async function loadRules($: $) {
   const mine = home && home.replace(/\/+$/, '') !== root.replace(/\\/g, '/').replace(/\/+$/, '') ? `${home}/.claude/skills` : ''
   const [mcp, repo, user] = await Promise.all([mcpFiles($, files), skillFiles($, `${root}/.claude/skills`), skillFiles($, mine)])
   // The memory files Claude Code loads at start, and what they import
-  const starts = [`${root}/CLAUDE.md`, `${root}/.claude/CLAUDE.md`, `${root}/CLAUDE.local.md`, ...(home ? [`${home}/.claude/CLAUDE.md`] : [])]
-  const memory = await resolveMemory(starts, p => $.fs.read(p).then(String).catch(() => null), home)
+  const cwd = (await $.session.cwd().catch(() => '')) || root
+  const top = slashes(root)
+  // ponytail: a file over 1 MB, or not a file, is listed but not read; a memory file that size is a mistake to see
+  const readMemory = async (p: string): Promise<MemoryRead> => {
+    const st = await $.fs.stat(p, { resolve: true }).catch(() => null)
+    if (!st || st.kind === 'dir') return null
+    if (st.kind !== 'file') return { skipped: 'not a file' }
+    if (st.size > 1_000_000) return { skipped: 'over 1 MB' }
+    return $.fs.read(p).then(String).catch(() => null)
+  }
+  const memory = await resolveMemory(memoryStarts(cwd, home), readMemory, home, [top, home])
   const load = startupLoad(memory, [...repo, ...user], mcp.file.rows)
-  const label = (p: string) => (p.startsWith(`${root}/`) ? p.slice(root.length + 1) : home && p.startsWith(`${home}/`) ? `~/${p.slice(home.length + 1)}` : p)
+  const label = (p: string) => (p.startsWith(`${top}/`) ? p.slice(top.length + 1) : home && p.startsWith(`${home}/`) ? `~/${p.slice(home.length + 1)}` : p)
   load.files = load.files.map(f => ({ ...f, label: label(f.path), ...(f.via ? { via: label(f.via) } : {}) }))
   await set($, { rules: { ...files, mcp: mcp.file, skills: { repo, user }, load } })
 }

@@ -70,7 +70,7 @@ export type McpRow = { key: string; name: string; scope: 'project' | 'local' | '
 // What loads into every session before you type: each memory file (label: its path from the repository, or from ~),
 // the skills Claude may load by itself, the largest three, the MCP servers on, and the estimated tokens of files and skills
 export type StartupLoad = {
-  files: { path: string; label?: string; via?: string; missing?: boolean; lines: number; tokens: number; long: boolean }[]
+  files: { path: string; label?: string; via?: string; missing?: boolean; skipped?: string; outside?: boolean; lines: number; tokens: number; long: boolean }[]
   skills: { path: string; name: string; tokens: number }[]
   largest: { path: string; name: string; tokens: number }[]
   mcpOn: number
