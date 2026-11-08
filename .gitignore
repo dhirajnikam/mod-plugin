@@ -2,3 +2,5 @@
 **/.claude-plugin/types/
 node_modules/
 __pycache__/
+# Claude Code makes agent worktrees here; never commit them
+.claude/worktrees/
