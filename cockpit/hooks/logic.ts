@@ -1,4 +1,4 @@
-import type { Agent, Decision, FileOp, GitForm, Line, Ph, PlanItem, TestCase } from '../types'
+import type { Agent, Decision, FileOp, GitForm, Line, Ph, PlanItem, PrStatus, TestCase } from '../types'
 import { chatThemeOf, themeOf } from './theme'
 
 // Every step a flow can reach, in order. A flow shows its own template's steps plus any it reaches beyond them
@@ -443,6 +443,31 @@ export function ringRuns(pct: number, fill: string, track: string, ink: string, 
   })
 }
 
+// The current branch's pull request from gh's JSON: `gh pr view --json number,title,url,state,isDraft,reviewDecision`
+// and `gh pr checks --json name,bucket,link`. No PR, or output gh did not write, is null; checks that cannot be read
+// count as none, since a PR with no CI is common
+export function parsePr(view: string, checks: string): PrStatus | null {
+  const json = (t: string) => { try { return JSON.parse(t) } catch { return null } }
+  const v = json(view)
+  if (!v || typeof v !== 'object' || typeof v.number !== 'number') return null
+  const REVIEW = new Map([['APPROVED', 'approved'], ['CHANGES_REQUESTED', 'changes'], ['REVIEW_REQUIRED', 'required']] as const)
+  const review = v.isDraft ? 'draft' : (REVIEW.get(v.reviewDecision) ?? '')
+  const c = { pass: 0, fail: 0, pending: 0, skip: 0, failing: [] as { name: string; link: string }[] }
+  const list = json(checks)
+  for (const k of Array.isArray(list) ? list : []) {
+    // gh's buckets: pass, fail, pending, skipping, cancel (a cancelled run did not pass, so it counts as failed)
+    const b = String(k?.bucket ?? '')
+    if (b === 'pass') c.pass++
+    else if (b === 'pending') c.pending++
+    else if (b === 'skipping') c.skip++
+    else if (b === 'fail' || b === 'cancel') {
+      c.fail++
+      c.failing.push({ name: String(k?.name ?? '?'), link: String(k?.link ?? '') })
+    }
+  }
+  return { number: v.number, title: String(v.title ?? ''), url: String(v.url ?? ''), state: (['OPEN', 'CLOSED', 'MERGED'].includes(v.state) ? v.state : 'OPEN'), review, checks: c }
+}
+
 // Self-check: the parts a broken edit would quietly corrupt
 export function selfCheck() {
   const g = { branch: '', branchAuto: true, branchPattern: '{type}/{ticket}-{slug}', ticket: 'API-142', user: 'dev', base: 'main', type: 'feat', scope: 'auth', subject: 'add rate limiting to login', body: '', msgPattern: '{type}({scope}): {subject}', commitMode: 'ask', autoWhen: 'step', setupDone: true, breaking: false, push: false, pr: false, draft: false, signoff: false, gpg: false, preTest: false } as GitForm
@@ -508,6 +533,14 @@ export function selfCheck() {
     [themeOf({ theme: 'gone' as never }).accent, '#b4833a'],
     [chatThemeOf({ theme: 'gone' as never }).accent, '#b4833a'],
     [graphCheck(), JSON.stringify([[0, [1], [], []], [1, [], [], [0]], [0, [], [], [1]], [0, [], [1], []]])],
+    // The branch's PR: a failing and a cancelled check named, a pending one counted; draft wins over the review
+    [JSON.stringify(parsePr('{"number":7,"title":"Add x","url":"u","state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED"}', '[{"name":"test","bucket":"fail","link":"l1"},{"name":"lint","bucket":"pass"},{"name":"e2e","bucket":"pending"},{"name":"deploy","bucket":"cancel","link":"l2"},{"name":"docs","bucket":"skipping"}]')), '{"number":7,"title":"Add x","url":"u","state":"OPEN","review":"changes","checks":{"pass":1,"fail":2,"pending":1,"skip":1,"failing":[{"name":"test","link":"l1"},{"name":"deploy","link":"l2"}]}}'],
+    [parsePr('{"number":7,"isDraft":true,"reviewDecision":"APPROVED"}', '[{"bucket":"pass"}]')?.review, 'draft'],
+    [parsePr('{"number":7,"reviewDecision":"APPROVED"}', '[{"bucket":"pass"},{"bucket":"pass"}]')?.checks.pass, 2],
+    [parsePr('{"number":7,"reviewDecision":""}', 'no checks reported on the \'x\' branch')?.checks.fail, 0],
+    [parsePr('no pull requests found for branch "x"', ''), null],
+    [parsePr('{"title":"no number"}', '[]'), null],
+    [parsePr('null', '[]'), null],
   ]
   return checks.filter(([a, b]) => a !== b)
 }

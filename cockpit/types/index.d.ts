@@ -245,7 +245,8 @@ export type Ph = {
   creating: string
   git: GitForm
   // log: the recent commits of every branch, remote and tag, in graph order; unpushed: the current branch's commits its upstream lacks
-  repo: { isRepo: boolean; current: string; ahead: number; behind: number; changed: Changed[]; branches: string[]; log: LogCommit[]; unpushed: string[] }
+  // pr: the current branch's pull request as gh reports it; null when it has none, absent before gh was asked
+  repo: { isRepo: boolean; current: string; ahead: number; behind: number; changed: Changed[]; branches: string[]; log: LogCommit[]; unpushed: string[]; pr?: PrStatus | null }
   staged: Record<string, boolean>
   pending: Pending | null
   // The commit a model wrote from the diff of the ticked files (sig names them and their counts); busy while it writes
@@ -325,4 +326,15 @@ declare module 'claude-code' {
   interface PluginState {
     cockpit: { s: Shaped<Ph> }
   }
+}
+
+// The current branch's pull request, from `gh pr view` and `gh pr checks`
+export interface PrStatus {
+  number: number
+  title: string
+  url: string
+  state: 'OPEN' | 'CLOSED' | 'MERGED'
+  // approved, changes requested, review required, draft, or '' when the repository asks for no review
+  review: 'approved' | 'changes' | 'required' | 'draft' | ''
+  checks: { pass: number; fail: number; pending: number; skip: number; failing: { name: string; link: string }[] }
 }
