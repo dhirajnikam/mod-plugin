@@ -61,13 +61,12 @@ export function applyRefusal(stderr: string): string[] {
   return [...out]
 }
 
-// The worktree Claude Code made for an isolated agent: one that was not there before it started, that no other agent
-// holds, and that Cockpit did not make itself (those live under cockpit-worktrees); one where Claude Code keeps its own
-// (.claude/worktrees/) before any other made meanwhile, say by another session. None when there is no such
+// The worktree Claude Code made for an isolated agent: only one where Claude Code keeps its own (.claude/worktrees/),
+// that was not there before the agent started and that no other agent holds. Any other new worktree (another
+// session's, one Cockpit made under cockpit-worktrees) is never taken; none when there is no such
 export function pickIsolated(list: { path: string; branch: string; head?: string }[], before: string[], claimed: string[]) {
   const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
   const was = new Set(before.map(norm))
   const held = new Set(claimed.map(norm))
-  const fresh = list.filter(w => !was.has(norm(w.path)) && !held.has(norm(w.path)) && !/\/cockpit-worktrees\//.test(norm(w.path)))
-  return fresh.find(w => /\/\.claude\/worktrees\//.test(norm(w.path))) ?? fresh[0] ?? null
+  return list.find(w => /\/\.claude\/worktrees\//.test(norm(w.path)) && !was.has(norm(w.path)) && !held.has(norm(w.path))) ?? null
 }

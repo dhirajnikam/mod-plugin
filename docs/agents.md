@@ -59,8 +59,9 @@ tab runs in a git worktree of its own, so two agents working at once never step 
 - It uses Claude Code's own worktree isolation. That is set on an agent's definition (`isolation: 'worktree'`), not on
   a start, so Cockpit registers a twin of each expert, of each agent you made and of a general-purpose agent, named
   `<name>-in-worktree`, that runs isolated; a ticked start of one of those types starts its twin, Claude Code makes
-  the worktree (and drops it again if the agent changed nothing), and Cockpit finds it in `git worktree list`: a new
-  one no other agent holds, in Claude Code's `.claude/worktrees/` before any other made meanwhile; its base is the
+  the worktree (and drops it again if the agent changed nothing), and Cockpit finds it in `git worktree list`: only a
+  new one in Claude Code's own `.claude/worktrees/` that no other agent holds (one another session made is never
+  taken); its base is the
   worktree's own commit. Twin starts go one at a time, so two never share a worktree. A twin is shown, rerun and tested
   as the agent it is a twin of, and an agent you make gets its twin at once. One whose worktree never shows changed
   nothing, and says so.

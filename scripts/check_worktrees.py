@@ -120,9 +120,8 @@ def listing(root):
     return out
 
 def pick(lst, before, claimed):
-    # pickIsolated of cockpit/hooks/worktrees.ts: new, unheld, not Cockpit's own; Claude Code's .claude/worktrees first
-    fresh = [w for w in lst if w['path'] not in before and w['path'] not in claimed and '/cockpit-worktrees/' not in w['path']]
-    return next((w for w in fresh if '/.claude/worktrees/' in w['path']), fresh[0] if fresh else None)
+    # pickIsolated of cockpit/hooks/worktrees.ts: only Claude Code's own (.claude/worktrees/), new and unheld
+    return next((w for w in lst if '/.claude/worktrees/' in w['path'] and w['path'] not in before and w['path'] not in claimed), None)
 
 with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as elsewhere:
     root, elsewhere = os.path.realpath(root), os.path.realpath(elsewhere)
@@ -138,7 +137,7 @@ with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as els
     got = pick(listing(root), before, [])
     check("Claude Code's worktree is picked, not one another session made meanwhile", got and got['path'].endswith('/.claude/worktrees/agent-a1'))
     check("its base is its own HEAD from git's list", got and got['head'] == head)
-    check('a worktree another agent holds is passed over', (pick(listing(root), before, [got['path']]) or {}).get('path', '').endswith('/other-session'))
+    check("with Claude Code's held by another agent, the other session's is still never taken", pick(listing(root), before, [got['path']]) is None)
     check("Cockpit's own worktrees are never picked", all('/cockpit-worktrees/' not in (pick(listing(root), [], c) or {'path': ''})['path'] for c in ([], [root])))
 
 if failures:

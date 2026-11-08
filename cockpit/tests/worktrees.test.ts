@@ -25,7 +25,7 @@ test("a worktree's place, its changes and what will not apply are read from git'
   expect(applyRefusal('')).toEqual([])
 })
 
-test("pickIsolated takes Claude Code's new worktree for an agent: not one there before, held by another agent, or made by Cockpit", () => {
+test("pickIsolated takes only Claude Code's own new worktree for an agent: never one there before, held by another agent, made by Cockpit or by anyone else", () => {
   const list = [
     { path: '/repo', branch: 'main' },
     { path: '/repo/.git/cockpit-worktrees/ag1-1', branch: 'cockpit/ag1-1' },
@@ -37,8 +37,10 @@ test("pickIsolated takes Claude Code's new worktree for an agent: not one there 
   expect(pickIsolated(list, ['/repo'], [])?.path).toBe('/repo/.claude/worktrees/agent-a1')
   // Not one another agent holds
   expect(pickIsolated(list, ['/repo'], ['/repo/.claude/worktrees/agent-a1'])?.path).toBe('/repo/.claude/worktrees/agent-a2')
-  // Not one there before, Windows slashes and trailing slashes alike
-  expect(pickIsolated(list, ['\\repo', '/repo/.claude/worktrees/agent-a1/'], ['/repo/.claude/worktrees/agent-a2'])?.path).toBe('/tmp/someone-else')
+  // Not one there before, Windows slashes and trailing slashes alike; and with Claude Code's both out of the running,
+  // the new worktree another session made is still never taken: only Claude Code's own are
+  expect(pickIsolated(list, ['\\repo', '/repo/.claude/worktrees/agent-a1/'], ['/repo/.claude/worktrees/agent-a2'])).toBe(null)
+  expect(pickIsolated([list[0]!, list[2]!], ['/repo'], [])).toBe(null)
   // Never one Cockpit made; none at all when nothing is new
   expect(pickIsolated([list[0]!, list[1]!], ['/repo'], [])).toBe(null)
 })
