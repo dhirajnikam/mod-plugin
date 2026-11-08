@@ -558,8 +558,10 @@ export async function makeWorktree($: $, id: string): Promise<{ path: string; br
 // What a worktree agent changed: its worktree's files snapshotted with the turn plan run inside it, against the commit
 // it started from. Cockpit's experts never commit, so the files are the work
 export async function measureWorktree($: $, agentId: string) {
+  // One Claude Code isolated: found first, if Cockpit has not yet
+  if ((await read($, S)).agents.find(a => a.id === agentId)?.worktree?.claude) await findIsolated($, agentId)
   const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
-  if (!w || w.removed) return null
+  if (!w || w.removed || !w.path) return null
   const inside: Run = (argv, env, stdin) => $.process.run(argv, { cwd: w.path, env, timeoutMs: 30_000, ...(stdin !== undefined ? { stdin } : {}) })
   const snap = await snapshot(`refs/cockpit/worktrees/${w.path.split('/').pop()}`, inside)
   if (!snap.commit) return null
@@ -620,4 +622,28 @@ export async function dropWorktree($: $, w: { path: string; branch: string }) {
   const run = await turnRun($)
   await run(fillArgs(WORKTREE_COMMANDS.remove, { path: w.path }), {})
   await run(fillArgs(WORKTREE_COMMANDS.dropBranch, { branch: w.branch }), {})
+}
+
+// The worktrees git knows of, with their branches (`git worktree list --porcelain`), paths with forward slashes
+export async function listWorktrees($: $): Promise<{ path: string; branch: string }[]> {
+  const run = await turnRun($)
+  const out = (await run(WORKTREE_COMMANDS.list, {})).stdout
+  return out.split(/\n\n+/).map(b => ({ path: (b.match(/^worktree (.+)$/m)?.[1] ?? '').replace(/\\/g, '/'), branch: (b.match(/^branch refs\/heads\/(.+)$/m)?.[1] ?? '') })).filter(w => w.path)
+}
+// Before an isolated twin starts: the commit it starts from, and the worktrees there already, to tell its own from them
+export async function beforeIsolated($: $): Promise<{ base: string; before: string[] } | null> {
+  const run = await turnRun($)
+  const head = (await run(WORKTREE_COMMANDS.head, {})).stdout.trim()
+  if (!head) return null
+  return { base: head, before: (await listWorktrees($)).map(w => w.path) }
+}
+// The worktree Claude Code made for an agent: the one not there before it started; kept on the agent once found
+export async function findIsolated($: $, agentId: string) {
+  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  if (!w?.claude || w.path || !w.before) return w ?? null
+  const fresh = (await listWorktrees($)).find(x => !w.before!.includes(x.path))
+  if (!fresh) return null
+  const found = { ...w, path: fresh.path, branch: fresh.branch || '(detached)', before: undefined }
+  await set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, worktree: found } : a)) }))
+  return found
 }

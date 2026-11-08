@@ -7,7 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - **Agents in their own worktree**: with **In its own worktree** ticked (New agent form, or beside Team), an agent runs
-  in a git worktree Cockpit makes from your commit on a branch of its own, so agents working at once never collide.
+  in a worktree of its own through Claude Code's worktree isolation (each expert, agent you made and a general-purpose
+  agent has a `-in-worktree` twin registered with `isolation: 'worktree'`; another plugin's type gets a worktree
+  Cockpit makes), so agents working at once never collide.
   Its row shows its branch and what it changed; **Bring back** applies that to your files after you confirm (a clash
   refuses and changes nothing), **Remove worktree** removes it and keeps the branch. `scripts/check_worktrees.py`
   proves the git commands on a real repository, in CI.

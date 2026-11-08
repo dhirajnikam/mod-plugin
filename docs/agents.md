@@ -56,10 +56,15 @@ folder and name any test they leave in the repository.
 Tick **In its own worktree** (in the New agent form, or beside Team, the same setting) and an agent you start from the
 tab runs in a git worktree of its own, so two agents working at once never step on each other or on your files.
 
-- Cockpit makes the worktree just before the agent starts: from your current commit, on a branch of its own
-  (`cockpit/<id>`), under the repository's git folder (`.git/cockpit-worktrees/`), so `git status` and turn
-  snapshots never see it. With no commit yet, or a worktree git refuses to make, the agent runs in your tree and a
-  toast says why; so does one Claude starts for you when Cockpit's own start is refused.
+- It uses Claude Code's own worktree isolation. That is set on an agent's definition (`isolation: 'worktree'`), not on
+  a start, so Cockpit registers a twin of each expert, of each agent you made and of a general-purpose agent, named
+  `<name>-in-worktree`, that runs isolated; a ticked start of one of those types starts its twin, Claude Code makes
+  the worktree (and drops it again if the agent changed nothing), and Cockpit finds it in `git worktree list`.
+- Another plugin's agent type, which Cockpit cannot redefine, gets a worktree Cockpit makes itself just before it
+  starts: from your current commit, on a branch `cockpit/<id>`, under `.git/cockpit-worktrees/`, so `git status` and
+  turn snapshots never see it.
+- With no commit yet, or a worktree git refuses to make, the agent runs in your tree and a toast says why; so does one
+  Claude starts for you when Cockpit's own start is refused.
 - Its row shows its branch and, once it finishes, the files and +/− it changed there against the commit it started
   from (Cockpit's experts never commit, so its files are its work).
 - **⇲ Bring back** asks first, then applies those changes to your working tree's files (never your staged changes):

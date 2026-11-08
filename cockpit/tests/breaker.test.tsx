@@ -468,16 +468,22 @@ test('agents md without frontmatter, CRLF, empty tools, colonless line', { timeo
     'g.md': '---\nname: g\n---\nbody',
   })
   // b.md has Windows line endings (CRLF): it registers like the rest
-  expect(specs.map(s => s.name).sort()).toEqual(['b', 'c', 'd', 'f', 'g'])
-  expect(specs.find(s => s.name === 'c').tools).toBeUndefined()
-  expect(specs.find(s => s.name === 'f').tools).toEqual(['Read', 'Bash'])
+  // Each expert, and its twin that runs in a worktree of its own (Claude Code's isolation)
+  const own = specs.filter(s => !s.isolation)
+  expect(own.map(s => s.name).sort()).toEqual(['b', 'c', 'd', 'f', 'g'])
+  expect(specs.filter(s => s.isolation === 'worktree').map(s => s.name).sort()).toEqual(['agent-in-worktree', 'b-in-worktree', 'c-in-worktree', 'd-in-worktree', 'f-in-worktree', 'g-in-worktree'])
+  expect(own.find(s => s.name === 'c').tools).toBeUndefined()
+  expect(own.find(s => s.name === 'f').tools).toEqual(['Read', 'Bash'])
+  expect(specs.find(s => s.name === 'f-in-worktree').tools).toEqual(['Read', 'Bash'])
 })
 
 // End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
 test('registerExperts survives a failing register and unreadable files', { timeoutMs: 20_000 }, async ($, on) => {
   const { r, specs } = await boot($, on, { 'z.md': '---\nname: z\ndescription: d\n---\nb', 'bad.md': undefined as never }, true)
   expect(JSON.stringify(r)).not.toContain('err')
-  expect(specs.length).toBe(1)
+  // The one readable expert, its twin, and the general-purpose twin
+  expect(specs.filter(s => !s.isolation).length).toBe(1)
+  expect(specs.length).toBe(3)
 })
 
 test('verifyState with only the Prover run is not passed; stopped agents not passed', async () => {

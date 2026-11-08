@@ -62,7 +62,8 @@ export type Agent = {
   // The plugin that provides its type: 'engine' for the built-ins, 'cockpit' for the experts, else another plugin's
   provider?: string
   // Its own git worktree, when it ran in one: where, on which branch, from which commit, and what it changed there
-  worktree?: { path: string; branch: string; base: string; snap?: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
+  // claude: made by Claude Code's own isolation (path '' and `before` set while Cockpit has yet to find it)
+  worktree?: { path: string; branch: string; base: string; claude?: boolean; before?: string[]; snap?: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }

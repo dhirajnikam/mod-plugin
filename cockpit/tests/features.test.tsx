@@ -248,7 +248,9 @@ test('the six experts register from the agents folder at session start', async (
   const r = await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(e => ({ err: String(e) }))
   expect(JSON.stringify(r)).not.toContain('err')
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
-  expect(log.registered.sort()).toEqual(['breaker', 'builder', 'planner', 'prover', 'reviewer', 'scribe'])
+  // The six, and a twin of each (plus a general-purpose one) that runs in a worktree of its own
+  expect(log.registered.filter(n => !n.endsWith('-in-worktree')).sort()).toEqual(['breaker', 'builder', 'planner', 'prover', 'reviewer', 'scribe'])
+  expect(log.registered.filter(n => n.endsWith('-in-worktree')).sort()).toEqual(['agent-in-worktree', 'breaker-in-worktree', 'builder-in-worktree', 'planner-in-worktree', 'prover-in-worktree', 'reviewer-in-worktree', 'scribe-in-worktree'])
 })
 
 test('a tester that cannot start says so', async ($, on) => {
