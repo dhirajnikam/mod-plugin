@@ -1,6 +1,6 @@
 {
   "name": "cockpit-agents",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Cockpit's Agents tab: the Build, Verify and Review pipelines, the six experts, agents you describe, their trackers and two testers on every change",
   "dependencies": [
     "cockpit-core"

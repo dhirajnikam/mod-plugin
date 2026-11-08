@@ -1,6 +1,6 @@
 {
   "name": "cockpit-git",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Cockpit's Git tab: the next commit written from the diff, commit modes from manual to automatic, accounts, and a git graph of every branch",
   "dependencies": [
     "cockpit-core"

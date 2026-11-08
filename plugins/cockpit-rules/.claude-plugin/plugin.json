@@ -1,6 +1,6 @@
 {
   "name": "cockpit-rules",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Cockpit's Rules tab: the hooks, permission rules and CLAUDE.md instructions of the repository or of you, to add, edit and delete",
   "dependencies": [
     "cockpit-core"

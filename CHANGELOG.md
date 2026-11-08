@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-08
+
 ### Added
 - The autopilot in two roles. **Task** (`/cockpit task`, or `autopilot` as before) works on one goal until it is
   achieved. **Product owner** (`/cockpit product <vision>`) leads the product: each round it studies the product and
@@ -132,6 +134,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 See the git history.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/commits/main
-[0.5.0]: https://github.com/dhirajnikam/mod-plugin/commits/main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...main
+[0.6.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/dhirajnikam/mod-plugin/commit/98c45bd

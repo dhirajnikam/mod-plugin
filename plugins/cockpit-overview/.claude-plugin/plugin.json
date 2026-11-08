@@ -1,6 +1,6 @@
 {
   "name": "cockpit-overview",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Cockpit's Overview tab: the task's progress ring and steps, checks, the agents as a neural view, changed files, context, and the judges' decisions",
   "dependencies": [
     "cockpit-core"
