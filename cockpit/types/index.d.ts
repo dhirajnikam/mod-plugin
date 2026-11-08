@@ -67,6 +67,8 @@ export type RuleFiles = { settingsPath: string; settings: string; mdPath: string
 // An MCP server Claude Code would start here: env and header names only, never their values
 // target: what it runs with tokens masked (masked: some were); shadowed: a server of the same name in a nearer scope wins
 export type McpRow = { key: string; name: string; scope: 'project' | 'local' | 'user'; kind: 'stdio' | 'http' | 'sse'; target: string; masked: boolean; secrets: string[]; state: 'on' | 'off' | 'approval' | 'shadowed' }
+// A skill's SKILL.md: its folder, what its frontmatter says, and why it cannot be changed, if so
+export type SkillFile = { path: string; folder: string; name: string; description: string; auto: boolean; error: string }
 // The project's .mcp.json (its path, the only one Cockpit writes, and why it cannot be changed, if so) and every server
 // that applies here; no file's text is kept, since env values live in it
 export type McpFiles = { path: string; error: string; rows: McpRow[] }
@@ -195,7 +197,7 @@ export type Ph = {
   goal?: { text: string; at: number }
   autopilot?: Autopilot
   // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
-  rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles }
+  rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles; skills?: { repo: SkillFile[]; user: SkillFile[] } }
   // Slow work a press started, running past the press: its kind and the words that say it ("Pushing")
   busy?: Record<string, string>
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current

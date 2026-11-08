@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The Rules tab lists the skills in `.claude/skills` and `~/.claude/skills`, each with its name, description and
+  whether Claude loads it by itself or only when you call `/name`. **Call only** and **Let Claude** set or remove
+  `disable-model-invocation` in its `SKILL.md`, changing nothing else; a `SKILL.md` whose frontmatter cannot be read
+  is shown read only.
 - The Rules tab lists the MCP servers that apply here: the project's from `.mcp.json`, this project's local ones and
   yours from `~/.claude.json`, each with its kind, what it runs, and whether it is on, off or needs approval. The
   project's can be added, edited and deleted in `.mcp.json`, the rest of the file kept and a file that is not valid
@@ -19,6 +23,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   spaces in their place.
 
 ### Fixed
+- The Agents tab no longer marks Cockpit's own experts ↗ (from outside Cockpit) when Claude starts them and the
+  engine names their plugin as itself or with its marketplace.
 - A long branch name no longer runs past a narrow pane: the Git tab's header, the pane's header and the commit card
   cut it with an ellipsis.
 - A repository with no `origin` and no main, master or develop branch no longer keeps the branch you first opened

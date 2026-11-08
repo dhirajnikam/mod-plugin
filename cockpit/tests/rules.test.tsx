@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines } from '../hooks/rules'
+import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillOf } from '../hooks/rules'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -280,4 +280,102 @@ test("MCP servers: tokens in a target are masked, nearer servers win, Windows pr
   expect(oddRow.name).toBe('a b')
   expect(changeMcp(odd, { edit: oddRow, name: 'ab', target: '' })).toEqual({ mcpServers: { ab: { command: 'x' } } })
   expect(changeMcp(odd, { remove: oddRow })).toEqual({})
+})
+
+test('skills: name, description and invocation read from the frontmatter, and the switch changes only its own line', async () => {
+  const md = '---\nname: release\ndescription: Cut a release and write its notes\n---\n\n# Release\n\nSteps, with --- in the body\n'
+  expect(skillOf(md)).toEqual({ name: 'release', description: 'Cut a release and write its notes', auto: true, error: '' })
+  // Quoted, folded and literal descriptions; the key set to true
+  expect(skillOf('---\nname: "q"\ndescription: "Say \\"hi\\" twice"\n---\n').description).toBe('Say "hi" twice')
+  expect(skillOf("---\ndescription: 'it''s fine'\n---\n").description).toBe("it's fine")
+  expect(skillOf('---\nname: f\ndescription: >\n  Folded over\n  two lines\ndisable-model-invocation: true\n---\nbody').description).toBe('Folded over two lines')
+  expect(skillOf('---\ndescription: |-\n  Literal\n  block\n---\n').description).toBe('Literal block')
+  expect(skillOf('---\nname: f\ndisable-model-invocation: true\n---\n').auto).toBe(false)
+  // Control characters in what it says draw as spaces
+  expect(skillOf('---\ndescription: a\u001b[2Jb\n---\n').description).toBe('a [2Jb')
+  // Off and back on: the file is exactly as it was, the body untouched, CRLF kept
+  const off = setInvocation(md, false)!
+  expect(off).toBe('---\nname: release\ndescription: Cut a release and write its notes\ndisable-model-invocation: true\n---\n\n# Release\n\nSteps, with --- in the body\n')
+  expect(skillOf(off).auto).toBe(false)
+  expect(setInvocation(off, true)).toBe(md)
+  const crlf = md.replace(/\n/g, '\r\n')
+  expect(setInvocation(crlf, false)).toBe(off.replace(/\n/g, '\r\n'))
+  expect(setInvocation(setInvocation(crlf, false)!, true)).toBe(crlf)
+  // A key already there is set, not repeated; switching on what is on changes nothing
+  expect(setInvocation('---\ndisable-model-invocation: false\n---\nb', false)).toBe('---\ndisable-model-invocation: true\n---\nb')
+  expect(setInvocation(md, true)).toBe(md)
+  // No frontmatter, or one never closed: unreadable, never changed
+  expect(skillOf('# Just markdown').error).toContain('no frontmatter')
+  expect(skillOf('---\nname: x\n').error).toContain('not closed')
+  expect(setInvocation('# Just markdown', false)).toBe(null)
+  expect(setInvocation('---\nname: x\n', false)).toBe(null)
+})
+
+test("the Rules tab lists each scope's skills and switches one between Claude loading it and /name only, writing only that SKILL.md", { timeoutMs: 20_000 }, async ($, on) => {
+  const release = '---\nname: release\ndescription: Cut a release and write its notes\n---\n\n# Release\n'
+  const notes = '---\r\nname: notes\r\ndescription: Keep meeting notes\r\ndisable-model-invocation: true\r\n---\r\nbody\r\n'
+  const disk: Record<string, string> = {
+    '/repo/.claude/skills/release/SKILL.md': release,
+    '/repo/.claude/skills/broken/SKILL.md': '# no frontmatter here',
+    '/repo/.claude/skills/empty/README.md': 'a folder with no SKILL.md',
+    '/home/me/.claude/skills/notes/SKILL.md': notes,
+  }
+  const writes: string[] = []
+  const toasts: string[] = []
+  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('ui.toast', async (_: unknown, e: any) => (toasts.push(String(e.text)), { value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('env.get', async (_: unknown, e: any) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }) as never)
+  on('fs.exists', async (_: unknown, e: any) => ({ value: posix(e.path) in disk }))
+  // A folder's entries, from the paths on the disk
+  on('fs.list', async (_: unknown, e: any) => {
+    const dir = `${posix(e.path)}/`
+    const kids = new Map<string, string>()
+    for (const p of Object.keys(disk)) if (p.startsWith(dir)) { const [first, ...rest] = p.slice(dir.length).split('/'); kids.set(first!, rest.length ? 'dir' : 'file') }
+    return { value: [...kids].map(([name, kind]) => ({ name, kind })) } as never
+  })
+  on('fs.read', async (_: unknown, e: any) => {
+    if (!(posix(e.path) in disk)) throw new Error('ENOENT')
+    return { value: disk[posix(e.path)] } as never
+  })
+  on('fs.write', async (_: unknown, e: any) => (writes.push(posix(e.path)), (disk[posix(e.path)] = e.text), { value: undefined }))
+  on('process.run', async (_: unknown, e: any) => {
+    const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
+    return cmd === 'git rev-parse --show-toplevel' ? ok('/repo\n') : ok('')
+  })
+  on('command.run', async () => ({ text: '' }))
+  await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
+  const ui = await $.ui.mount(pane as never)
+  let d = JSON.stringify(await ui.drawn())
+  // This repository: release, Claude loads it; broken, read only with why; the folder with no SKILL.md left out
+  expect(d).toContain('Cut a release and write its notes')
+  expect(d).toContain('Claude loads it')
+  expect(d).toContain('it has no frontmatter')
+  expect(d).not.toContain('sk-/repo/.claude/skills/broken/SKILL.md')
+  expect(d).not.toContain('"empty"')
+  // Call only, then back: the file ends exactly as it began
+  await ui.press({ key: 'sk-/repo/.claude/skills/release/SKILL.md' })
+  expect(disk['/repo/.claude/skills/release/SKILL.md']).toContain('disable-model-invocation: true')
+  expect(JSON.stringify(await ui.drawn())).toContain('only when you call /release')
+  await ui.press({ key: 'sk-/repo/.claude/skills/release/SKILL.md' })
+  expect(disk['/repo/.claude/skills/release/SKILL.md']).toBe(release)
+  // You, everywhere: notes, kept for /notes; let Claude load it, the CRLF file kept as CRLF
+  await ui.press({ key: 'rscope-user' })
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('only when you call /notes')
+  await ui.press({ key: 'sk-/home/me/.claude/skills/notes/SKILL.md' })
+  expect(disk['/home/me/.claude/skills/notes/SKILL.md']).toBe('---\r\nname: notes\r\ndescription: Keep meeting notes\r\n---\r\nbody\r\n')
+  // A SKILL.md broken by hand after it was shown is refused, read again, and left as it was
+  disk['/home/me/.claude/skills/notes/SKILL.md'] = '---\nname: notes\n'
+  await ui.press({ key: 'sk-/home/me/.claude/skills/notes/SKILL.md' })
+  expect(disk['/home/me/.claude/skills/notes/SKILL.md']).toBe('---\nname: notes\n')
+  expect(toasts.join('\n')).toContain('Cockpit will not change it')
+  expect(JSON.stringify(await ui.drawn())).toContain('not closed')
+  // Only those two SKILL.md files were ever written
+  expect([...new Set(writes)].sort()).toEqual(['/home/me/.claude/skills/notes/SKILL.md', '/repo/.claude/skills/release/SKILL.md'])
+  await ui.unmount()
 })

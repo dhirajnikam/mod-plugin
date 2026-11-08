@@ -222,3 +222,49 @@ export function changeMcp(j: Json, op: { add: { name: string; target: string } }
   if (!Object.keys(obj(next.mcpServers)).length) delete next.mcpServers
   return next
 }
+
+// Skills: a folder with a SKILL.md whose YAML frontmatter (between --- lines at its top) names it, says what it is
+// for, and may hold `disable-model-invocation: true` (Claude does not load it by itself; you call it as /name). Only
+// the flat keys Claude Code reads are parsed; the file is otherwise never interpreted
+export type Skill = { name: string; description: string; auto: boolean; error: string }
+const INVOKE = 'disable-model-invocation'
+const eolOf = (text: string) => (text.includes('\r\n') ? '\r\n' : '\n')
+// The frontmatter's lines and where it closes, or why it cannot be read
+function front(text: string): { lines: string[]; close: number; error: string } {
+  const lines = text.split(eolOf(text))
+  if (lines[0]?.trim() !== '---') return { lines, close: -1, error: 'it has no frontmatter (--- at its top)' }
+  const close = lines.findIndex((l, i) => i > 0 && (l.trim() === '---' || l.trim() === '...'))
+  return close < 0 ? { lines, close, error: 'its frontmatter is not closed (no second ---)' } : { lines, close, error: '' }
+}
+export function skillOf(text: string): Skill {
+  const { lines, close, error } = front(text)
+  if (error) return { name: '', description: '', auto: true, error }
+  const keys: Record<string, string> = {}
+  for (let i = 1; i < close; i++) {
+    const m = lines[i]!.match(/^([A-Za-z][\w-]*):\s*(.*?)\s*$/)
+    if (!m) continue
+    let value = m[2]!
+    // A folded (>) or literal (|) block: the indented lines under it, read as one line
+    if (/^[>|][+-]?$/.test(value)) {
+      const block: string[] = []
+      while (i + 1 < close && /^\s+\S/.test(lines[i + 1]!)) block.push(lines[++i]!.trim())
+      value = block.join(' ')
+    } else if (/^(["']).*\1$/.test(value)) value = value.slice(1, -1).replace(/\\"/g, '"').replace(/''/g, "'")
+    keys[m[1]!] = value
+  }
+  return { name: plain(keys.name ?? ''), description: plain(keys.description ?? ''), auto: keys[INVOKE] !== 'true', error: '' }
+}
+
+// Lets Claude load the skill by itself (the line goes: that is the default) or keeps it for /name only (the line is
+// set, or added before the frontmatter closes). Only that line changes; null when the frontmatter cannot be read
+export function setInvocation(text: string, auto: boolean): string | null {
+  const { lines, close, error } = front(text)
+  if (error) return null
+  const at = lines.findIndex((l, i) => i > 0 && i < close && new RegExp(`^${INVOKE}:`).test(l))
+  if (auto) {
+    if (at < 0) return text
+    lines.splice(at, 1)
+  } else if (at >= 0) lines[at] = `${INVOKE}: true`
+  else lines.splice(close, 0, `${INVOKE}: true`)
+  return lines.join(eolOf(text))
+}

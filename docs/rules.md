@@ -26,6 +26,18 @@ same name in a nearer scope (local wins over project, project over user).
 - `.mcp.json` is read again before each change and written back with the rest of it kept; one that is not valid JSON
   is shown read-only with the error, never overwritten.
 
+## Skills
+
+The skills in `.claude/skills` (**This repository**) or `~/.claude/skills` (**You, everywhere**): each folder with a
+`SKILL.md`, by the name and description in its frontmatter, and whether **Claude loads it** by itself (its
+description sits in every session's context so Claude can pick it) or it runs **only when you call /name**.
+
+- **Call only** adds `disable-model-invocation: true` to the frontmatter; **Let Claude** takes the line out again.
+  Nothing else in the file changes, and switching back leaves it exactly as it was (line endings too).
+- The `SKILL.md` is read again before each switch; one whose frontmatter cannot be read (no `---` at its top, or
+  never closed) is shown read only with why, never written.
+- Skills a plugin brings are not listed here; the Agents tab shows the agents plugins add.
+
 ![The Rules tab](images/rules.png)
 
 [All docs](README.md) · [Project README](../README.md)

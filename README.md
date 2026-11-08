@@ -31,7 +31,7 @@ at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin up
 | [**Activity**](docs/activity.md) | A live feed of every file read, edited or searched; your codebase's features as a map, with what is being worked on lit; the impact of a change |
 | [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change |
 | [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch |
-| [**Rules**](docs/rules.md) | The hooks, permission rules, MCP servers and `CLAUDE.md` instructions of the repository or of you, to add, edit and delete |
+| [**Rules**](docs/rules.md) | The hooks, permission rules, MCP servers, skills and `CLAUDE.md` instructions of the repository or of you, to add, edit, delete or switch |
 
 Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in
 the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).

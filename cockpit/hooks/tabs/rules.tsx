@@ -75,7 +75,7 @@ import {
 import type { IconState, Neuron } from '../logic'
 import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
 import type { FeatureMark } from '../memory'
-import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeMcp, writeSettings } from '../actions'
+import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeMcp, writeSettings, writeSkill } from '../actions'
 import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
 import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
@@ -139,6 +139,7 @@ export function Rules($: $, v: V) {
   const lines = ruleLines(f.md)
   const mcp = s.rules?.mcp
   const mcpError = mcp?.error ?? ''
+  const skills = s.rules?.skills?.[scope] ?? []
   const servers: McpRow[] = (mcp?.rows ?? []).filter(m => (scope === 'repo' ? m.scope !== 'user' : m.scope === 'user'))
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -277,6 +278,27 @@ export function Rules($: $, v: V) {
             </Box>
           )
         })}
+      </Box>
+
+      <Box flexDirection="column">
+        {head('Skills', skills.length, '', scope === 'repo' ? '.claude/skills' : '~/.claude/skills')}
+        {skills.length === 0 && <Text color={t.faint} size="footnote">None yet.</Text>}
+        {skills.map(k => (
+          <Box key={`k:${k.path}`} columnGap={sp(v, 1)} alignItems="center">
+            <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+              <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                <Text color={t.accent} size="footnote" wrap="truncate-end">{k.name || k.folder}</Text>
+                {!k.error && <Text color={k.auto ? t.ok : t.dim} size="footnote">{k.auto ? 'Claude loads it' : `only when you call /${k.name || k.folder}`}</Text>}
+              </Box>
+              {k.error ? <Text color={t.bad} size="footnote" wrap="wrap">{`SKILL.md: ${k.error}. Shown read only.`}</Text> : <Text color={t.text} size="footnote" wrap="wrap">{k.description || '(no description)'}</Text>}
+            </Box>
+            {!k.error && (
+              <Button key={`sk-${k.path}`} plain onPress={() => writeSkill($, k.path, !k.auto)}>
+                <Text color={t.accent} size="footnote">{k.auto ? 'Call only' : 'Let Claude'}</Text>
+              </Button>
+            )}
+          </Box>
+        ))}
       </Box>
 
       <Box flexDirection="column">
