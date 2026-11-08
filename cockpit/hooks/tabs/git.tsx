@@ -14,6 +14,7 @@ import {
   ghLoginToken,
   ghLoginWeb,
   planCommit,
+  pickRepo,
   pushNow,
   pullNow,
   showCommit,
@@ -85,7 +86,21 @@ import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
 import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
+// With several repos under the session folder, a picker above the tab
 export function Git($: $, v: V) {
+  const { Box, Select } = v.ui
+  const { repos, repoDir } = v.s
+  if (repos.length < 2) return GitBody($, v)
+  const label = (r: Ph['repos'][number]) => `${r.name}${r.branch ? `  ⎇ ${r.branch}` : ''}${r.changed ? `  ·  ${r.changed} changed` : ''}`
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Select key="git-repo" label="Repo" value={repoDir} options={repos.map(r => ({ value: r.dir, label: label(r) }))} onSelect={val => pickRepo($, val)} />
+      {GitBody($, v)}
+    </Box>
+  )
+}
+
+function GitBody($: $, v: V) {
   const { Box, Button, Input, Select, Text } = v.ui
   const { s, t } = v
   const g = s.git

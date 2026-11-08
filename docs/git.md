@@ -15,6 +15,14 @@ The first time you open the Git tab in a repository it asks five things, once: t
 - Failed pushes, PRs and commits say why in the toast.
 - Git runs from the repository's top folder, and the settings and account are kept per repository, so a session working in a subfolder commits the right paths with the same settings.
 
+## Several repositories
+
+When the session's folder is not itself a repository but holds some, one or two levels down (`~/work/` with `api/` and `web/`), the tab finds them (folders with a `.git`, skipping `node_modules` and dot folders; at most 20) and shows a **Repo** picker above everything else, each name with its branch and changed-file count. With one repository, or a session inside one, there is no picker and nothing changes.
+
+- The chosen repository is where every git and gh command runs (status, commit, push, pull, pull request, turn snapshots), and its settings are kept as for any repository. The choice is remembered per session folder; the first time it is the first repository found.
+- **Auto-follow**: when Claude edits or writes a file inside another found repository, the tab switches to it. A repository you pick by hand stays chosen for the rest of the session.
+- A turn that edited several repositories commits only the chosen one; switch and commit the others.
+
 ## Accounts
 
 The **Account** box shows the saved login; **Modify** opens the choices and the ways to add one. It lists your global git identity (pushing as the gh login of the same name, else gh's active one) and each other GitHub login `gh auth status` reports, with its GitHub name and no-reply address.

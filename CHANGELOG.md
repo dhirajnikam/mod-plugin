@@ -5,6 +5,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- The Git tab works from a folder that holds several repositories (`~/work/` with `api/` and `web/`): a Repo picker
+  shows each one's branch and changes, every git and gh command follows the chosen one, and an edit in another
+  repository switches to it unless you picked by hand.
+
 ### Removed
 - The parts: `cockpit-core` and its add-ons (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`, `-chat`)
   are gone from the marketplace, along with `scripts/split.py`. Install `cockpit`, which holds all of them; if you

@@ -9,7 +9,7 @@ import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 
 // The session's Cockpit state (see state.ts)
-export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 export type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -88,15 +88,37 @@ export async function note($: $, text: string) {
 
 // The repository's top folder, per session folder: git names changed files from there, so a session working in a
 // subfolder (cockpit/) must run git there too, or `git add cockpit/x` looks for cockpit/cockpit/x
-const roots = new Map<string, string>()
+const roots = new Map<string, { top: string; repos: string[] }>()
+const SKIP = (n: string) => n.startsWith('.') || n === 'node_modules'
+// The git repos one or two levels under a folder that is not itself in one (a folder with a .git directory or file)
+// ponytail: two levels and 20 repos; deeper layouts pick by hand or open the session in the repo
+async function findRepos($: $, cwd: string) {
+  const out: string[] = []
+  const isRepo = (d: string) => $.fs.exists(`${d}/.git`).catch(() => false)
+  const dirs = async (d: string) => (await $.fs.list(d).catch(() => [])).filter(e => e.kind === 'dir' && !SKIP(e.name)).map(e => `${d}/${e.name}`)
+  for (const a of await dirs(cwd)) {
+    if (out.length >= 20) break
+    if (await isRepo(a)) out.push(a)
+    else for (const b of await dirs(a)) if (out.length < 20 && (await isRepo(b))) out.push(b)
+  }
+  return out
+}
 export async function repoRoot($: $) {
   const cwd = await $.session.cwd().catch(() => '')
-  const known = roots.get(cwd)
-  if (known !== undefined) return known
-  const r = await $.process.run(['git', 'rev-parse', '--show-toplevel']).catch(() => ({ exitCode: 1, stdout: '', stderr: '' }))
-  const top = r.exitCode === 0 && /^([A-Za-z]:)?[\\/]/.test(r.stdout.trim()) ? r.stdout.trim() : cwd
-  roots.set(cwd, top)
-  return top
+  let k = roots.get(cwd)
+  if (k === undefined) {
+    const r = await $.process.run(['git', 'rev-parse', '--show-toplevel']).catch(() => ({ exitCode: 1, stdout: '', stderr: '' }))
+    const inRepo = r.exitCode === 0 && /^([A-Za-z]:)?[\\/]/.test(r.stdout.trim())
+    k = { top: inRepo ? r.stdout.trim() : cwd, repos: inRepo || !cwd ? [] : await findRepos($, cwd) }
+    roots.set(cwd, k)
+  }
+  if (!k.repos.length) return k.top
+  const s = await read($, S)
+  if (s.repoDir && k.repos.includes(s.repoDir)) return s.repoDir
+  const saved = await $.store.get(`repo:${cwd}`).catch(() => undefined)
+  const dir = k.repos.find(d => d === saved) ?? k.repos[0] ?? cwd
+  await set($, st => ({ repoDir: dir, repos: k.repos.map(d => st.repos.find(r => r.dir === d) ?? { dir: d, name: d.slice(cwd.length + 1), branch: '', changed: 0 }) }))
+  return dir
 }
 
 export async function git($: $, args: string[]) {
@@ -117,7 +139,8 @@ async function prefsKey($: $) {
 export async function moveSaved($: $, kind: 'git' | 'account') {
   const cwd = await $.session.cwd().catch(() => '')
   const root = await repoRoot($)
-  if (!cwd || cwd === root) return
+  // A folder of repos: the chosen repo is below the session folder, not its parent
+  if (!cwd || cwd === root || root.startsWith(`${cwd}/`)) return
   const old = await $.store.get(`${kind}:${cwd}`)
   if (old === undefined || old === null) return
   await $.store.set(`${kind}:${root}`, old)

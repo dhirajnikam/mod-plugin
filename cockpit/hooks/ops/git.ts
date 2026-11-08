@@ -8,11 +8,11 @@ import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCom
 import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
-import { claim, git, moveSaved, note, release, repoRoot, set, toast } from './core'
+import { claim, git, loadGitPrefs, moveSaved, note, release, repoRoot, set, toast } from './core'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
 
@@ -132,6 +132,40 @@ export async function refreshRepo($: $) {
   await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed }, git: { ...s.git, base: s.git.base || base } }))
   // The next commit's message is written in the background; Commit waits for it
   void suggestCommit($).catch(() => null)
+  await repoInfo($)
+}
+
+// With several repos found, each one's branch and changed-file count for the picker
+async function repoInfo($: $) {
+  const repos = (await read($, S)).repos
+  if (repos.length < 2) return
+  const info = await Promise.all(
+    repos.map(async r => {
+      const o = await $.process.run(['git', 'status', '--porcelain=v1', '-b'], { cwd: r.dir }).catch(() => ({ exitCode: 1, stdout: '' }))
+      const [head = '', ...rest] = o.stdout.split('\n')
+      return { ...r, branch: head.replace(/^## (No commits yet on )?/, '').split('...')[0] ?? '', changed: rest.filter(Boolean).length }
+    }),
+  )
+  await set($, { repos: info })
+}
+
+// Work on another found repo: every git and gh call follows repoRoot, so the tab's state is read again from it
+export async function pickRepo($: $, dir: string, hand = true) {
+  const s = await read($, S)
+  if (dir === s.repoDir || !s.repos.some(r => r.dir === dir)) return
+  await set($, { repoDir: dir, ...(hand ? { repoHand: true } : {}), git: INITIAL.git, staged: {}, pending: null })
+  await $.store.set(`repo:${await $.session.cwd().catch(() => '')}`, dir).catch(() => null)
+  await loadGitPrefs($)
+  await refreshGit($)
+}
+
+// Claude edited a file in another found repo: follow it, unless the person picked a repo by hand
+export async function followEdit($: $, file: string) {
+  await repoRoot($)
+  const s = await read($, S)
+  if (s.repoHand || s.repos.length < 2) return
+  const to = s.repos.find(r => file.startsWith(`${r.dir}/`))
+  if (to) await pickRepo($, to.dir, false)
 }
 
 // A commit opened in the graph: its author, date, whole message and the files it changed
