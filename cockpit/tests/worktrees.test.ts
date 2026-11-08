@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, worktreeFor } from '../hooks/worktrees'
+import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, pickIsolated, worktreeFor } from '../hooks/worktrees'
 
 test("a worktree's place, its changes and what will not apply are read from git's own output", () => {
   // Under the git folder, on a branch of its own, whatever the id holds; Windows paths made forward
@@ -23,6 +23,24 @@ test("a worktree's place, its changes and what will not apply are read from git'
   expect(applyRefusal('error: "a\\tb.txt": already exists in working directory')).toEqual(['a\tb.txt'])
   expect(applyRefusal('error: corrupt patch at line 7')).toEqual(['corrupt patch at line 7'])
   expect(applyRefusal('')).toEqual([])
+})
+
+test("pickIsolated takes Claude Code's new worktree for an agent: not one there before, held by another agent, or made by Cockpit", () => {
+  const list = [
+    { path: '/repo', branch: 'main' },
+    { path: '/repo/.git/cockpit-worktrees/ag1-1', branch: 'cockpit/ag1-1' },
+    { path: '/tmp/someone-else', branch: 'feature' },
+    { path: '/repo/.claude/worktrees/agent-a1', branch: 'worktree-agent-a1', head: 'h1' },
+    { path: '/repo/.claude/worktrees/agent-a2', branch: 'worktree-agent-a2', head: 'h1' },
+  ]
+  // Claude Code's own place before a worktree made elsewhere meanwhile
+  expect(pickIsolated(list, ['/repo'], [])?.path).toBe('/repo/.claude/worktrees/agent-a1')
+  // Not one another agent holds
+  expect(pickIsolated(list, ['/repo'], ['/repo/.claude/worktrees/agent-a1'])?.path).toBe('/repo/.claude/worktrees/agent-a2')
+  // Not one there before, Windows slashes and trailing slashes alike
+  expect(pickIsolated(list, ['\\repo', '/repo/.claude/worktrees/agent-a1/'], ['/repo/.claude/worktrees/agent-a2'])?.path).toBe('/tmp/someone-else')
+  // Never one Cockpit made; none at all when nothing is new
+  expect(pickIsolated([list[0]!, list[1]!], ['/repo'], [])).toBe(null)
 })
 
 // A session that spawns from the Agents tab; git answers as a repository with a commit, or none (fresh)
@@ -262,5 +280,120 @@ test("ticked, an agent runs in Claude Code's own worktree isolation through its 
   await ui.press({ key: 'spawn-go' })
   expect(log.ran.some(r => r.startsWith('git worktree add -q -b cockpit/'))).toBe(true)
   expect(log.spawned.at(-1)?.type).toBe('other:helper')
+  await ui.unmount()
+})
+
+// A session where the twins register at start and Claude Code makes a worktree for each twin it starts (made: which)
+function twinStand(on: any, made: (spawnedTwins: number) => string[]) {
+  const log = { ran: [] as string[], spawned: [] as { type: string; cwd?: string }[], registered: [] as { name: string; isolation?: string }[] }
+  on('clock.now', async () => ({ value: 1_700_000_000_000 }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('command.register', async () => ({ value: {} }) as never)
+  on('clock.every', async () => ({ value: {} }) as never)
+  on('session.start', async () => ({ cwd: '/repo' }))
+  on('model.complete', async () => ({ value: { isAnswered: true, text: '{"name": "docs-writer", "description": "Writes the docs", "prompt": "You write docs.", "tools": ["Read"]}', usage: { inputTokens: 1, outputTokens: 1 } } }) as never)
+  on('tool.check', async () => ({ decision: 'allow' }) as never)
+  on('fs.list', async () => ({ value: [] }) as never)
+  on('turn.complete', async () => ({ text: '' }))
+  on('session.measure', async () => ({ changed: [] }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000, percent: 1, breakdown: { categories: [], totalTokens: 1000 } }, rateLimits: [], cost: { usd: 0 } } }) as never)
+  on('agent.register', async (_: unknown, e: any) => (log.registered.push({ name: e.name, isolation: e.isolation }), { value: { agent: `cockpit:${e.name}` } }))
+  on('agent.spawn', async (_: unknown, e: any) => (log.spawned.push({ type: e.subagentType ?? e.subagent_type, cwd: e.cwd }), { model: 'haiku', agentId: `ag${log.spawned.length}` }))
+  on('process.run', async (_: unknown, e: any) => {
+    const cmd = (e.argv as string[]).join(' ')
+    log.ran.push(cmd)
+    const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd === 'git rev-parse --show-toplevel') return out('/repo\n')
+    if (cmd === 'git rev-parse --verify -q HEAD') return out('head1\n')
+    if (cmd === 'git worktree list --porcelain') {
+      const twins = log.spawned.filter(s => String(s.type).endsWith('-in-worktree')).length
+      return out(['worktree /repo\nHEAD head1\nbranch refs/heads/main', ...made(twins).map(p => `worktree ${p}\nHEAD c1a0de\nbranch refs/heads/worktree-${p.split('/').pop()}`)].join('\n\n') + '\n')
+    }
+    if (cmd === 'git rev-parse --git-path cockpit-index') return out('.git/cockpit-index\n')
+    if (cmd === 'git write-tree') return out('tree1\n')
+    if (cmd.startsWith('git commit-tree')) return out('snap1\n')
+    if (cmd.startsWith('git diff --numstat')) return out('1\t0\tx.ts\0')
+    return out('')
+  })
+  return log
+}
+const engineSpawn = ($: any, type: string, id: string) => $.agent.spawn({ tool_use_id: id, prompt: id, description: id, subagentType: type, provider: { plugin: 'cockpit', tier: 'user' }, parentModel: 'x', background: true, fork: false } as never)
+const finish = ($: any, agentId: string) => $.turn.complete({ agentId, answer: 'REPORT: ok', reason: 'answer', turnId: agentId, isAborted: false, durationMs: 1000 } as never)
+const start = async ($: any, ui: any, task: string) => {
+  await (ui as any).input({ key: 'spawn-task', text: task, kind: 'change' })
+  await ui.press({ key: 'spawn-go' })
+}
+
+test("a twin is shown as the agent it is, Rerun starts its twin again with no worktree of Cockpit's, and its base is the worktree's own", async ($, on) => {
+  const log = twinStand(on, n => (n ? ['/repo/.claude/worktrees/agent-a1'] : []))
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await ui.press({ key: 'spawn-wt' })
+  await start($, ui, 'tidy the docs')
+  await engineSpawn($, 'cockpit:agent-in-worktree', 'e1')
+  await finish($, 'ag2')
+  const d = JSON.stringify(await ui.drawn())
+  // Its own type and name, not the twin's
+  expect(d).not.toContain('agent-in-worktree')
+  expect(d).toContain('⎇ worktree-agent-a1 · 1 file +1 −0')
+  // The base is the worktree's own HEAD from git's list, not this checkout's
+  expect(log.ran).toContain('git diff --numstat --no-renames -z c1a0de snap1')
+  // Rerun: its twin again, and no worktree Cockpit makes
+  const mark = log.spawned.length
+  await ui.press({ key: 'restart-ag2' })
+  expect(log.spawned.slice(mark).map(s => s.type)).toEqual(['cockpit:agent-in-worktree'])
+  expect(log.ran.some(r => r.startsWith('git worktree add'))).toBe(false)
+  await ui.unmount()
+})
+
+test('two twins started together each get their own worktree, a foreign one is left alone, and one that changed nothing shows no ghost', async ($, on) => {
+  // Each twin's worktree appears once it starts, beside one another session made meanwhile; the third twin changes nothing
+  const log = twinStand(on, n => ['/tmp/another-session', ...(n >= 1 ? ['/repo/.claude/worktrees/agent-a1'] : []), ...(n >= 2 ? ['/repo/.claude/worktrees/agent-a2'] : [])])
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await ui.press({ key: 'spawn-wt' })
+  await start($, ui, 'one')
+  await ui.press({ key: 'spawn-toggle' })
+  await start($, ui, 'two')
+  await ui.press({ key: 'spawn-toggle' })
+  await start($, ui, 'three')
+  await engineSpawn($, 'cockpit:agent-in-worktree', 'e1')
+  await engineSpawn($, 'cockpit:agent-in-worktree', 'e2')
+  await engineSpawn($, 'cockpit:agent-in-worktree', 'e3')
+  await finish($, 'ag4')
+  await finish($, 'ag5')
+  await finish($, 'ag6')
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('⎇ worktree-agent-a1')
+  expect(d).toContain('⎇ worktree-agent-a2')
+  expect(d).not.toContain('another-session')
+  // The third's worktree never showed: it changed nothing, and offers nothing to bring back or remove
+  expect(d).toContain('changed nothing (Claude Code removed its worktree)')
+  expect(d).not.toContain('wt-back-ag6')
+  expect(d).not.toContain('wt-rm-ag6')
+  expect(log.spawned.filter(s => s.type === 'cockpit:agent-in-worktree').length).toBe(6)
+  await ui.unmount()
+})
+
+test('an agent made now gets its twin at once, so it can run in a worktree of its own this session', async ($, on) => {
+  const log = twinStand(on, () => [])
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await (ui as any).input({ key: 'describe', text: 'writes the docs for each change', kind: 'change' })
+  await ui.press({ key: 'describe-go' })
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  expect(log.registered).toContainEqual({ name: 'docs-writer', isolation: undefined })
+  expect(log.registered).toContainEqual({ name: 'docs-writer-in-worktree', isolation: 'worktree' })
   await ui.unmount()
 })

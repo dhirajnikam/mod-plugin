@@ -481,9 +481,9 @@ test('agents md without frontmatter, CRLF, empty tools, colonless line', { timeo
 test('registerExperts survives a failing register and unreadable files', { timeoutMs: 20_000 }, async ($, on) => {
   const { r, specs } = await boot($, on, { 'z.md': '---\nname: z\ndescription: d\n---\nb', 'bad.md': undefined as never }, true)
   expect(JSON.stringify(r)).not.toContain('err')
-  // The one readable expert, its twin, and the general-purpose twin
+  // The one readable expert, whose registration is refused, so no twin of it; and the general-purpose twin
   expect(specs.filter(s => !s.isolation).length).toBe(1)
-  expect(specs.length).toBe(3)
+  expect(specs.filter(s => s.isolation === 'worktree').map(s => s.name)).toEqual(['agent-in-worktree'])
 })
 
 test('verifyState with only the Prover run is not passed; stopped agents not passed', async () => {

@@ -108,7 +108,40 @@ with tempfile.TemporaryDirectory() as root:
     check('a removed worktree is gone', not os.path.exists(three) and three not in run(root, ['git', 'worktree', 'list']).stdout)
     check('its branch is kept', run(root, ['git', 'rev-parse', '--verify', '-q', 'refs/heads/cockpit/ag-3'], ok=True).returncode == 0)
 
+def listing(root):
+    # git's own porcelain list, read as listWorktrees in cockpit/hooks/ops/git.ts reads it
+    out = []
+    for block in run(root, ['git', 'worktree', 'list', '--porcelain']).stdout.split('\n\n'):
+        w = re.search(r'^worktree (.+)$', block, re.M)
+        if w:
+            b = re.search(r'^branch refs/heads/(.+)$', block, re.M)
+            h = re.search(r'^HEAD (\w+)$', block, re.M)
+            out.append({'path': w.group(1).replace('\\', '/'), 'branch': b.group(1) if b else '', 'head': h.group(1) if h else ''})
+    return out
+
+def pick(lst, before, claimed):
+    # pickIsolated of cockpit/hooks/worktrees.ts: new, unheld, not Cockpit's own; Claude Code's .claude/worktrees first
+    fresh = [w for w in lst if w['path'] not in before and w['path'] not in claimed and '/cockpit-worktrees/' not in w['path']]
+    return next((w for w in fresh if '/.claude/worktrees/' in w['path']), fresh[0] if fresh else None)
+
+with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as elsewhere:
+    root, elsewhere = os.path.realpath(root), os.path.realpath(elsewhere)
+    run(root, ['git', 'init', '-q', '-b', 'main'])
+    run(root, ['git', 'config', 'user.name', 'Dev']); run(root, ['git', 'config', 'user.email', 'dev@x.io'])
+    write(root, 'a.txt', 'a\n'); run(root, ['git', 'add', '-A']); run(root, ['git', 'commit', '-qm', 'base'])
+    head = run(root, ['git', 'rev-parse', 'HEAD']).stdout.strip()
+    mine, _ = make(root, 'ag-9')
+    before = [w['path'] for w in listing(root)]
+    # Meanwhile another session makes a worktree, and Claude Code makes the agent's in its own place
+    run(root, ['git', 'worktree', 'add', '-q', '-b', 'other', os.path.join(elsewhere, 'other-session'), 'HEAD'])
+    run(root, ['git', 'worktree', 'add', '-q', '-b', 'worktree-agent-a1', os.path.join(root, '.claude', 'worktrees', 'agent-a1'), 'HEAD'])
+    got = pick(listing(root), before, [])
+    check("Claude Code's worktree is picked, not one another session made meanwhile", got and got['path'].endswith('/.claude/worktrees/agent-a1'))
+    check("its base is its own HEAD from git's list", got and got['head'] == head)
+    check('a worktree another agent holds is passed over', (pick(listing(root), before, [got['path']]) or {}).get('path', '').endswith('/other-session'))
+    check("Cockpit's own worktrees are never picked", all('/cockpit-worktrees/' not in (pick(listing(root), [], c) or {'path': ''})['path'] for c in ([], [root])))
+
 if failures:
     print('Agents in worktrees on real git failed:\n- ' + '\n- '.join(failures))
     sys.exit(1)
-print('Agents in worktrees work on real git: two at once brought back, a clash refused, a removed worktree keeps its branch.')
+print('Agents in worktrees work on real git: two at once brought back, a clash refused, a removed worktree keeps its branch, Claude Code\'s worktree told from a foreign one.')

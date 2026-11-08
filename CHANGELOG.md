@@ -40,6 +40,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   spaces in their place.
 
 ### Fixed
+- Agents in their own worktree: a twin shows as the agent it is (its name, a pipeline's links, the testers, and Rerun,
+  which no longer makes a second worktree); two started together never share a worktree, and one made by another
+  session is never taken; one that changed nothing says so instead of waiting for ever; the base is the worktree's
+  own commit; an agent made in the session gets its twin at once.
 - The Agents tab's Connections header wraps in a narrow pane instead of running past it.
 - The Agents tab no longer marks Cockpit's own experts ↗ (from outside Cockpit) when Claude starts them and the
   engine names their plugin as itself or with its marketplace.

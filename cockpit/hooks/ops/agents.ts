@@ -47,7 +47,7 @@ export async function registerExperts($: $) {
     const tools = String(head.tools ?? '').split(',').map((t: string) => t.trim()).filter(Boolean)
     const spec = { name, description: head.description || `Cockpit's ${name}`, prompt: (m[2] ?? '').trim(), ...(head.model ? { model: head.model } : {}), ...(tools.length ? { tools } : {}) }
     const r = await $.agent.register(spec).catch(e => ($.ui.log(`cockpit: could not register the ${spec.name}: ${String(e)}`), null))
-    await registerIsolated($, r?.agent ?? `cockpit:${name}`, spec)
+    if (r?.agent) await registerIsolated($, r.agent, spec)
   }
   // A general-purpose agent in its own worktree, for a task from the New agent form
   await registerIsolated($, 'general-purpose', { name: 'agent', description: 'Works on the task it is given', prompt: 'You work on the task you are given, in the folder you start in. Keep to the task, and say at the end what you changed.' })
@@ -91,6 +91,8 @@ export async function createAgent($: $, describe: string) {
     const spec: MadeAgent = { name, description: String(raw.description), prompt: `${String(raw.prompt).trim()}\n\n${AGENT_RULES}`, ...(tools.length ? { tools: [...new Set([...tools, ...PLAN_TOOLS])] } : {}) }
     const reg = await $.agent.register(spec).catch(e => ({ deny: String(e) }))
     if ('deny' in reg) return toast($, `Could not register the agent: ${reg.deny}`)
+    // Its twin too, so it can run in a worktree of its own this session
+    await registerIsolated($, reg.agent, spec)
     const made = ((await $.store.get('agents').catch(() => undefined)) ?? []) as MadeAgent[]
     await $.store.set('agents', [...made.filter(m => m.name !== name), spec])
     await set($, s => ({
@@ -291,9 +293,11 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
     const p = s.pipeline
     const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
     if (a.cwd) spawnedIn.set(slashed(a.cwd), a.id)
-    const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(slashed(a.cwd)) ? slashed(a.cwd) : pendingWorktrees.has(`type:${a.type}`) ? `type:${a.type}` : ''
-    const wt = key ? pendingWorktrees.get(key) : undefined
+    const queued = pendingTwins.get(a.type)
+    const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(slashed(a.cwd)) ? slashed(a.cwd) : ''
+    const wt = key ? pendingWorktrees.get(key) : queued?.shift()
     if (key) pendingWorktrees.delete(key)
+    a = { ...a, type: plainType(a.type) }
     return { agents: [...s.agents.filter(x => x.id !== a.id), { ...takeEarly(a.id), ...(wt ? { worktree: wt } : {}), ...was, ...(({ cwd: _c, ...rest }) => rest)(a), status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
   })
 }
@@ -459,22 +463,39 @@ export async function measure($: $) {
 // each type Cockpit defines (its experts, the agents you made, a general-purpose one) it registers a twin that runs
 // isolated, and a ticked start of that type starts the twin. Claude Code then makes the worktree; Cockpit finds it
 export const isolatedTwin = new Map<string, string>()
+// And back: a twin's own type, so its row, its name, a pipeline's links and Rerun treat it as the agent it is
+export const twinOf = new Map<string, string>()
+export const plainType = (type: string) => twinOf.get(type) ?? type
 async function registerIsolated($: $, type: string, spec: { name: string; description: string; prompt: string; model?: string; tools?: readonly string[] }) {
   const r = await $.agent.register({ ...spec, name: `${spec.name}-in-worktree`, description: `${spec.description} (in a worktree of its own)`, isolation: 'worktree' }).catch(() => null)
-  if (r?.agent) isolatedTwin.set(type, r.agent)
+  if (r?.agent) {
+    isolatedTwin.set(type, r.agent)
+    twinOf.set(r.agent, type)
+  }
 }
 
 // With "In its own worktree" ticked, the worktree an agent starts in: made from HEAD on a branch of its own; none (and
 // a toast saying why) when it cannot be, so the agent runs in your tree. The id is the time and a count, never reused
 let worktrees = 0
-type Plan = { own: { path: string; branch: string; base: string } } | { twin: string; base: string; before: string[] } | null
+type Plan = { own: { path: string; branch: string; base: string } } | { twin: string; base: string; before: string[]; release: () => void } | null
+// Twin starts one at a time: each one's before-list is taken, it starts, and its worktree is looked for, before the next
+let isolating: Promise<unknown> = Promise.resolve()
+function takeIsolation(): Promise<() => void> {
+  let release = () => {}
+  const mine = new Promise<void>(res => (release = res))
+  const turn = isolating.then(() => release)
+  isolating = isolating.then(() => mine)
+  return turn
+}
 async function worktreeToRun($: $, type: string): Promise<Plan> {
   if (!(await read($, S)).ui.agentWorktree) return null
   // Claude Code's own isolation, through the type's isolated twin
   const twin = isolatedTwin.get(type)
   if (twin) {
-    const b = await beforeIsolated($)
-    if (b) return { twin, ...b }
+    const release = await takeIsolation()
+    const b = await beforeIsolated($).catch(() => null)
+    if (b) return { twin, ...b, release }
+    release()
     await toast($, 'Runs in your tree: the repository has no commit yet')
     return null
   }
@@ -490,12 +511,13 @@ async function worktreeToRun($: $, type: string): Promise<Plan> {
 // one whose record is not made yet gets it when it is. A start that was refused (null), or handed to Claude (who starts
 // it in your tree), leaves no worktree or branch behind
 const pendingWorktrees = new Map<string, NonNullable<Agent['worktree']>>()
+const pendingTwins = new Map<string, NonNullable<Agent['worktree']>[]>()
 // A twin's worktree, made by Claude Code: nothing to undo on a refusal; otherwise the agent waits to have it found
 async function keepIsolated($: $, id: string | null, plan: { twin: string; base: string; before: string[] }) {
   if (id === null) return
   const w = { path: '', branch: '', base: plan.base, claude: true, before: plan.before }
-  // A start that hands no id back: the twin's spawn event, by its type, picks it up
-  if (!id) return void pendingWorktrees.set(`type:${plan.twin}`, w)
+  // A start that hands no id back: the twin's spawn event, by its type, picks it up; two such starts queue
+  if (!id) return void pendingTwins.set(plan.twin, [...(pendingTwins.get(plan.twin) ?? []), w])
   if ((await read($, S)).agents.some(a => a.id === id)) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: w } : a)) }))
   else pendingWorktrees.set(id, w)
   await findIsolated($, id).catch(() => null)
@@ -505,7 +527,7 @@ const spawnedIn = new Map<string, string>()
 const slashed = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
 async function keepWorktree($: $, id: string | null, plan: Plan) {
   if (!plan) return
-  if ('twin' in plan) return keepIsolated($, id, plan)
+  if ('twin' in plan) return keepIsolated($, id, plan).finally(() => plan.release())
   const wt = plan.own
   if (id === null) return dropWorktree($, wt)
   const owner = id || spawnedIn.get(slashed(wt.path)) || ''

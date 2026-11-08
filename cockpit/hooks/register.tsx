@@ -43,6 +43,7 @@ import {
   refreshRepo,
   snapTurn,
   measureWorktree,
+  plainType,
   toast,
   refreshGit,
   registerExperts,
@@ -448,14 +449,16 @@ export const register: Register = on => {
       const note = (await read($, S)).starting
       const own = note && (!e.subagentType || e.subagentType === note.type) ? note : null
       const type = e.subagentType || own?.type || 'general-purpose'
+      // A twin that runs in a worktree of its own is, to everything else, the agent it is a twin of
+      const plain = plainType(type)
       // Who started it: Cockpit's own start is a pipeline's step or yours (a press, a command); else another agent or Claude
       const s0 = await read($, S)
-      const by = own ? (s0.pipeline && !s0.pipeline.agentId && s0.pipeline.steps[s0.pipeline.index] === type ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
-      await trackAgent($, { id, name: own?.name ?? (expertName(type) !== type ? expertName(type) : e.description || type), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
+      const by = own ? (s0.pipeline && !s0.pipeline.agentId && s0.pipeline.steps[s0.pipeline.index] === plain ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
+      await trackAgent($, { id, name: own?.name ?? (expertName(plain) !== plain ? expertName(plain) : e.description || plain), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
       // A pipeline's expert whose start hands no id back: the id is known here
       await set($, s => ({
-        agentTypes: s.agentTypes.includes(type) ? s.agentTypes : [...s.agentTypes, type],
-        pipeline: s.pipeline && !s.pipeline.agentId && s.pipeline.steps[s.pipeline.index] === type ? { ...s.pipeline, agentId: id } : s.pipeline,
+        agentTypes: s.agentTypes.includes(plain) ? s.agentTypes : [...s.agentTypes, plain],
+        pipeline: s.pipeline && !s.pipeline.agentId && s.pipeline.steps[s.pipeline.index] === plain ? { ...s.pipeline, agentId: id } : s.pipeline,
       }))
     }
     return r

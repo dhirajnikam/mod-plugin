@@ -7,7 +7,7 @@ import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryM
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
 import { snapshot, turnRef, undoTurn } from '../turns'
-import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, worktreeFor } from '../worktrees'
+import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, pickIsolated, worktreeFor } from '../worktrees'
 import type { Run } from '../turns'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -559,8 +559,15 @@ export async function makeWorktree($: $, id: string): Promise<{ path: string; br
 // it started from. Cockpit's experts never commit, so the files are the work
 export async function measureWorktree($: $, agentId: string) {
   // One Claude Code isolated: found first, if Cockpit has not yet
-  if ((await read($, S)).agents.find(a => a.id === agentId)?.worktree?.claude) await findIsolated($, agentId)
-  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  const ag0 = (await read($, S)).agents.find(a => a.id === agentId)
+  if (ag0?.worktree?.claude) await findIsolated($, agentId)
+  const ag = (await read($, S)).agents.find(a => a.id === agentId)
+  const w = ag?.worktree
+  // A finished agent whose worktree never showed changed nothing: Claude Code dropped it, and there is nothing to bring back
+  if (w?.claude && !w.path && ag && ag.status !== 'running') {
+    await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, nothing: true, removed: true, before: undefined } } : a)) }))
+    return null
+  }
   if (!w || w.removed || !w.path) return null
   const inside: Run = (argv, env, stdin) => $.process.run(argv, { cwd: w.path, env, timeoutMs: 30_000, ...(stdin !== undefined ? { stdin } : {}) })
   const snap = await snapshot(`refs/cockpit/worktrees/${w.path.split('/').pop()}`, inside)
@@ -613,7 +620,7 @@ export async function removeWorktree($: $, agentId: string) {
     if (listed) return toast($, `Not removed: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? ''}`)
   }
   await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, removed: true } } : a)) }))
-  await toast($, `Worktree removed; its branch ${w.branch} is kept`)
+  await toast($, w.branch && w.branch !== '(detached)' ? `Worktree removed; its branch ${w.branch} is kept` : 'Worktree removed')
 }
 
 // A worktree made for a start that never happened: removed, and its branch with it. `branch -d` refuses a branch with a
@@ -625,10 +632,10 @@ export async function dropWorktree($: $, w: { path: string; branch: string }) {
 }
 
 // The worktrees git knows of, with their branches (`git worktree list --porcelain`), paths with forward slashes
-export async function listWorktrees($: $): Promise<{ path: string; branch: string }[]> {
+export async function listWorktrees($: $): Promise<{ path: string; branch: string; head: string }[]> {
   const run = await turnRun($)
   const out = (await run(WORKTREE_COMMANDS.list, {})).stdout
-  return out.split(/\n\n+/).map(b => ({ path: (b.match(/^worktree (.+)$/m)?.[1] ?? '').replace(/\\/g, '/'), branch: (b.match(/^branch refs\/heads\/(.+)$/m)?.[1] ?? '') })).filter(w => w.path)
+  return out.split(/\n\n+/).map(b => ({ path: (b.match(/^worktree (.+)$/m)?.[1] ?? '').replace(/\\/g, '/'), branch: (b.match(/^branch refs\/heads\/(.+)$/m)?.[1] ?? ''), head: b.match(/^HEAD (\w+)$/m)?.[1] ?? '' })).filter(w => w.path)
 }
 // Before an isolated twin starts: the commit it starts from, and the worktrees there already, to tell its own from them
 export async function beforeIsolated($: $): Promise<{ base: string; before: string[] } | null> {
@@ -639,11 +646,14 @@ export async function beforeIsolated($: $): Promise<{ base: string; before: stri
 }
 // The worktree Claude Code made for an agent: the one not there before it started; kept on the agent once found
 export async function findIsolated($: $, agentId: string) {
-  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  const s0 = await read($, S)
+  const w = s0.agents.find(a => a.id === agentId)?.worktree
   if (!w?.claude || w.path || !w.before) return w ?? null
-  const fresh = (await listWorktrees($)).find(x => !w.before!.includes(x.path))
+  const claimed = s0.agents.filter(a => a.id !== agentId && a.worktree?.path).map(a => a.worktree!.path)
+  const fresh = pickIsolated(await listWorktrees($), w.before, claimed)
   if (!fresh) return null
-  const found = { ...w, path: fresh.path, branch: fresh.branch || '(detached)', before: undefined }
+  // Its base is its own HEAD as Claude Code made it (the experts never commit), not this checkout's
+  const found = { ...w, path: fresh.path, branch: fresh.branch || '(detached)', base: fresh.head || w.base, before: undefined }
   await set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, worktree: found } : a)) }))
   return found
 }

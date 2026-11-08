@@ -250,7 +250,7 @@ export function Agents($: $, v: V) {
                       {testLine(a.id, `rl-${a.id}`)}
                       {a.worktree && (
                         <Text color={t.dim} size="footnote" wrap="truncate-end">
-                          {`⎇ ${a.worktree.branch}${a.worktree.files ? ` · ${a.worktree.files.length} file${a.worktree.files.length === 1 ? '' : 's'} +${a.worktree.add ?? 0} −${a.worktree.del ?? 0}` : live ? ' · working in its own worktree' : ''}${a.worktree.back ? ' · brought back' : ''}${a.worktree.removed ? ' · removed, branch kept' : ''}`}
+                          {`⎇ ${a.worktree.branch || 'its own worktree'}${a.worktree.files ? ` · ${a.worktree.files.length} file${a.worktree.files.length === 1 ? '' : 's'} +${a.worktree.add ?? 0} −${a.worktree.del ?? 0}` : live ? ' · working in its own worktree' : ''}${a.worktree.back ? ' · brought back' : ''}${a.worktree.nothing ? ' · changed nothing (Claude Code removed its worktree)' : a.worktree.removed ? ' · removed, branch kept' : ''}`}
                         </Text>
                       )}
                     </Box>
