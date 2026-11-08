@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 import { factsOf, featureLayers, featureMapSvg, featureMapText, features, filesSig, impactOf, isTestFeature, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
@@ -189,6 +191,7 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   expect(hist.flows.map((f: any) => f.task)).toEqual(['an older task', 'change c'])
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ov = await $.ui.mount(PANE as never)
+  await more(ov)
   const od = JSON.stringify(await ov.drawn())
   expect(od).toContain('EARLIER SESSIONS')
   await ov.press({ key: 'fold-past' })

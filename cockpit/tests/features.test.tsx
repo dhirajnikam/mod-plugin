@@ -8,6 +8,8 @@ const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt',
 const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean; cost?: () => number; hold?: Promise<void> }
 function stand($: unknown, on: any, st: Stubs = {}) {
@@ -85,6 +87,7 @@ test('judges decide a simple question for you, and a split goes to you', { timeo
   expect(r.result?.answers?.['Which lib?']).toBe('date-fns')
   expect(log.toasts.some(t => t.includes('Judge 3/3 · date-fns'))).toBe(true)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('Which lib?')
   expect(drawn).toContain('3/3 → date-fns')
@@ -99,6 +102,7 @@ test('a split vote asks you instead', { timeoutMs: 20_000 }, async ($, on) => {
   expect(log.asked).toBe(1)
   expect(log.toasts.some(t => t.includes('Judges split'))).toBe(true)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('You chose · dayjs')
   await ui.unmount()
 })
@@ -117,6 +121,7 @@ test('Ask me sends every question to you with the judges\' advice; Off runs no j
   expect(log.asked).toBe(1)
   expect(log.toasts).toContain('◆ Judges recommend "a" · 3/3')
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   const d = JSON.stringify(await ui.drawn())
   // One line a decision: what you chose; the judges' advice opens with it
   expect(d).toContain('You chose · b')
@@ -225,6 +230,7 @@ test('the Verify pipeline runs the Prover then the Breaker, handing the report a
   await ag.unmount()
   // The Overview carries the testers' count and the first failing case
   const ovt = await $.ui.mount(pane('overview') as never)
+  await more(ovt)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const od = JSON.stringify(await ovt.drawn())
   expect(od).toContain('✓ 2 passed')
@@ -367,6 +373,7 @@ test('file operations build the Files tab, the chat cards and the progress steps
   await $.prompt.submit({ text: 'second task', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   const ov = await $.ui.mount(pane('overview') as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  await more(ov)
   const od = JSON.stringify(await ov.drawn())
   // The current flow is the hero; the list holds the ones before it
   expect(od).toContain('EARLIER FLOWS')
@@ -389,12 +396,14 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   stand($, on, { noSteps: true })
   // Before the first prompt the Overview asks for one
   let ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('No task yet: send a prompt.')
   await ui.unmount()
   await $.prompt.submit({ text: 'what does the band draw?', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   await $.tool.call({ tool: 'Read', file_path: '/repo/src/app.ts', tool_use_id: 'r1' } as never)
   await $.turn.complete({ answer: 'a bar', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
   ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('Answer flow')
   expect(d).toContain('"100%"')
@@ -405,6 +414,7 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/ring.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
   await $.turn.complete({ answer: 'done', reason: 'answer', turnId: 't2', isAborted: false, durationMs: 1000 } as never)
   ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   d = JSON.stringify(await ui.drawn())
   expect(d).toContain('Build flow')
   expect(d).toContain(' Commit ')
@@ -415,6 +425,7 @@ test('each prompt picks a flow; a question reaches Answer at turn end, a build w
   // Verify run between turns reaches the closed flow too
   await $.command.run({ command: 'cockpit', args: 'test' } as never)
   ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('"75%"')
   // A flow picked by hand stands: by command, then by the picker
   const r = await $.command.run({ command: 'cockpit', args: 'flow answer' } as never)
@@ -433,6 +444,7 @@ test('each prompt gets steps written for its task, moved by the kind of work don
   await $.tool.call({ tool: 'Read', file_path: '/repo/src/limit.ts', tool_use_id: 'r1' } as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain(' Read the limiter code ')
   expect(d).toContain(' Add the rate limit ')
@@ -461,6 +473,7 @@ test("while Claude keeps a task list, the flow's steps are its tasks and progres
   ] } as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain(' Add the limiter ')
   expect(d).toContain('"50%"')
@@ -487,6 +500,7 @@ test('a palette paints its own background in the pane and the band, and the chat
   for (const [name, bg] of Object.entries(bgs)) {
     await $.command.run({ command: 'cockpit', args: `theme ${name}` } as never)
     const ui = await $.ui.mount(pane('overview') as never)
+    await more(ui)
     const root: any = await ui.drawn()
     expect(root.props.backgroundColor).toBe(bg)
     expect(root.props.minHeight).toBe(60)
@@ -504,6 +518,7 @@ test('a palette paints its own background in the pane and the band, and the chat
   // Auto paints nothing: it follows the terminal
   await $.command.run({ command: 'cockpit', args: 'theme auto' } as never)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   expect(((await ui.drawn()) as any).props.backgroundColor).toBeUndefined()
   await ui.unmount()
 })
@@ -511,6 +526,7 @@ test('a palette paints its own background in the pane and the band, and the chat
 test('the context window compacts, or clears after you confirm', async ($, on) => {
   const log = stand($, on)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   await ui.press({ key: 'ctx-compact' })
   expect(log.compacted).toBe(1)
@@ -529,6 +545,7 @@ test('the context window compacts, or clears after you confirm', async ($, on) =
 test('Clear runs /clear once, closes the confirm and says so', async ($, on) => {
   const log = stand($, on)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   await ui.press({ key: 'ctx-clear' })
   await ui.press({ key: 'ctx-clear-yes' })
@@ -543,6 +560,7 @@ test('Clear runs /clear once, closes the confirm and says so', async ($, on) => 
 test('Clear that the engine refuses says why and does not claim success', async ($, on) => {
   const log = stand($, on, { clearFails: true })
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never).catch(() => {})
   await ui.press({ key: 'ctx-clear' })
   await ui.press({ key: 'ctx-clear-yes' })
@@ -556,6 +574,7 @@ test('themes switch by command and by the header\'s theme mark, a press stepping
   stand($, on)
   await $.command.run({ command: 'cockpit', args: 'theme nord' } as never)
   let ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('#88c0d0')
   // Nord is the last theme: the next is Auto, then Paper
   await ui.press({ key: 'theme' })
@@ -624,6 +643,7 @@ test('the context and cost come from the session usage', async ($, on) => {
   stand($, on)
   await $.session.measure({} as never)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('"25%"')
   expect(drawn).toContain('$1.50')
@@ -650,9 +670,10 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   await turn('')
   await $.tool.call({ tool: 'mcp__ccd_turn__update_plan', advance: true, tool_use_id: 'p2' } as never)
   const b = await $.ui.mount(band as never)
-  expect(JSON.stringify(await b.drawn())).toContain('75%')
+  expect(JSON.stringify(await b.drawn())).toContain('Step 2 of 2')
   await b.unmount()
   let ov = await $.ui.mount(pane('overview') as never)
+  await more(ov)
   let od = JSON.stringify(await ov.drawn())
   expect(od).toContain('◎ ')
   expect(od).toContain('all tests pass')
@@ -672,6 +693,7 @@ test('turns with no prompt of yours still show progress: /goal, continuations, p
   await turn('fix the login page')
   await end()
   ov = await $.ui.mount(pane('overview') as never)
+  await more(ov)
   od = JSON.stringify(await ov.drawn())
   expect(od).toContain('EARLIER FLOWS')
   expect(od).toContain('fix the login page')
@@ -690,6 +712,7 @@ test("a shell command's edits count in the flow's +/−", async ($, on) => {
   await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
   await $.prompt.submit({ text: 'next thing', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   const ov = await $.ui.mount(pane('overview') as never)
+  await more(ov)
   const od = JSON.stringify(await ov.drawn())
   // 3 lines added and 2 deleted since the turn started, not the file's whole diff
   expect(od).toContain('"+3"')
@@ -703,6 +726,7 @@ test("the Overview shows the current flow's last failed tool call, and the teste
   await $.prompt.submit({ text: 'fix the tests', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'b1' } as never)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('✗ Bash ')
   expect(d).toContain('CHECKS · FAILING')
@@ -724,6 +748,7 @@ test('a judge whose reply names no option abstains; it never counts for the firs
   // Split: the question went to you (the stand's person picks the second option)
   expect(log.asked).toBe(1)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   await ui.press({ key: `decb-${'a1-0'}` })
   const d = JSON.stringify(await ui.drawn())
   expect(d).toContain('"–"')
@@ -743,6 +768,7 @@ test("a subagent's task list is its tracker, in the Overview and the Agents tab,
   // The flow's own plan is left alone: the agent's list is the agent's
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ov = await $.ui.mount(pane('overview') as never)
+  await more(ov)
   let d = JSON.stringify(await ov.drawn())
   expect(d).toContain('AGENTS')
   expect(d).toContain('Builder')
@@ -760,6 +786,7 @@ test("a subagent's task list is its tracker, in the Overview and the Agents tab,
   await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1 } as never)
   await $.prompt.submit({ text: 'next', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   const ov2 = await $.ui.mount(pane('overview') as never)
+  await more(ov2)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   expect(JSON.stringify(await ov2.drawn())).toContain('+2 −1')
   await ov2.unmount()
@@ -774,6 +801,7 @@ test('a plan call that errors adds no task, to a subagent or to the flow', async
   await $.tool.call({ tool: 'TaskCreate', tool_use_id: 'tc2', subject: 'Ghost from the flow', description: 'x' } as never)
   const ov = await $.ui.mount(pane('overview') as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  await more(ov)
   const d = JSON.stringify(await ov.drawn())
   expect(d).not.toContain('Ghost from the agent')
   expect(d).not.toContain('Ghost from the flow')
@@ -792,6 +820,7 @@ test("a subagent's task list that comes before its row is kept, and the row take
   await $.command.run({ command: 'cockpit', args: 'run builder -- tidy auth' } as never)
   const ov = await $.ui.mount(pane('overview') as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  await more(ov)
   const d = JSON.stringify(await ov.drawn())
   expect(d).toContain('1/2  ')
   expect(d).toContain('Split the early handler')
@@ -807,6 +836,7 @@ test('the autopilot sends cycle after cycle, ends when the judges agree it is do
   const end = (answer: string) => $.turn.complete({ answer, reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
   const ov = async () => {
     const ui = await $.ui.mount(pane('overview') as never)
+    await more(ui)
     await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
     const d = JSON.stringify(await ui.drawn())
     await ui.unmount()
@@ -852,6 +882,7 @@ test('the autopilot sends cycle after cycle, ends when the judges agree it is do
   expect(d).toContain('AUTOPILOT · PAUSED')
   expect(d).toContain('three cycles in a row changed nothing')
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   await ui.press({ key: 'ap-resume' })
   expect(JSON.stringify(await ui.drawn())).toContain('AUTOPILOT · CYCLE')
   await ui.press({ key: 'ap-stop' })
@@ -873,6 +904,7 @@ test('agents remember similar tasks: the brief carries what earlier runs found, 
   expect(log.prompts.at(-1)).toContain('REMEMBERED')
   expect(log.prompts.at(-1)).toContain('empty passwords get through the login check')
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const d = JSON.stringify(await ui.drawn())
   expect(d).toContain('2 remembered')
@@ -903,6 +935,7 @@ test('slow work a press starts runs on after it: the press returns at once, one 
   const log = stand($, on, { hold })
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane('overview') as never)
+  await more(ui)
   // Compact with the compaction held back: the press settles well inside the engine's 10 s budget
   const started = Date.now()
   const first = await Promise.race([ui.press({ key: 'ctx-compact' }).then(() => 'press'), new Promise(res => (globalThis as any).setTimeout(() => res('timer'), 2000))])

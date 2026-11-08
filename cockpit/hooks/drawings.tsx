@@ -139,7 +139,7 @@ export function drawings(on: Parameters<Register>[0]) {
         <Box flexDirection="column" marginTop={1} backgroundColor={t.bg || undefined}>
         {ask}
         {advice}
-        <Box paddingX={1} justifyContent="space-between" flexWrap="wrap">
+        <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
             <Text color={t.text}>{p.steps.length > 0 && p.total > 0 ? `Step ${Math.min(p.done + 1, p.steps.length)} of ${p.steps.length}` : p.stepName}</Text>
             {p.steps.length > 0 && p.total > 0 && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}

@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 import { parseOptions } from '../hooks/ops/decisions'
 
 // The autopilot's two roles end to end, with the engine stood in: a file system in memory, judges whose replies the
@@ -65,6 +67,7 @@ async function cycle($: any, log: { submitted: string[] }, answer: string, edit 
 const overview = async ($: any) => {
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane as never)
+  await more(ui)
   const d = JSON.stringify(await ui.drawn())
   await ui.unmount()
   return d
@@ -101,6 +104,7 @@ test('a finished roadmap the judges doubt ends in two claims, not a loop: their 
   const id = d.match(/decb-(ap-\d+-2)/)?.[1]
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane as never)
+  await more(ui)
   await ui.press({ key: `decb-${id}` })
   expect(JSON.stringify(await ui.drawn())).toContain('Pragmatist · Not done yet: ')
   await ui.unmount()

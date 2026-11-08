@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, upsertSession } from '../hooks/spend'
 
 // Noon on a day where you are, so a day's edge never depends on the machine's time zone
@@ -121,6 +123,7 @@ test("each session's spend is saved in history at every turn's end, kept in plac
   // The Overview's Earlier sessions: spend by day and the costliest, labelled as estimates
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('≈ $5.15 in 14 days')
   await ui.press({ key: 'fold-past' })
   const d = JSON.stringify(await ui.drawn())
@@ -139,6 +142,7 @@ test('sessions all older than 14 days show no spend heading, and say nothing was
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).not.toContain('in 14 days')
   await ui.press({ key: 'fold-past' })
   const d = JSON.stringify(await ui.drawn())
@@ -174,6 +178,7 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   // Set the budget in the Overview's Earlier sessions: text that is not a positive number is refused, $10 is kept
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
+  await more(pane)
   await pane.press({ key: 'fold-past' })
   for (const bad of ['lots', '1e3', '0x10', '0.004', '0', '-5', '5.505']) {
     await (pane as any).input({ key: 'budget-input', text: bad })

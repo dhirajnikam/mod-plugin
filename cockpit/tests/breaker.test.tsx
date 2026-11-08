@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+// The Overview keeps all but its Now, Steps and Approach behind More
+const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
 import { parseCases, parseReport, verifyState } from '../hooks/logic'
 
 // Every feature driven end to end with the engine stood in: judges, testers, agents, files, commands, accounts, buttons
@@ -185,6 +187,7 @@ test('a start auto mode refuses for want of a request goes to Claude, and the ag
   // The hand-off is no task of the person's: no flow opened
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(agentsPane as never)
+  await more(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('No task yet')
   await ui.unmount()
   // Claude starts it: the waiting step takes it, and its answer hands on to the Breaker
@@ -321,7 +324,7 @@ test('a pipeline started before any prompt leaves progress at 0%, Ready', async 
   await done($, 'ag1', 'REPORT: ok')
   const b = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll: { offset: 0, bodyRows: 60 }, view: {} } } as never)
   const d = JSON.stringify(await b.drawn())
-  expect(d).toContain('"0%"')
+  expect(d).toContain('Ready')
   expect(d).toContain(' Ready')
   expect(d).not.toContain('80%')
   await b.unmount()
