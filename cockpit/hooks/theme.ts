@@ -35,13 +35,23 @@ export const THEME_IDS: ThemeId[] = ['auto', ...(Object.keys(THEMES) as Palette[
 // (the desktop's appearance is not readable from a setting), and a mid-tone gold that reads on both
 export const AUTO: Theme = { bg: '', surface: '', text: 'text', dim: 'subtle', faint: 'inactive', track: 'inactive', divider: 'inactive', accent: '#b4833a', hi: '#c4934c', deep: '#a07a3c', lo: '#cfa159', wash: '', ok: 'success', bad: 'error', busy: 'warning' }
 
+// What Auto paints once the terminal's background is known (core.ts readTermBg): Black on a dark one, White on a light
+// one. Claude Code's own theme keys can be the wrong way round: its 'auto' theme follows the system's appearance as it
+// was when the session started, while a terminal profile can switch with the system later, or never
+export const AUTO_ON: Record<'dark' | 'light', Theme> = { dark: THEMES.black, light: THEMES.white }
+
 // The palette in force
-export const themeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : THEMES[s.theme] ?? AUTO)
+export const themeOf = (s: { theme: ThemeId; termBg?: 'dark' | 'light' }): Theme =>
+  s.theme === 'auto' ? (s.termBg ? AUTO_ON[s.termBg] : AUTO) : THEMES[s.theme] ?? AUTO
 
 // The chat's rows (spinner, cards, your messages, the status line) sit on the terminal's own background, which a palette
 // does not paint: they keep the surface's own text colours and take only the palette's accent, so White on a dark
 // terminal, or Black on a light one, never draws text the background hides
-export const chatThemeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme]?.accent ?? AUTO.accent })
+export const chatThemeOf = (s: { theme: ThemeId; termBg?: 'dark' | 'light' }): Theme => {
+  // Auto with the background known: that palette's text and status colours, painted on nothing (no bg, surface or wash)
+  if (s.theme === 'auto' && s.termBg) return { ...AUTO_ON[s.termBg], bg: '', surface: '', wash: '' }
+  return s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme]?.accent ?? AUTO.accent }
+}
 
 // Status colours by meaning, for what draws on the surface's own background (Auto's theme keys); inside the pane and the
 // band a palette's own (t.ok, t.bad, t.busy) are used

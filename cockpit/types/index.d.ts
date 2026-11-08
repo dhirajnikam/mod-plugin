@@ -202,6 +202,8 @@ export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 
 export type Ph = {
   theme: ThemeId
+  // The terminal's background as last read (core.ts readTermBg), for Auto; absent: not known, Claude Code's theme keys
+  termBg?: 'dark' | 'light'
   isDarkTerm: boolean
   // Focus: hide tool cards and turn lines, shrink the band to one line
   focus?: boolean

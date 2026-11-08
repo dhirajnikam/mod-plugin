@@ -15,7 +15,7 @@ import { tellDone } from './notify'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-26' })
 
 // Spawns started from the pane right now, each its type and exact prompt: the tool.check hook puts these to the person
 const ownStarts: { type: string; prompt: string }[] = []

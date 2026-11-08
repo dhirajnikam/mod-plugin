@@ -27,6 +27,7 @@ import {
   PERSONAL,
   OPEN,
   loadPrefs,
+  readTermBg,
   loadHistory,
   writeSteps,
   buildMemory,
@@ -68,7 +69,7 @@ import { drawings } from './drawings'
 import { fullPane } from './full-pane'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-26' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git', 'rules']
 
@@ -120,6 +121,8 @@ export const register: Register = on => {
       if (s.isWorking || s.agents.some(a => a.status === 'running') || (await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) await syncAgents($)
     }))
     timers.push($.clock.every(15000, async () => {
+      // The terminal's background, so Auto switches when the terminal does
+      if ((await read($, S)).theme === 'auto') await readTermBg($).catch(() => null)
       if ((await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) {
         await refreshRepo($)
         // The branch's PR while a check is pending: green or red by itself, and a notice when the run finishes
@@ -134,6 +137,7 @@ export const register: Register = on => {
     }))
     // Focus, theme and the rest: what draws next reads them
     await loadPrefs($)
+    await readTermBg($).catch(() => null)
     await loadHistory($)
     // The codebase memory, fresh each session, in the background
     void buildMemory($).catch(() => null)

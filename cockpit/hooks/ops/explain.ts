@@ -6,7 +6,7 @@ import type { $ } from './core'
 import { git, repoRoot, set, toast } from './core'
 
 // The state atom, declared here as in every module that reads it: the engine's scan wants the literal plugin and key
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-26' })
 
 // What Claude is asked to write, and what Cockpit already knows so Claude reads less. Pure, so a test can read it
 export function explainPrompt(a: { path: string; exists: boolean; memory: string; readme: string; recent: string[] }) {

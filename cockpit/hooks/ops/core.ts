@@ -10,7 +10,7 @@ import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 
 // The session's Cockpit state (see state.ts)
-export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
+export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-26' })
 
 export type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
@@ -201,6 +201,25 @@ export async function loadGitPrefs($: $) {
 }
 
 // Switch theme; the pane repaints its backdrop from state
+// The terminal's background, for the Auto theme: COLORFGBG where the terminal sets it ("15;0": the last number is the
+// background, 0-6 and 8 dark), else the system's appearance on a Mac right now (a terminal profile that follows it, as
+// Terminal's Basic does, switches with it; Claude Code's own 'auto' keeps the one it started with). Neither: unknown
+// ponytail: a Terminal profile with a fixed background of its own is not read; COLORFGBG or a named theme covers it
+export async function readTermBg($: $) {
+  const run = (argv: string[]) => $.process.run(argv).catch(() => null)
+  let bg: 'dark' | 'light' | undefined
+  const fgbg = (await run(['printenv', 'COLORFGBG']))?.stdout.trim() ?? ''
+  const n = Number(fgbg.split(';').pop())
+  if (fgbg && Number.isInteger(n)) bg = n < 7 || n === 8 ? 'dark' : 'light'
+  else {
+    const r = await run(['defaults', 'read', '-g', 'AppleInterfaceStyle'])
+    // "Dark", or no such key (the system is light); any other answer (not a Mac) says nothing
+    if (r?.exitCode === 0 && /^\s*dark/i.test(r.stdout)) bg = 'dark'
+    else if (r && r.exitCode !== 0 && /does not exist/i.test(r.stderr ?? '')) bg = 'light'
+  }
+  if ((await read($, S)).termBg !== bg) await set($, { termBg: bg })
+}
+
 export async function setTheme($: $, theme: ThemeId) {
   await set($, { theme })
   await openPane($)

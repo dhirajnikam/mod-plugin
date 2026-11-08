@@ -9,7 +9,7 @@ with an arrow only where it folds.
 
 ## From top to bottom
 
-Since 0.7 the Overview opens on **Now** (one sentence, then changed files, checks, agents and the pull request), then **Steps** (a plain checklist,
+A simpler Overview: since 0.8 it opens on **Now** (one sentence, then changed files, checks, agents and the pull request), then **Steps** (a plain checklist,
 the current one in bold) and **Approach** (the last three decisions as sentences). Everything described below sits behind **More**, folded by default.
 
 - **Needs you**: the attention card, for a question Claude is waiting on or a commit Cockpit proposes (Commit, Skip).

@@ -5,15 +5,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/ops/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
-  a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
-  (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
-  folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
-- **The same for Activity, Agents, Git and Rules**: each tab opens on one plain sentence of its own state (`12 edits in 4 files this session`, `2 agents running · Reviewer found 1 issue`,
-  `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
-  (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
-  Everything else is behind one **More** fold per tab, folded by default; no button was removed.
+## [0.8.0] - 2026-11-08
 
 ### Added
 - **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
@@ -32,6 +24,22 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
   Overview's Earlier sessions shows what the last 14 days cost, a bar for each day, and the five costliest sessions,
   marked as Claude Code's estimates.
+
+### Changed
+- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/ops/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
+  a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
+  (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
+  folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
+- **What you see first**, the same for Activity, Agents, Git and Rules: each tab opens on one plain sentence of its own state (`12 edits in 4 files this session`, `2 agents running · Reviewer found 1 issue`,
+  `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
+  (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
+  Everything else is behind one **More** fold per tab, folded by default; no button was removed.
+
+### Fixed
+- Cockpit's auto-commit never commits Claude Code's agent worktrees (`.claude/worktrees/` is ignored).
+- A spend figure Claude Code reports as not a number counts as 0, so it never drops a session from the history.
+- A saved setting is used only if it is of its kind, so a hand-edited store cannot, say, turn the judges off.
+- The daily budget's warnings are shared by every session, and a raised budget warns afresh.
 
 ## [0.7.0] - 2026-11-08
 
@@ -274,7 +282,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.8.0...main
+[0.8.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.0...v0.4.1
