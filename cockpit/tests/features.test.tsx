@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { agentGraph } from '../hooks/views'
+import { openMore } from './more'
 
 // Every feature driven end to end with the engine stood in: judges, testers, agents, files, commands, accounts, buttons
 const scroll = { offset: 0, bodyRows: 60 }
@@ -9,7 +10,7 @@ const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdou
 // The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
 const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noSteps?: boolean; clearFails?: boolean; tick?: boolean; numstat?: () => string; failTests?: boolean; failPlan?: boolean; cost?: () => number; hold?: Promise<void> }
 function stand($: unknown, on: any, st: Stubs = {}) {
@@ -208,6 +209,7 @@ test('the Verify pipeline runs the Prover then the Breaker, handing the report a
   expect(log.prompts[0]).toContain('(none: you are first)')
   let ag = await $.ui.mount(pane('agents') as never)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  await openMore(ag)
   let drawn = JSON.stringify(await ag.drawn())
   expect(drawn).toContain('Prover')
   expect(drawn).toContain('cockpit:prover')
@@ -271,6 +273,7 @@ test('subagents show in the Agents tab with their tool calls, and Stop stops the
   await $.tool.call({ tool: 'Read', file_path: '/repo/README.md', agentId: 'ag1' } as never)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane('agents') as never)
+  await openMore(ui)
   let drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('RUNNING')
   expect(drawn).toContain('"  1"')
@@ -298,6 +301,7 @@ test('the any-type field keeps a listed name as typed, and fields say what Enter
   stand($, on)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane('agents') as never)
+  await openMore(ui)
   await ui.press({ key: 'spawn-toggle' })
   const listed = String(((await ui.find({ key: 'spawn-type' }))?.props.options as { value: string }[])[0]?.value)
   await (ui as any).input({ key: 'spawn-type-custom', text: listed, kind: 'change' })
@@ -335,6 +339,7 @@ test('file operations build the Files tab, the chat cards and the progress steps
   await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'b1' } as never)
   await $.command.run({ command: 'cockpit', args: 'tab files' } as never)
   const ui = await $.ui.mount(pane('files') as never)
+  await openMore(ui)
   // The feed: the operations newest first, an edit opening to its diff
   let drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('limit.ts')
@@ -592,6 +597,7 @@ test('accounts are detected, a token logs in through gh, and the choice is kept 
   const log = stand($, on)
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const ui = await $.ui.mount(pane('git') as never)
+  await openMore(ui)
   // Opening the tab detects the accounts, no press needed. One is now saved: the box shows it, the choices and the
   // login controls wait behind Modify
   let drawn = JSON.stringify(await ui.drawn())
@@ -963,6 +969,7 @@ test("Cockpit's own experts started by Claude are not marked as from outside Coc
   await $.agent.spawn({ tool_use_id: 'o1', prompt: 'other work', description: 'other work', subagentType: 'other:helper', provider: { plugin: 'other', tier: 'user' }, parentModel: 'x', background: false, fork: false } as never)
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane('agents') as never)
+  await openMore(ui)
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).not.toContain('↗ Reviewer')
   expect(drawn).not.toContain('↗ Breaker')

@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
+import { openMore } from './more'
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 
 // Every computed run of text fits the width it is drawn in, from a narrow pane to a wide terminal
 const WIDTHS = [28, 40, 60, 100, 160]
@@ -79,6 +80,7 @@ test("the Git tab's pull request fits every width, and draws pending and passing
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const setup = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } } as never)
+  await openMore(setup)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await setup.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   await setup.unmount()
   const bad: string[] = []
@@ -100,6 +102,7 @@ test("the Git tab's pull request fits every width, and draws pending and passing
   checks = '[{"name":"lint","bucket":"pass"},{"name":"test","bucket":"pass"}]'
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 60, placement: 'dock', scroll, view: {} } } as never)
+  await openMore(pane)
   const text = JSON.stringify(await pane.drawn())
   expect(text).toContain('✓ 2 passed')
   expect(text).not.toContain('failed')
@@ -152,6 +155,7 @@ test("the Rules tab's startup load, MCP servers and skills fit every width", { t
       for (const w of WIDTHS) {
         const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 120 }, view: {} } } as never)
         if (scope === 'user' && surface === 'terminal' && w === WIDTHS[0]) await pane.press({ key: 'rscope-user' })
+        await openMore(pane)
         const drawn = await pane.drawn()
         const text = JSON.stringify(drawn)
         for (const want of scope === 'repo' ? ['a-server-with-a-rather-long-name', 'needs approval', 'off', 'local, only you', 'a-skill-with-a-rather-long-name-indeed', 'Claude loads it', 'LOADS EVERY SESSION', 'over 200', 'missing', 'MCP servers on: 2'] : ['mine', 'sse', 'only when you call /notes']) if (!text.includes(want)) bad.push(`${scope} ${surface} @${w}: no ${want}`)
@@ -194,6 +198,7 @@ test("a worktree agent's row fits every width, with its confirms", { timeoutMs: 
   })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const setup = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } } as never)
+  await openMore(setup)
   await setup.press({ key: 'spawn-toggle' })
   await setup.press({ key: 'spawn-wt' })
   await (setup as any).input({ key: 'spawn-task', text: 'refactor the whole authentication flow', kind: 'change' })

@@ -338,14 +338,19 @@ export function Agents($: $, v: V) {
       {extra !== '' && <Text color={t.faint}>{`  ${extra}`}</Text>}
     </Text>
   )
+  // One plain sentence of the team's state: who is running, and what the latest finished run found
+  const lastRun = s.agents.filter(a => a.status === 'done' && shown(a)).pop()
+  const found = lastRun ? lastRun.cases.filter(c => c.st === 'fail').length : 0
+  const state = [
+    running > 0 ? `${running} agent${running === 1 ? '' : 's'} running` : 'No agents running',
+    lastRun ? (found > 0 ? `${lastRun.name} found ${found} issue${found === 1 ? '' : 's'}` : `${lastRun.name} done`) : '',
+  ].filter(Boolean).join(' · ')
+  const moreOpen = !!s.ui.collapsed['ag-more']
   return (
-    <Box flexDirection="column" gap={sp(v, 2)}>
-      <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)} rowGap={v.desk ? 'sm' : 0}>
-        <Box flexWrap="wrap" columnGap={sp(v, 1)}>
-          {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, false, () => startPipeline($, p.name)))}
-        </Box>
-        {pill('ap-toggle', s.ui.apOpen ? '✕ Close' : '⟳ Autopilot', false, () => set($, st => ({ ui: { ...st.ui, apOpen: !st.ui.apOpen } })))}
-        {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', false, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Text color={t.text} bold wrap="wrap">{state}</Text>
+      <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+        {PIPELINES.map(p => pill(`pipe-${p.name}`, `▶ ${p.label}`, false, () => startPipeline($, p.name)))}
       </Box>
       {pipe && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.accent} paddingX={1}>
@@ -389,6 +394,26 @@ export function Agents($: $, v: V) {
           )}
         </Box>
       )}
+      {live_.length > 0 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
+            {section('Running', String(live_.length))}
+            <Button key="stop-all" plain onPress={() => stopAll($)}>
+              <Text color={t.dim} size="footnote">■ Stop all</Text>
+            </Button>
+          </Box>
+          {live_.map(runRow)}
+        </Box>
+      )}
+      <Button key="fold-more-agents" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-more': !st.ui.collapsed['ag-more'] } } }))}>
+        <Text color={t.dim}>{`${moreOpen ? '⌄' : '›'} More`}</Text>
+      </Button>
+      {moreOpen && (
+        <Box flexDirection="column" gap={sp(v, 2)}>
+          <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+            {pill('ap-toggle', s.ui.apOpen ? '✕ Close' : '⟳ Autopilot', false, () => set($, st => ({ ui: { ...st.ui, apOpen: !st.ui.apOpen } })))}
+            {pill('spawn-toggle', s.ui.spawnOpen ? '✕ Close' : '+ New agent', false, () => set($, st => ({ ui: { ...st.ui, spawnOpen: !st.ui.spawnOpen } })))}
+          </Box>
       {s.ui.apOpen && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
           <Seg v={v} id="ap-role" value={s.ui.apRole ?? 'task'} items={[['task', '⟳ Task'], ['product', '◈ Product owner']]} onPick={k => set($, st => ({ ui: { ...st.ui, apRole: k as 'task' | 'product' } }))} />
@@ -460,17 +485,6 @@ export function Agents($: $, v: V) {
             onInput={val => set($, st => ({ ui: { ...st.ui, runTask: val } }))}
             onSubmit={val => runMany($, Object.keys(s.ui.selected).filter(k => s.ui.selected[k]), val.trim())}
           />
-        </Box>
-      )}
-      {live_.length > 0 && (
-        <Box flexDirection="column" gap={sp(v, 1)}>
-          <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
-            {section('Running', String(live_.length))}
-            <Button key="stop-all" plain onPress={() => stopAll($)}>
-              <Text color={t.dim} size="footnote">■ Stop all</Text>
-            </Button>
-          </Box>
-          {live_.map(runRow)}
         </Box>
       )}
       {AgentMap($, v, [...s.agents.filter(a => a.status === 'running'), ...done_.slice(0, 8)].filter(a => !s.cleared.includes(a.id)))}
@@ -547,6 +561,8 @@ export function Agents($: $, v: V) {
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />}
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="notify-done" on={s.notifyDone !== false} label="Tell me when work is done (while I am not watching this pane; a daily budget warns regardless)" onPress={() => set($, st => ({ notifyDone: st.notifyDone === false }))} />}
       </Box>
+        </Box>
+      )}
     </Box>
   )
 }

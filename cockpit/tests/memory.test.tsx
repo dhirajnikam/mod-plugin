@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 // The Overview keeps all but its Now, Steps and Approach behind More
-const more = async (ui: any) => { if (JSON.stringify(await ui.drawn()).includes('› More')) await ui.press({ key: 'fold-more' }) }
+const more = openMore
 import { factsOf, featureLayers, featureMapSvg, featureMapText, features, filesSig, impactOf, isTestFeature, memoryKey, memoryText, parseFeatures, parseImports, resolveImport } from '../hooks/memory'
+import { openMore } from './more'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
   const repo = new Set(['src/a.ts', 'src/b.tsx', 'types/index.d.ts', 'app/models.py', 'app/__init__.py', 'app/views.py', 'styles/base.css'])
@@ -170,6 +171,7 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   await $.tool.call({ tool: 'Edit', file_path: '/repo/lib/c.ts', old_string: '1', new_string: '2', tool_use_id: 'e1' } as never)
   await $.command.run({ command: 'cockpit', args: 'tab files' } as never)
   const ui = await $.ui.mount(PANE as never)
+  await openMore(ui)
   const d = JSON.stringify(await ui.drawn())
   expect(d).toContain('IMPACT')
   expect(d).toContain('c.ts in Counter')

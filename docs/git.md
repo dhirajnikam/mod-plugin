@@ -1,5 +1,7 @@
 # Git
 
+> **What you see first.** The tab opens on one plain sentence ("On feat/x · 3 files changed · PR #7 checks running"), then the Pull and Push buttons when there is something to move, a commit waiting for your answer, the pull request, the next commit and the changed files with Commit (the repo picker, when several repositories sit under the folder, stays above it). Refresh, Setup, the account line, the history and the account, patterns and options are behind one **› More** fold (`fold-more-git`), folded by default.
+
 The tab shows the branch with what is unpushed and unpulled, and **↓ Pull** and **↑ Push** buttons only when there is something to pull or push; the next commit as a card (type, message, branch, files, Commit) and the changes with their kind (new, deleted, renamed, edited) and ticks, only while there are changes (a clean tree says so in one line, and Commit shows only with a file ticked); the **history as a git graph** of every branch, remote and tag: each commit a dot on its lane, lines carrying the lanes down, a merge opening a lane and a branch joining one, each lane its own colour; refs as chips on their commit (HEAD's branch filled, local branches tinted, remotes ☁ and tags ⌑), unpushed commits hollow, Cockpit's own marked ✦, and a press opens a commit's author, date, message and changed files. Desktop draws the graph as SVG, the terminal with line characters. The account, patterns and options are folded away.
 
 ## Setup and commits

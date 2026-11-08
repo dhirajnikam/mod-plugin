@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf, importsOf, memoryStarts, resolveMemory, startupLoad } from '../hooks/rules'
 import type { MemoryRead } from '../hooks/rules'
+import { openMore } from './more'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -75,6 +76,7 @@ test('the Rules tab adds, edits and deletes hooks, rules and instructions, and n
   })
   await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('Bash(npm test:*)')
   expect(d).toContain('Run the tests first')
@@ -179,6 +181,7 @@ test('the Rules tab lists the MCP servers of every scope, changes only .mcp.json
   on('command.run', async () => ({ text: '' }))
   await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   // This repository: the project's servers with their state, and this project's local one, read only
   expect(d).toContain('npx -y @mcp/github')
@@ -378,6 +381,7 @@ test("the Rules tab lists each scope's skills and switches one between Claude lo
   on('command.run', async () => ({ text: '' }))
   await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   // This repository: release, Claude loads it; broken, read only with why; the folder with no SKILL.md left out
   expect(d).toContain('Cut a release and write its notes')
@@ -545,6 +549,7 @@ test('the Rules tab shows what loads every session, from the real files and thei
   on('command.run', async () => ({ text: '' }))
   await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
   const ui = await $.ui.mount(pane as never)
+  await openMore(ui)
   const total = (d: string) => Number(d.match(/≈ ([\d,]+) tokens/)![1]!.replace(/,/g, ''))
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('LOADS EVERY SESSION')

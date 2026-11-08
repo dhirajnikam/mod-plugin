@@ -10,6 +10,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
   (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
   folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
+- **The same for Activity, Agents, Git and Rules**: each tab opens on one plain sentence of its own state (`12 edits in 4 files this session`, `2 agents running · Reviewer found 1 issue`,
+  `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
+  (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
+  Everything else is behind one **More** fold per tab, folded by default; no button was removed.
 
 ### Added
 - **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
