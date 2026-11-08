@@ -3,7 +3,7 @@
 What the session is doing, at a glance, in one column. Every section opens with the same small capitalised heading,
 with an arrow only where it folds.
 
-![The Overview tab: the autopilot card, the current flow, checks, and the agents as a neural view](images/overview.png)
+![The Overview tab: a commit to confirm, the current flow, checks, the agents as a neural view, changed files and an earlier flow](images/overview.png)
 
 *A preview drawn from the desktop pane; the app's own spacing differs slightly.*
 

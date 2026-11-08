@@ -8,7 +8,7 @@ prompt that show each task's progress, the agents at work and what they found, y
 the controls to act on all of it. It can also work on a goal by itself, cycle after cycle, until a panel of judges
 agrees it is done.
 
-![Cockpit's Overview: the autopilot, the current task's progress, checks, and the agents at work as a neural view](docs/images/overview.png)
+![Cockpit's Overview: a commit to confirm, the current task's progress, checks, the agents at work as a neural view, changed files and an earlier flow](docs/images/overview.png)
 
 *A preview of the Overview, drawn from the desktop pane.*
 

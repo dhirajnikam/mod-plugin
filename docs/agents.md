@@ -2,7 +2,7 @@
 
 Start, stop and follow subagents, and read what each found. Each run shows in one place.
 
-![The Agents tab: a Verify pipeline running, the running list, connections and the team](images/agents.png)
+![The Agents tab: a reviewer running, connections, the team with its worktree tick, and a finished tester](images/agents.png)
 
 *A preview drawn from the desktop pane; the app's own spacing differs slightly.*
 

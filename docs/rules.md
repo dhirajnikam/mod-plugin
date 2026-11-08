@@ -57,6 +57,6 @@ description sits in every session's context so Claude can pick it) or it runs **
   switch was worked out, nothing is written, the tab says so and shows your edit.
 - Skills a plugin brings are not listed here; the Agents tab shows the agents plugins add.
 
-![The Rules tab](images/rules.png)
+![The Rules tab: what loads every session, hooks, permission rules, MCP servers, skills and instructions](images/rules.png)
 
 [All docs](README.md) · [Project README](../README.md)

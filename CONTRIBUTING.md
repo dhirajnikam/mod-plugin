@@ -38,6 +38,9 @@ mod, so run `./dev.sh` once before it. CI runs the other seven on every push and
 ([.github/workflows/ci.yml](.github/workflows/ci.yml)); it cannot load the mod in a session, so the type-check is yours
 to run before you open a pull request.
 
+The previews in `docs/images/` are drawn from the pane's own tree by `python3 scripts/draw_previews.py` (it needs
+Google Chrome); run it after a change to the Overview, Agents or Rules tabs.
+
 ## Where things are
 
 The [architecture guide](docs/architecture.md) explains how these fit together: the events, the state, the paths
