@@ -6,6 +6,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Model and effort chosen**: Cockpit chooses the model and effort for the experts and agents it starts, from the kind of agent, the task's words
+  and size, and the files touched; each agent's row says what it chose and why (`sonnet · medium — a usual task`).
+  **Choose model and effort for me** in the Agents settings turns it off.
 - **Several repositories**: the Git tab works from a folder that holds several repositories (`~/work/` with `api/` and `web/`): a Repo picker
   shows each one's branch and changes, every git and gh command follows the chosen one, and an edit in another
   repository switches to it unless you picked by hand.

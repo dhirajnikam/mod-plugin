@@ -5,7 +5,7 @@ import { themeOf } from './theme'
 import { Header, Tabs } from './tabs/header'
 import type { $, UI, V } from './tabs/shared'
 
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 // What the side pane draws with: the surface's elements, the state and the theme; null on a surface with no fields
 export async function paneV($: $, e: Frozen<RenderInput<'Pane'>>, root: string): Promise<V | null> {

@@ -12,7 +12,7 @@ import type { UI } from './views'
 // Everything Cockpit draws around the chat: the spinner, the band above the prompt, the chat's cards and rows, and the
 // line under the prompt (the side pane is pane.tsx). register.tsx calls this.
 // The state atom is declared here too: the engine reads it from the module that names it
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 // Where a card or a band label leads: the pane, opened on that tab, so a press shows what it names even when it is closed

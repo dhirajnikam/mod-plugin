@@ -66,7 +66,7 @@ import { drawings } from './drawings'
 import { fullPane } from './full-pane'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git', 'rules']
 
@@ -464,7 +464,7 @@ export const register: Register = on => {
       // Who started it: Cockpit's own start is a pipeline's step or yours (a press, a command); else another agent or Claude
       const s0 = await read($, S)
       const by = own ? (s0.pipeline && !s0.pipeline.agentId && s0.pipeline.steps[s0.pipeline.index] === plain ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
-      await trackAgent($, { id, name: own?.name ?? (expertName(plain) !== plain ? expertName(plain) : e.description || plain), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
+      await trackAgent($, { id, name: own?.name ?? (expertName(plain) !== plain ? expertName(plain) : e.description || plain), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(own?.pick ? { pick: own.pick } : {}), ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
       // A pipeline's expert whose start hands no id back: the id is known here
       await set($, s => ({
         agentTypes: s.agentTypes.includes(plain) ? s.agentTypes : [...s.agentTypes, plain],

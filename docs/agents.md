@@ -22,7 +22,7 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
   its run (`running ↑`, `done ↓`) instead of repeating it.
 - **Finished**: the three newest runs, each with its result (`3/3 passed`, its report), the rest a press away, each with ↻ Restart and ✎; **Clear** empties the list.
   **■ Stop all**, beside Running, stops every live run.
-- **Settings**, folded: test each agent's work, Verify after each turn, and **Tell me when work is done**.
+- **Settings**, folded: choose model and effort for me, test each agent's work, Verify after each turn, and **Tell me when work is done**.
 
 ## Told when work is done
 
@@ -92,6 +92,18 @@ tab runs in a git worktree of its own, so two agents working at once never step 
   it; a worktree agent's work is tested and committed once you bring it back.
 - A file that is not UTF-8 text cannot be brought back this way (the check refuses it, nothing is changed); copy it
   from the worktree by hand.
+
+## Model and effort
+
+With **Choose model and effort for me** on (the default), Cockpit picks a model and an effort for each expert and agent
+it starts, and the row shows it, for example `haiku · low — light work (typo, docs)`. The rules are a small table in
+`hooks/pick.ts`: the kind sets the start (planner and reviewer high on opus, builder and testers on sonnet, scribe on
+haiku), light words (rename, typo, docs, readme) step down, hard words (refactor, architecture, security, debug, race)
+and a long brief or eight or more changed files step up. The model goes with the spawn; the effort goes on the expert's
+definition, which is registered again just before the start, because a spawn has no effort of its own. Pipelines run
+one expert at a time, so the helper count the pick returns (two for a big, hard build) is recorded, not used. Off,
+agents start with their own defaults. Cockpit cannot change the main session's model or effort: the plugin API reads
+the model (`$.session.model()`) and sets none, and `$.config.set` would rewrite the person's saved settings.
 
 ## Agent memory
 

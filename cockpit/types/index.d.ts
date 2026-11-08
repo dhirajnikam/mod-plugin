@@ -64,6 +64,8 @@ export type Agent = {
   // Its own git worktree, when it ran in one: where, on which branch, from which commit, and what it changed there
   // claude: made by Claude Code's own isolation (path '' and `before` set while Cockpit has yet to find it)
   worktree?: { path: string; branch: string; base: string; claude?: boolean; before?: string[]; nothing?: boolean; snap?: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
+  // The model and effort Cockpit chose for it, with why: "sonnet · medium — small docs change"
+  pick?: string
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
@@ -259,12 +261,14 @@ export type Ph = {
   autoVerify: boolean
   // Run the positive and the negative tester on each agent's run that changed files
   testAgents: boolean
+  // Choose each expert's model and effort from the task (hooks/pick.ts); off: the agent's own defaults
+  chooseModel: boolean
   // Tell me when work is done: a notice for each finish while the pane is not watched (absent: on)
   notifyDone?: boolean
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by
-  starting: { name: string; type: string; task: string; worktree?: boolean } | null
+  starting: { name: string; type: string; task: string; worktree?: boolean; pick?: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   // The tabs an add-on said it draws; absent, Cockpit draws every tab
