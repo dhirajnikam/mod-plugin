@@ -10,7 +10,7 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
 
 ## The tab, from top to bottom
 
-- **Build, Verify, Review**, **⟳ Autopilot** and **+ New agent** in one row.
+- **Build, Verify, Review** on top; **⟳ Autopilot** and **+ New agent** inside **› More**.
 - **The running pipeline**, as a card: its experts' icons (the current one turning, a finished one with its result,
   `Prover ✓3/3`), the running step's tracker, the hand-off it carries, and ■ Stop.
 - **Running**: every other live run with its tracker (its own task list as a bar, done of all and the task it is on,
