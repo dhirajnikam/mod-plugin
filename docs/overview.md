@@ -42,6 +42,17 @@ with an arrow only where it folds.
   even while the pane is on screen and with finish notices off. Plain dollars only (10, 12.50). A session counts on
   the day it started, so one running past midnight adds to the day before. It only warns: nothing is ever stopped.
 
+## Codebase guide
+
+A row near the top asks Claude to explain the project in a document you can then change. **Explain this codebase**
+(or `/cockpit explain`) hands Claude one prompt to write `docs/CODEBASE.md` (`CODEBASE.md` at the root when there is
+no `docs/` folder): what the project is for, its layout, how data flows through it, the design decisions and approach,
+how to build, test and run it, and where to start for common changes. The prompt carries what Cockpit already knows
+(the feature map from the codebase memory, the README's first lines, the most changed files) so Claude reads less.
+Once the file exists the row shows its path and when it was written, a **Refresh** button (Claude updates it in
+place and keeps your edits) and a box, "Ask Claude to change the guide…", whose text goes to Claude as
+`Edit docs/CODEBASE.md: <what you typed>`. Open only names the path: the host has no call to open a file.
+
 ## Around the prompt and in the chat
 
 - **Above the prompt**: Progress and Context bars; click either to open the Overview.

@@ -55,6 +55,7 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 | `/cockpit product [$budget] [hours h] <vision>` | lead the product toward a vision, goal after goal, the judges choosing each; `stop`, `resume` |
 | `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |
 | `/cockpit test` | run the Verify pipeline now |
+| `/cockpit explain` | Claude writes (or refreshes) a [codebase guide](docs/overview.md#codebase-guide) at `docs/CODEBASE.md` that you can then ask it to change |
 | `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
 | `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current task on another [flow](docs/flows.md) (where its steps come from) |
 | `/cockpit focus [on\|off]` | hide or show Claude's tool activity in the chat |
