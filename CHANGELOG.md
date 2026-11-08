@@ -5,6 +5,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+- The parts: `cockpit-core` and its add-ons (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`, `-chat`)
+  are gone from the marketplace, along with `scripts/split.py`. Install `cockpit`, which holds all of them; if you
+  installed the parts, uninstall them.
+
 ## [0.6.0] - 2026-11-08
 
 ### Added
@@ -130,11 +135,68 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - Commit messages are written from the diff; GitHub accounts are really added and removed with gh.
 
-## [0.4.0] and earlier
+## [0.4.0] - 2026-10-30
 
-See the git history.
+### Changed
+- The judges leave to you settings, permissions, rules and credentials (advice only), and any question only you can
+  answer; an answer that arrives after a newer question or prompt of yours is dropped.
+- Agent runs read plainly: Claude's subagents are named by their description, and a run's last step is in plain
+  words ("Running the tests") instead of the raw tool call.
+
+### Fixed
+- A running agent's icon no longer leaves large gaps in the Agents tab.
+- Agent files with Windows line endings register; a stored theme Cockpit does not have is dropped at load.
+- A test run (`make tests`) counts as Verify.
+
+## [0.3.1] - 2026-10-30
+
+### Fixed
+- Clear finished stays cleared, and team rows go back to idle.
+
+## [0.3.0] - 2026-10-30
+
+### Added
+- Several agents at once: run and manage them together.
+- Named features in the codebase memory, Claude's own subagents in the Agents tab, reruns with new instructions,
+  and Compact and Clear for the context.
+
+## [0.2.1] - 2026-10-30
+
+### Fixed
+- A handed-off agent's brief travels in a file its start line names, instead of on the line itself.
+
+## [0.2.0] - 2026-10-30
+
+### Added
+- **Experts and pipelines**: six expert agents and the Build, Verify and Review pipelines, started from the pane,
+  with two testers on every agent and custom agent types.
+- **Flows**: every prompt is a flow in the Overview, with its own steps and a flow picker.
+- **Activity**: one live, animated view of the project tree and every file and agent at work.
+- **Codebase memory** with the impact of a change, and history kept in `.cockpit`.
+- **Judges** for next-step questions, with an advice mode and an off switch.
+- **Git**: setup per repository, commit modes, the commit type and branch chosen for you, and settings remembered.
+- Colour on the desktop, live timers, and a team board with a pipeline strip.
+
+### Fixed
+- The mod loads and type-checks on macOS; the Git tab, desktop drawing and layout work.
+- Each palette paints its own background with status colours that read on it; Auto follows the surface's real theme.
+- No progress shows before a prompt, skipped steps are not counted, and the terminal ring is smooth.
+- `/cockpit focus` accepts any case and rejects other words.
+
+## [0.1.0] - 2026-10-28
+
+### Added
+- Cockpit, the Powerhouse design as a Claude Code mod: progress and context around the prompt, chat cards, a focus
+  mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
+- `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
 [Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...main
 [0.6.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.1...v0.5.0
-[0.4.1]: https://github.com/dhirajnikam/mod-plugin/commit/98c45bd
+[0.4.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/dhirajnikam/mod-plugin/releases/tag/v0.1.0

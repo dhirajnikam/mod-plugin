@@ -28,7 +28,6 @@ npx -p typescript tsc -p cockpit             # the type-check: no output means c
 claude plugin validate ./cockpit             # what the engine would refuse
 python3 scripts/check_links.py               # every relative link in the Markdown resolves
 python3 scripts/check_privacy.py             # every model call is documented in docs/privacy.md
-python3 scripts/split.py --check             # plugins/ is built from the current cockpit/
 ```
 
 The type-check needs the types Claude Code writes into `cockpit/.claude-plugin/types/` (git-ignored) when it loads the
@@ -54,7 +53,6 @@ through the code.
 | `cockpit/types/index.d.ts` | the state contract: every value Cockpit keeps |
 | `cockpit/agents/*.md` | the six experts' definitions |
 | `cockpit/tests/` | the tests |
-| `cockpit/hooks/acts.ts`, `plugins/` | built by `scripts/split.py`, never edited by hand: the actions the parts send to `cockpit-core`, and the parts themselves (see [the architecture guide](docs/architecture.md#the-parts-cockpit-core-and-its-add-ons)) |
 
 ## Writing a change
 

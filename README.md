@@ -23,27 +23,6 @@ Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, t
 Answer `y` to add this repository as a marketplace, then pick a scope: you everywhere, or one project. Cockpit loads
 at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
 
-### Or only the parts you want
-
-Cockpit also comes in parts: `cockpit-core` (the state, the events, the experts, `/cockpit` and the pane's header) and
-an add-on for each tab and for the chat. The pane shows a tab for each add-on you install. Install core and any add-ons:
-
-```
-/plugin install cockpit-core --marketplace dhirajnikam/mod-plugin
-/plugin install cockpit-git --marketplace dhirajnikam/mod-plugin
-```
-
-| Add-on | Adds |
-|---|---|
-| `cockpit-overview` | the Overview tab |
-| `cockpit-activity` | the Activity tab |
-| `cockpit-agents` | the Agents tab |
-| `cockpit-git` | the Git tab |
-| `cockpit-rules` | the Rules tab |
-| `cockpit-chat` | the band above the prompt, the spinner's words, tool calls as cards, and the line under the prompt |
-
-Install either `cockpit` or the parts, not both: each registers `/cockpit` and follows the same events.
-
 ## A tour
 
 | Tab | What you see and do |
@@ -102,8 +81,7 @@ The details: [Privacy and cost](docs/privacy.md) and the [security policy](SECUR
 ./dev.sh        # start Claude Code with Cockpit loaded from this checkout (dev.cmd on Windows)
 ```
 
-Saving a file under `cockpit/hooks/` reloads the mod when the turn ends. The parts in [`plugins/`](plugins) are built
-from `cockpit/` by `python3 scripts/split.py`: change `cockpit/`, never `plugins/`. The checks, the code's layout and how to write
+Saving a file under `cockpit/hooks/` reloads the mod when the turn ends. The checks, the code's layout and how to write
 a test are in [CONTRIBUTING.md](CONTRIBUTING.md); every change is listed in [CHANGELOG.md](CHANGELOG.md).
 
 Also here: [`ui-template/`](ui-template), a small earlier mod (a clean spinner and a mode · model · effort line; load

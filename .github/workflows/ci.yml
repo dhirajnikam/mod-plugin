@@ -33,15 +33,10 @@ jobs:
       - name: Tests
         run: |
           claude plugin test ./cockpit
-          for p in plugins/*/; do claude plugin test "$p"; done
 
-      - name: The parts are built from the current source
-        run: python3 scripts/split.py --check
-
-      - name: Validate the plugins and the marketplace
+      - name: Validate the plugin and the marketplace
         run: |
           claude plugin validate ./cockpit
-          for p in plugins/*/; do claude plugin validate "$p"; done
           claude plugin validate ./ui-template
           claude plugin validate .
 
