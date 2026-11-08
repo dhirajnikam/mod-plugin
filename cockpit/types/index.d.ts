@@ -255,6 +255,8 @@ export type Ph = {
   ops: FileOp[]
   // Every path of the project, relative to the root: the Activity tree's skeleton
   project: string[]
+  // The codebase guide Claude writes on request: its path, and when the file was last written (0 while it is not there)
+  guide?: { path: string; at: number }
   decisions: Decision[]
   waiting: string
   // Run the Verify experts after each turn that changes files
@@ -309,6 +311,7 @@ export type Ph = {
     undoAsk?: string
     // What is typed into the daily budget field
     budgetText?: string
+    guideText?: string
     // The commit opened in the graph, and what git show said of it
     openCommit: string
     commitInfo: string

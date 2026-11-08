@@ -6,6 +6,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
+  `docs/CODEBASE.md` (what the project is for, layout, data flow, design decisions, how to build and run it); the row then
+  offers Refresh and a box to ask Claude to change the guide.
 - **Model and effort chosen**: Cockpit chooses the model and effort for the experts and agents it starts, from the kind of agent, the task's words
   and size, and the files touched; each agent's row says what it chose and why (`sonnet · medium — a usual task`).
   **Choose model and effort for me** in the Agents settings turns it off.

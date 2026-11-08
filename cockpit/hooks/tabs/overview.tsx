@@ -87,6 +87,7 @@ import type { PermKind } from '../rules'
 import { THEMES, THEME_IDS, ctxShades } from '../theme'
 import type { Theme } from '../theme'
 import type { $, UI, V } from './shared'
+import { Guide } from './guide'
 import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
 export function Overview($: $, v: V) {
@@ -201,6 +202,7 @@ export function Overview($: $, v: V) {
           </Box>
         )
       })()}
+      {Guide($, v)}
       <Box columnGap={sp(v, 2)} flexWrap="wrap">
         {Svg ? (
           <Svg source={ringSvg(p.pct, '', { accent: t.accent, track: t.track, text: t.text, dim: t.dim })} alt={`${p.pct}% · ${p.stepName}`} width={96} height={96} />

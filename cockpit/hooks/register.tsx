@@ -30,6 +30,8 @@ import {
   loadHistory,
   writeSteps,
   buildMemory,
+  explainCodebase,
+  loadGuide,
   updateMemory,
   repoRoot as repoRootOf,
   saveHistory,
@@ -99,8 +101,8 @@ export const register: Register = on => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
-      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
+      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []
@@ -123,6 +125,7 @@ export const register: Register = on => {
         // The branch's PR while a check is pending: green or red by itself, and a notice when the run finishes
         await livePr($).catch(() => null)
         await measure($)
+        await loadGuide($).catch(() => null)
         // The accounts too while their box is on screen (the Git tab's setup, or its options open): a gh login added
         // or a token that stopped working shows by itself
         const s = await read($, S)
@@ -134,6 +137,7 @@ export const register: Register = on => {
     await loadHistory($)
     // The codebase memory, fresh each session, in the background
     void buildMemory($).catch(() => null)
+    void loadGuide($).catch(() => null)
     const bad = selfCheck()
     if (bad.length) $.ui.log(`cockpit self-check failed: ${JSON.stringify(bad)}`)
     await refreshRepo($)
@@ -177,6 +181,12 @@ export const register: Register = on => {
       await openPane($)
       return { text: `${name}: ${goal}${budget ? ` · $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}` }
     }
+    if (verb === 'explain') {
+      await explainCodebase($)
+      await set($, { tab: 'overview' })
+      await openPane($)
+      return { text: `Asked Claude to write ${(await read($, S)).guide?.path ?? 'the codebase guide'}` }
+    }
     if (verb === 'theme') {
       if (!THEME_IDS.includes(arg as ThemeId)) return { text: `Themes: ${THEME_IDS.join(', ')}` }
       await setTheme($, arg as ThemeId)
@@ -190,6 +200,7 @@ export const register: Register = on => {
     if (verb === 'tab' && TABS.includes(arg as Tab)) await set($, { tab: arg as Tab })
     if (verb === 'tab' && arg === 'git') await refreshGit($)
     if (verb === 'tab' && arg === 'files') await loadProject($)
+    if (verb === 'tab' && arg === 'overview') await loadGuide($)
     if (verb === 'tab' && arg === 'rules') await loadRules($)
     if (verb === 'tab' && arg === 'agents') await Promise.all([discoverAgentTypes($), syncAgents($)])
     if (verb === 'focus') {
