@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
 import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
+import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -117,7 +117,9 @@ export async function refreshRepo($: $) {
   }
   const branches = (await git($, ['branch', '--format=%(refname:short)'])).stdout.split('\n').map(b => b.trim()).filter(Boolean)
   const origin = (await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).stdout.trim().replace(/^origin\//, '')
-  const base = origin || ['main', 'master', 'develop'].find(b => branches.includes(b)) || current
+  // No origin HEAD and no usual base: none is guessed, so the branch you happen to be on is not kept as the base
+  // (the PR would then never be read); a PR opened from here falls back to the current branch itself
+  const base = origin || ['main', 'master', 'develop'].find(b => branches.includes(b)) || ''
   // Every branch, remote and tag in graph order: hash, parents, refs, subject, age, author, one field each
   const log = (await git($, ['log', '--branches', '--remotes', '--tags', '--topo-order', '-n', '40', '--format=%h%x1f%p%x1f%D%x1f%s%x1f%ar%x1f%an'])).stdout
     .split('\n')
@@ -129,7 +131,8 @@ export async function refreshRepo($: $) {
   // What the upstream lacks; no upstream, nothing is marked
   const up = await git($, ['log', '--format=%h', '@{u}..HEAD'])
   const unpushed = up.exitCode === 0 ? up.stdout.split('\n').filter(Boolean) : []
-  await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed }, git: { ...s.git, base: s.git.base || base } }))
+  // The branch's pull request is read only by loadPr (it asks GitHub); kept while the branch stays the same
+  await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed, ...(s.repo.current === current && s.repo.pr !== undefined ? { pr: s.repo.pr } : {}) }, git: { ...s.git, base: s.git.base || base } }))
   // The next commit's message is written in the background; Commit waits for it
   void suggestCommit($).catch(() => null)
 }
@@ -225,6 +228,8 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
   await toast($, `${auto ? 'Auto-committed' : 'Committed'} ${sha}${extra.length ? ` · ${extra.join(' · ')}` : ''}`)
   await note($, `⎇ ${auto ? 'Auto-committed' : 'Committed'} ${sha} · ${msg}`)
   await refreshRepo($)
+  // A push starts the checks of the branch's PR again, or opened one
+  if (g.push) await loadPr($)
 }
 
 // Ask mode: propose the commit and wait for Commit or Skip in the band or the pane
@@ -268,10 +273,12 @@ export async function pushNow($: $) {
   const p = await git($, ['push', '-u', 'origin', s.repo.current])
   await toast($, `${p.exitCode === 0 ? `Pushed ${s.repo.current}` : `Push failed: ${firstLine(p)}`}${why ? ` (${why})` : ''}`)
   await refreshRepo($)
+  // A push starts the PR's checks again
+  if (p.exitCode === 0) await loadPr($)
 }
 
-async function gh($: $, args: string[], stdin?: string) {
-  return $.process.run(['gh', ...args], { env: { GH_PROMPT_DISABLED: '1' }, ...(stdin ? { stdin } : {}) }).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+async function gh($: $, args: string[], stdin?: string, cwd?: string) {
+  return $.process.run(['gh', ...args], { env: { GH_PROMPT_DISABLED: '1' }, ...(stdin ? { stdin } : {}), ...(cwd ? { cwd } : {}) }).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
 }
 
 // Push as a gh login: make it gh's active account, and have git ask gh for github.com's credentials, or git's own
@@ -373,7 +380,49 @@ export async function loadAccounts($: $) {
 // The Git tab read again: the repository, and the accounts, so a login added or removed outside Cockpit (gh auth login
 // in a terminal, an expired token) shows without a press of Detect. Not every turn: gh auth status checks each token
 export async function refreshGit($: $) {
-  await Promise.all([refreshRepo($), loadAccounts($).catch(() => null)])
+  await Promise.all([refreshRepo($).then(() => loadPr($)), loadAccounts($).catch(() => null)])
+}
+
+// Fix failing checks: Claude is handed each failing check's name and the end of its failed steps' log (GitHub Actions
+// only; another CI's check goes with its link), and asked to find the cause and fix it
+export async function fixChecks($: $) {
+  const pr = (await read($, S)).repo.pr
+  if (!pr?.checks.failing.length) return toast($, 'No failing checks to fix')
+  const parts: string[] = []
+  // ponytail: three checks, the last 120 lines and 6k characters of each log; enough to name the error, not to read it all
+  for (const f of pr.checks.failing.slice(0, 3)) {
+    const run = f.link.match(/\/actions\/runs\/(\d+)/)?.[1]
+    const log = run ? await gh($, ['run', 'view', run, '--log-failed'], undefined, (await repoRoot($)) || undefined) : null
+    const tail = log?.exitCode === 0 ? log.stdout.trim().split('\n').slice(-120).join('\n').slice(-6000) : ''
+    parts.push(tail ? `${f.name}, the end of its failed steps:\n\`\`\`\n${tail}\n\`\`\`` : `${f.name}${f.link ? ` (${f.link})` : ''}: no log could be read`)
+  }
+  // privacy: none; the log goes into your own conversation, as a prompt you could have pasted (docs/privacy.md)
+  const text = `Fix the failing CI checks on pull request #${pr.number} (${pr.title}). Find the cause from the log, fix it, and run the same check locally.\n\n${parts.join('\n\n')}`
+  const r = await $.prompt.submit({ text }).catch(() => ({ drop: true }))
+  if ('drop' in r && r.drop) await toast($, 'Could not hand the failing checks to Claude')
+}
+
+// The current branch's pull request and its checks, from gh. Not on the base branch (its PRs are other branches'), and
+// no checks asked for when gh has no PR or cannot answer (not installed, not logged in, not a GitHub repository)
+// Each read numbered: an older one that answers after a newer one is dropped
+let prReads = 0
+export async function loadPr($: $) {
+  const n = ++prReads
+  const s = await read($, S)
+  const br = s.repo.current
+  if (!s.repo.isRepo || !br || br === s.git.base) return
+  const cwd = (await repoRoot($)) || undefined
+  // -- before the branch: a ref named like a flag stays a branch name
+  const view = await gh($, ['pr', 'view', '--json', 'number,title,url,state,isDraft,reviewDecision', '--', br], undefined, cwd)
+  // gh cannot answer (offline, not logged in, rate limited): the row stays as it was; only "no pull requests" clears it
+  if (view.exitCode !== 0 && !/no pull requests? found/i.test(view.stderr)) return
+  // gh pr checks exits 8 while checks are pending and 1 when one failed, printing the JSON all the same
+  // A PR with no CI: gh says "no checks reported" with nothing on stdout. Output cut off is unreadable, not "none"
+  const checks = view.exitCode === 0 ? await gh($, ['pr', 'checks', '--json', 'name,bucket,link', '--', br], undefined, cwd) : null
+  const listed = !checks || ('isStdoutTruncated' in checks && checks.isStdoutTruncated) ? '' : /no checks reported/i.test(checks.stderr) && !checks.stdout.trim() ? '[]' : checks.stdout
+  const pr = view.exitCode === 0 ? parsePr(view.stdout, listed) : null
+  if (n !== prReads) return
+  await set($, st => (st.repo.current === br ? { repo: { ...st.repo, pr } } : {}))
 }
 
 export async function saveAccount($: $, a: Account) {

@@ -445,27 +445,30 @@ export function ringRuns(pct: number, fill: string, track: string, ink: string, 
 
 // The current branch's pull request from gh's JSON: `gh pr view --json number,title,url,state,isDraft,reviewDecision`
 // and `gh pr checks --json name,bucket,link`. No PR, or output gh did not write, is null; checks that cannot be read
-// count as none, since a PR with no CI is common
+// (cut off, gh failed) are unknown, never "none", so a failing check is not hidden behind "no checks"
 export function parsePr(view: string, checks: string): PrStatus | null {
   const json = (t: string) => { try { return JSON.parse(t) } catch { return null } }
+  // A title or check name is whatever someone typed on GitHub: control characters (escapes, newlines) become spaces,
+  // since the pane refuses to draw them
+  const clean = (x: unknown) => String(x ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ')
   const v = json(view)
   if (!v || typeof v !== 'object' || typeof v.number !== 'number') return null
   const REVIEW = new Map([['APPROVED', 'approved'], ['CHANGES_REQUESTED', 'changes'], ['REVIEW_REQUIRED', 'required']] as const)
   const review = v.isDraft ? 'draft' : (REVIEW.get(v.reviewDecision) ?? '')
-  const c = { pass: 0, fail: 0, pending: 0, skip: 0, failing: [] as { name: string; link: string }[] }
   const list = json(checks)
+  const c = { pass: 0, fail: 0, pending: 0, skip: 0, failing: [] as { name: string; link: string }[], ...(Array.isArray(list) ? {} : { unknown: true }) }
   for (const k of Array.isArray(list) ? list : []) {
     // gh's buckets: pass, fail, pending, skipping, cancel (a cancelled run did not pass, so it counts as failed)
-    const b = String(k?.bucket ?? '')
+    const b = String(k?.bucket ?? '').toLowerCase()
     if (b === 'pass') c.pass++
     else if (b === 'pending') c.pending++
     else if (b === 'skipping') c.skip++
     else if (b === 'fail' || b === 'cancel') {
       c.fail++
-      c.failing.push({ name: String(k?.name ?? '?'), link: String(k?.link ?? '') })
+      c.failing.push({ name: clean(k?.name ?? '?'), link: clean(k?.link) })
     }
   }
-  return { number: v.number, title: String(v.title ?? ''), url: String(v.url ?? ''), state: (['OPEN', 'CLOSED', 'MERGED'].includes(v.state) ? v.state : 'OPEN'), review, checks: c }
+  return { number: v.number, title: clean(v.title), url: clean(v.url), state: (['OPEN', 'CLOSED', 'MERGED'].includes(v.state) ? v.state : 'OPEN'), review, checks: c }
 }
 
 // Self-check: the parts a broken edit would quietly corrupt
@@ -537,10 +540,13 @@ export function selfCheck() {
     [JSON.stringify(parsePr('{"number":7,"title":"Add x","url":"u","state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED"}', '[{"name":"test","bucket":"fail","link":"l1"},{"name":"lint","bucket":"pass"},{"name":"e2e","bucket":"pending"},{"name":"deploy","bucket":"cancel","link":"l2"},{"name":"docs","bucket":"skipping"}]')), '{"number":7,"title":"Add x","url":"u","state":"OPEN","review":"changes","checks":{"pass":1,"fail":2,"pending":1,"skip":1,"failing":[{"name":"test","link":"l1"},{"name":"deploy","link":"l2"}]}}'],
     [parsePr('{"number":7,"isDraft":true,"reviewDecision":"APPROVED"}', '[{"bucket":"pass"}]')?.review, 'draft'],
     [parsePr('{"number":7,"reviewDecision":"APPROVED"}', '[{"bucket":"pass"},{"bucket":"pass"}]')?.checks.pass, 2],
-    [parsePr('{"number":7,"reviewDecision":""}', 'no checks reported on the \'x\' branch')?.checks.fail, 0],
+    [parsePr('{"number":7,"reviewDecision":""}', '[]')?.checks.unknown, undefined],
+    [parsePr('{"number":7,"reviewDecision":""}', '[{"name":"a","bucket":"fail"},{"na')?.checks.unknown, true],
+    [parsePr('{"number":7}', '[{"name":"a","bucket":"FAIL"}]')?.checks.fail, 1],
     [parsePr('no pull requests found for branch "x"', ''), null],
     [parsePr('{"title":"no number"}', '[]'), null],
     [parsePr('null', '[]'), null],
+    [parsePr('{"number":7,"title":"a\\u001b[31mb\\nc"}', '[{"name":"t\\u0007","bucket":"fail"}]')?.title + '|' + parsePr('{"number":7}', '[{"name":"t\\u0007","bucket":"fail"}]')?.checks.failing[0]?.name, 'a [31mb c|t '],
   ]
   return checks.filter(([a, b]) => a !== b)
 }

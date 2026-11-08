@@ -5,6 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- The Git tab shows the current branch's pull request: its number and title, its review (approved, changes requested,
+  review required, draft, or closed and merged), and its checks counted (✓ passed, ✗ failed, ◌ running) with each
+  failing check named. **Fix failing checks** hands Claude each failing check's name and the end of its failed log
+  (`gh run view --log-failed`) as a prompt. It is read with `gh pr view` and `gh pr checks` when the tab opens, on ↻,
+  and after a push; not on the base branch. A pull request title or check name with control characters draws with
+  spaces in their place.
+
 ### Removed
 - The parts: `cockpit-core` and its add-ons (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`, `-chat`)
   are gone from the marketplace, along with `scripts/split.py`. Install `cockpit`, which holds all of them; if you

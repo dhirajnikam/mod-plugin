@@ -56,3 +56,47 @@ test('the band, the pane and the chat cards fit every width', { timeoutMs: 20_00
   }
   expect(bad).toEqual([])
 })
+
+// The Git tab's pull request row, with a long title, every kind of check and more failing checks than it lists
+test("the Git tab's pull request fits every width, and draws pending and passing checks", { timeoutMs: 20_000 }, async ($, on) => {
+  let checks = '[{"name":"build the whole monorepo on windows-latest","bucket":"fail"},{"name":"b","bucket":"fail"},{"name":"c","bucket":"cancel"},{"name":"d","bucket":"fail"},{"name":"lint","bucket":"pass"},{"name":"e2e","bucket":"pending"}]'
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd.startsWith('git status')) return out('## feature/a-rather-long-branch-name-for-a-narrow-pane\0')
+    if (cmd.startsWith('git branch')) return out('main\n')
+    if (cmd.startsWith('gh pr view')) return out('{"number":1234,"title":"Make the authentication flow survive an expired refresh token on every platform","url":"u","state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED"}')
+    if (cmd.startsWith('gh pr checks')) return out(checks)
+    return out('')
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const setup = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } } as never)
+  for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await setup.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
+  await setup.unmount()
+  const bad: string[] = []
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const w of WIDTHS) {
+      const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll, view: {} } } as never)
+      const drawn = await pane.drawn()
+      const text = JSON.stringify(drawn)
+      for (const want of ['#1234', 'changes requested', '✓ 1 passed', '✗ 4 failed', '◌ 1 running', '+1 more failed']) if (!text.includes(want)) bad.push(`${surface} @${w}: no ${want}`)
+      for (const n of wide(drawn, w)) bad.push(`${surface} git @${w}: ${n}`)
+      await pane.unmount()
+    }
+  }
+  // All passed: no failing rows
+  checks = '[{"name":"lint","bucket":"pass"},{"name":"test","bucket":"pass"}]'
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 60, placement: 'dock', scroll, view: {} } } as never)
+  const text = JSON.stringify(await pane.drawn())
+  expect(text).toContain('✓ 2 passed')
+  expect(text).not.toContain('failed')
+  await pane.unmount()
+  expect(bad).toEqual([])
+})

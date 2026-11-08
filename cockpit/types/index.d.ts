@@ -336,5 +336,6 @@ export interface PrStatus {
   state: 'OPEN' | 'CLOSED' | 'MERGED'
   // approved, changes requested, review required, draft, or '' when the repository asks for no review
   review: 'approved' | 'changes' | 'required' | 'draft' | ''
-  checks: { pass: number; fail: number; pending: number; skip: number; failing: { name: string; link: string }[] }
+  // unknown: gh's answer could not be read (cut off, gh failed), so the counts say nothing
+  checks: { pass: number; fail: number; pending: number; skip: number; failing: { name: string; link: string }[]; unknown?: boolean }
 }

@@ -12,6 +12,16 @@ The first time you open the Git tab in a repository it asks five things, once: t
 - **Commit** commits the ticked files only, even ones you had already staged with `git add`. A rename is committed whole.
 - The tab reads the repository and the accounts each time you open it (the repository after every turn too, the accounts every 15 s while the account box shows); **↻ Refresh** reads both again. A login whose token stopped working is named in the account box.
 - **Open pull request** needs a branch other than the base, which the pattern gives you.
+- **The branch's pull request** shows under the account line once there is one: `⇄ #12 title`, then its review
+  (approved, changes requested, review required, draft; closed or merged once it is), and its checks counted,
+  `✓ 3 passed  ✗ 1 failed  ◌ 2 running` (a cancelled check counts as failed), with the first three failing checks
+  named. It is read with `gh pr view` and `gh pr checks` when you open the tab, press ↻, or push; not on the base
+  branch, whose pull requests are other branches'. When gh cannot answer (offline, not logged in) the row stays as it
+  was; it goes once gh says the branch has no pull request. Checks gh could not list in full say "checks unknown",
+  never "no checks".
+- **Fix failing checks** reads the end of each failing check's log (`gh run view --log-failed`, the last 120 lines,
+  three checks at most; a check from another CI goes with its link) and hands them to Claude as a prompt asking it to
+  find the cause, fix it and run the check locally.
 - Failed pushes, PRs and commits say why in the toast.
 - Git runs from the repository's top folder, and the settings and account are kept per repository, so a session working in a subfolder commits the right paths with the same settings.
 

@@ -13,7 +13,8 @@ Only the latest release is supported with fixes.
 Cockpit runs inside Claude Code with the same reach as Claude Code itself, so this is what a report would be about.
 
 - **Runs git and gh.** Reading: `git status`, `diff`, `log`, `show`, `ls-files`, `rev-parse`, `branch`, `config`, and
-  `gh auth status` and `gh api user`. Changing the repository: `git add`, `commit`, `switch` and `switch -c` (a commit on
+  `gh auth status`, `gh api user`, and for the Git tab's pull request `gh pr view`, `gh pr checks` and
+  `gh run view --log-failed` (only when you press Fix failing checks). Changing the repository: `git add`, `commit`, `switch` and `switch -c` (a commit on
   the base branch cuts a branch by your pattern), `init`, and `git config user.name` / `user.email` when you press
   **Use for this repo**. These happen when you press a button, or after each turn in Auto-commit mode. `git push`,
   `pull` and `gh pr create` run only when you press them or turn push and pull requests on.

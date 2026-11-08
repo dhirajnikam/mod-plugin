@@ -30,7 +30,10 @@ has no row here.
 ## Every command it runs
 
 `git` (status, diff, log, show, ls-files, rev-parse, branch, config; add, commit, switch, init; push and pull) and `gh`
-(auth status, auth login, auth logout, auth switch, auth setup-git, api user, pr create). When each runs, and what it
+(auth status, auth login, auth logout, auth switch, auth setup-git, api user, pr create, pr view, pr checks,
+run view). **Fix failing checks** puts the end of each failing CI log into your conversation as a prompt, so it reaches
+the model like anything you paste; GitHub masks the repository's secrets in its logs, but anything else a job prints
+goes with it. When each runs, and what it
 changes on your machine, is in the [security policy](../SECURITY.md#what-cockpit-can-do-on-your-machine).
 
 ## What costs, and what is on by default

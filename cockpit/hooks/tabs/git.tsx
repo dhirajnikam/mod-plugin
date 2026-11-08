@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, Tab, ThemeId } from '../../types'
+import type { Account, Agent, Decision, GitForm, Ph, PrStatus, Tab, ThemeId } from '../../types'
 import {
   inBackground,
   applyAccount,
@@ -25,6 +25,7 @@ import {
   useAccount,
   refreshRepo,
   refreshGit,
+  fixChecks,
   set,
   startPipeline,
   setTheme,
@@ -112,7 +113,7 @@ export function Git($: $, v: V) {
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        <Text>
+        <Text wrap="truncate-end">
           <Text color={t.accent} bold>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
           {s.repo.ahead > 0 && <Text color={t.busy}>{`  ↑${s.repo.ahead} to push`}</Text>}
           {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
@@ -126,11 +127,12 @@ export function Git($: $, v: V) {
         </Box>
       </Box>
       <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
+      {s.repo.pr && PrStatusRow($, v, s.repo.pr)}
       {s.pending && (
         <Box flexDirection="column" borderStyle="round" borderColor={t.busy} paddingX={1}>
           <Text color={t.busy} bold>Commit this?</Text>
           <Text color={t.hi} mono wrap="truncate-end">{s.pending.msg}</Text>
-          <Text color={t.dim} size="footnote">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
+          <Text color={t.dim} size="footnote" wrap="truncate-end">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
           <Box gap={sp(v, 1)}>
             <Button key="pend-commit" label="Commit" variant="primary" onPress={() => inBackground($, 'commit', 'Committing', () => confirmPending($))} />
             <Button key="pend-skip" label="Skip" onPress={() => skipPending($)} />
@@ -451,6 +453,42 @@ function Options($: $, v: V) {
           <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit({ [key]: !g[key] } as Partial<GitForm>)} />
         ))}
       </Box>
+    </Box>
+  )
+}
+
+// The branch's pull request: number and title, its review (or closed, merged), its checks counted, each failing one named
+const REVIEW_WORDS = { approved: 'approved', changes: 'changes requested', required: 'review required', draft: 'draft', '': 'open' } as const
+function PrStatusRow($: $, v: V, pr: PrStatus) {
+  const { Box, Button, Text } = v.ui
+  const { t } = v
+  const c = pr.checks
+  const status = pr.state === 'OPEN' ? REVIEW_WORDS[pr.review] : pr.state.toLowerCase()
+  const tone = pr.state === 'MERGED' || pr.review === 'approved' ? t.ok : pr.review === 'changes' ? t.bad : t.dim
+  const none = !c.unknown && c.pass + c.fail + c.pending + c.skip === 0
+  return (
+    <Box flexDirection="column">
+      <Text wrap="truncate-end">
+        <Text color={t.accent} bold>{`⇄ #${pr.number}`}</Text>
+        <Text>{` ${pr.title}`}</Text>
+      </Text>
+      <Box flexWrap="wrap" columnGap={sp(v, 2)}>
+        <Text color={tone} size="footnote">{status}</Text>
+        {c.pass > 0 && <Text color={t.ok} size="footnote">{`✓ ${c.pass} passed`}</Text>}
+        {c.fail > 0 && <Text color={t.bad} size="footnote">{`✗ ${c.fail} failed`}</Text>}
+        {c.pending > 0 && <Text color={t.busy} size="footnote">{`◌ ${c.pending} running`}</Text>}
+        {none && <Text color={t.dim} size="footnote">no checks</Text>}
+        {c.unknown && <Text color={t.dim} size="footnote">checks unknown</Text>}
+      </Box>
+      {c.failing.slice(0, 3).map((f, i) => (
+        <Text key={`pr-fail-${i}`} color={t.bad} size="footnote" wrap="truncate-end">{`  ✗ ${f.name}`}</Text>
+      ))}
+      {c.failing.length > 3 && <Text color={t.dim} size="footnote">{`  +${c.failing.length - 3} more failed`}</Text>}
+      {c.failing.length > 0 && pr.state === 'OPEN' && (
+        <Box>
+          <Button key="pr-fix" label="Fix failing checks" plain onPress={() => inBackground($, 'pr-fix', 'Reading the failed logs', () => fixChecks($))} />
+        </Box>
+      )}
     </Box>
   )
 }

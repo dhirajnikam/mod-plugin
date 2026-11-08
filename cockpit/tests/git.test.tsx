@@ -252,3 +252,119 @@ test('a gh login added outside Cockpit, or a token that stopped working, shows w
   expect(JSON.stringify(await ui.drawn())).not.toContain('no longer works')
   await ui.unmount()
 })
+
+test("the branch's pull request is read with gh when the Git tab opens, its checks only once gh finds one, and never on the base branch", { timeoutMs: 20_000 }, async ($, on) => {
+  const ran: string[] = []
+  let branch = 'feat/x'
+  let view = { exitCode: 0, stdout: '{"number":7,"title":"Add x","url":"https://github.com/o/r/pull/7","state":"OPEN","isDraft":false,"reviewDecision":"REVIEW_REQUIRED"}' }
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  const asked: string[] = []
+  on('prompt.submit', async (_: unknown, e: any) => (asked.push(String(e.text)), { text: e.text }))
+  on('process.run', async (_, e) => {
+    const { argv } = e as unknown as { argv: string[] }
+    const cmd = argv.join(' ')
+    ran.push(cmd)
+    const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: exitCode ? 'no pull requests found' : '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd.startsWith('git status')) return out(`## ${branch}\0`)
+    if (cmd.startsWith('git branch')) return out('main\nfeat/x\n')
+    if (cmd.startsWith('gh pr view')) return out(view.stdout, view.exitCode)
+    // gh exits 1 when a check failed, printing the JSON all the same
+    if (cmd.startsWith('gh run view 42 --log-failed')) return out(Array.from({ length: 300 }, (_, n) => `test\tRun tests\tline ${n}`).join('\n') + '\ntest\tRun tests\tAssertionError: expected 2 to be 3')
+    if (cmd.startsWith('gh pr checks')) return out('[{"name":"test","bucket":"fail","link":"https://github.com/o/r/actions/runs/42/job/1"},{"name":"lint","bucket":"pass"}]', 1)
+    return out('')
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  expect(ran).toContain('gh pr view --json number,title,url,state,isDraft,reviewDecision -- feat/x')
+  expect(ran).toContain('gh pr checks --json name,bucket,link -- feat/x')
+  const ui = await $.ui.mount(PANE as never)
+  for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
+  let drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('#7')
+  expect(drawn).toContain('Add x')
+  expect(drawn).toContain('review required')
+  expect(drawn).toContain('✓ 1 passed')
+  expect(drawn).toContain('✗ 1 failed')
+  expect(drawn).toContain('✗ test')
+  // Fix failing checks: Claude is handed the check's name and the end of its failed log, not all of it
+  await ui.press({ key: 'pr-fix' })
+  expect(ran).toContain('gh run view 42 --log-failed')
+  const fix = asked.find(a => a.startsWith('Fix the failing CI checks on pull request #7')) ?? ''
+  expect(fix).toContain('test, the end of its failed steps')
+  expect(fix).toContain('AssertionError: expected 2 to be 3')
+  expect(fix).not.toContain('line 100\n')
+  // No PR (or gh not logged in): no checks asked for
+  view = { exitCode: 1, stdout: '' }
+  ran.length = 0
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  expect(ran.some(c => c.startsWith('gh pr view'))).toBe(true)
+  expect(ran.some(c => c.startsWith('gh pr checks'))).toBe(false)
+  drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).not.toContain('#7')
+  // On the base branch gh is not asked at all
+  branch = 'main'
+  ran.length = 0
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  expect(ran.some(c => c.startsWith('gh pr'))).toBe(false)
+  await ui.unmount()
+})
+
+test("the pull request row survives what GitHub and gh can hand it: escapes in a title, gh failing, a closed PR, and reads answering out of order", { timeoutMs: 20_000 }, async ($, on) => {
+  let view: () => Promise<{ exitCode: number; stdout: string; stderr: string }> = async () => ({ exitCode: 0, stdout: JSON.stringify({ number: 9, title: 'evil\nSECOND\x1b[2J\x1b]0;pwn\x07end', state: 'OPEN' }), stderr: '' })
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd.startsWith('git status')) return out('## feat/x\0')
+    if (cmd.startsWith('git branch')) return out('main\nfeat/x\n')
+    if (cmd.startsWith('gh pr view')) return { value: { ...(await view()), isStdoutTruncated: false, isStderrTruncated: false } }
+    if (cmd.startsWith('gh pr checks')) return out('[{"name":"x\\u001b[1my","bucket":"fail"}]', 1)
+    return out('')
+  })
+  const open = () => $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  await open()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' } as never)
+  for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
+  // Escapes and newlines draw as spaces: the pane draws, on one line
+  let drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('#9')
+  expect(drawn).toContain('evil SECOND')
+  expect(drawn).toContain('✗ x [1my')
+  // gh cannot answer (offline): the row stays; gh says there is no PR: it goes
+  view = async () => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' })
+  await open()
+  expect(JSON.stringify(await ui.drawn())).toContain('#9')
+  view = async () => ({ exitCode: 1, stdout: '', stderr: 'no pull requests found for branch "feat/x"' })
+  await open()
+  expect(JSON.stringify(await ui.drawn())).not.toContain('#9')
+  // A closed PR says so, and offers no fix
+  view = async () => ({ exitCode: 0, stdout: JSON.stringify({ number: 9, title: 't', state: 'CLOSED', reviewDecision: 'CHANGES_REQUESTED' }), stderr: '' })
+  await open()
+  drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('closed')
+  expect(drawn).not.toContain('changes requested')
+  expect(drawn).not.toContain('pr-fix')
+  // Two reads on one branch, the older answering last: the newer one's PR stands
+  let answer!: () => void
+  view = () => new Promise(r => { answer = () => r({ exitCode: 0, stdout: JSON.stringify({ number: 1, title: 'STALE', state: 'OPEN' }), stderr: '' }) })
+  const slow = open()
+  for (let i = 0; i < 10_000 && !answer; i++) await Promise.resolve()
+  expect(typeof answer).toBe('function')
+  view = async () => ({ exitCode: 0, stdout: JSON.stringify({ number: 2, title: 'FRESH', state: 'OPEN' }), stderr: '' })
+  await open()
+  answer?.()
+  await slow
+  drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('FRESH')
+  expect(drawn).not.toContain('STALE')
+  await ui.unmount()
+})
