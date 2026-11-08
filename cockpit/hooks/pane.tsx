@@ -25,9 +25,8 @@ export function piece(v: V, ...kids: RenderChildren[]) {
   )
 }
 
-// Split into cockpit-core and its add-ons, core draws the pane's header and tabs and each add-on its tab's view. Each
-// draws its part around what the parts beneath it drew, the frame above and a view below, so the pane reads the same
-// whichever plugin the engine asks first
+// The pane's frame (header and tabs) and the open tab's view are drawn as separate parts, each around what was drawn
+// beneath it, so a plugin hooking the same pane can add a tab's view
 // ponytail: each part paints its own background, so a palette leaves the pane's unused rows unpainted
 export function paneFrame(on: Parameters<Register>[0], rootOf: () => string) {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {

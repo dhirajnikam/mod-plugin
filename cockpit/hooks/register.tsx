@@ -530,7 +530,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // What the plugins split from Cockpit call: they read the state and change it through these, answered here, where
+  // What another plugin hooking Cockpit calls: they read the state and change it through these, answered here, where
   // the state is written; `act` runs an action of ./actions by name, its result handed back as plain data
   on('engine.create', async (_$, e, next) => ({ ...(await next(e)), cockpit: { set: async () => true, act: async () => null, tab: async () => true } }))
   on('cockpit.set', async ($, e) => {

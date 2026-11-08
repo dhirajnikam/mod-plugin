@@ -3,7 +3,7 @@ import { PANE } from './state'
 import { paneV } from './pane'
 import { Agents, Files, Git, Header, Overview, Rules, Tabs } from './views'
 
-// The side pane whole: header, tabs, and the open tab (the plugins split from Cockpit draw it in parts: pane.tsx)
+// The side pane whole: header, tabs, and the open tab (drawn in parts, frame and view: pane.tsx)
 export function fullPane(on: Parameters<Register>[0], rootOf: () => string) {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const v = await paneV($, e, rootOf())
