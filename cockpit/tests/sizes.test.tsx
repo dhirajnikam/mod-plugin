@@ -104,3 +104,43 @@ test("the Git tab's pull request fits every width, and draws pending and passing
   await pane.unmount()
   expect(bad).toEqual([])
 })
+
+// The Rules tab's MCP servers: a long command, a long URL, every state and many secret names
+test("the Rules tab's MCP servers fit every width", { timeoutMs: 20_000 }, async ($, on) => {
+  const disk: Record<string, string> = {
+    '/repo/.mcp.json': JSON.stringify({ mcpServers: { 'a-server-with-a-rather-long-name': { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/Users/someone/projects/a/very/deep/folder'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'x', ANOTHER_LONG_SECRET_NAME: 'y' } }, web: { type: 'http', url: 'https://mcp.example.com/a/very/long/path/to/the/server/endpoint' } } }),
+    '/home/me/.claude.json': JSON.stringify({ mcpServers: { mine: { type: 'sse', url: 'https://live.example.com/sse' } }, projects: { '/repo': { mcpServers: { scratch: { command: 'scratch' } }, disabledMcpServers: ['web'] } } }),
+  }
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('env.get', async (_: unknown, e: any) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }) as never)
+  on('fs.exists', async (_: unknown, e: any) => ({ value: String(e.path) in disk }))
+  on('fs.read', async (_: unknown, e: any) => {
+    if (!(String(e.path) in disk)) throw new Error('ENOENT')
+    return { value: disk[String(e.path)] } as never
+  })
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    return { value: { exitCode: 0, stdout: cmd === 'git rev-parse --show-toplevel' ? '/repo\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
+  const bad: string[] = []
+  for (const scope of ['repo', 'user']) {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      for (const w of WIDTHS) {
+        const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 120 }, view: {} } } as never)
+        if (scope === 'user' && surface === 'terminal' && w === WIDTHS[0]) await pane.press({ key: 'rscope-user' })
+        const drawn = await pane.drawn()
+        const text = JSON.stringify(drawn)
+        for (const want of scope === 'repo' ? ['a-server-with-a-rather-long-name', 'needs approval', 'off', 'local, only you'] : ['mine', 'sse']) if (!text.includes(want)) bad.push(`${scope} ${surface} @${w}: no ${want}`)
+        for (const n of wide(drawn, w)) bad.push(`${scope} ${surface} rules @${w}: ${n}`)
+        await pane.unmount()
+      }
+    }
+  }
+  expect(bad).toEqual([])
+})

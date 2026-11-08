@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The Rules tab lists the MCP servers that apply here: the project's from `.mcp.json`, this project's local ones and
+  yours from `~/.claude.json`, each with its kind, what it runs, and whether it is on, off or needs approval. The
+  project's can be added, edited and deleted in `.mcp.json`, the rest of the file kept and a file that is not valid
+  JSON refused; `~/.claude.json` is only read. A server's env and header values (tokens) are never shown, only their
+  names.
 - The Git tab shows the current branch's pull request: its number and title, its review (approved, changes requested,
   review required, draft, or closed and merged), and its checks counted (✓ passed, ✗ failed, ◌ running) with each
   failing check named. **Fix failing checks** hands Claude each failing check's name and the end of its failed log

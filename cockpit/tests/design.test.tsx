@@ -45,7 +45,8 @@ test('Activity tells one story: agents\' events fill the feed, so the tab never 
   const rules = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
   const r = JSON.stringify(await rules.drawn())
   await rules.unmount()
-  expect(r.split('"None yet."').length - 1).toBe(3)
+  // Hooks, permission rules, MCP servers and instructions, all empty
+  expect(r.split('"None yet."').length - 1).toBe(4)
   expect(r).not.toContain('"None."')
   // A finished agent's result shows once, on its Finished row; its Team row points there
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)

@@ -26,7 +26,9 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
 - **Writes files.** In `.cockpit/` at the top of each repository (git-ignored by a `.gitignore` Cockpit writes there):
   its history, codebase memory and hand-off briefs. Outside it, only when you press a button in the Rules tab: the
   `settings.json` or `CLAUDE.md` you are looking at, which for **You, everywhere** are `~/.claude/settings.json` and
-  `~/.claude/CLAUDE.md`. It re-reads a file before each change and refuses to overwrite a settings file it cannot parse.
+  `~/.claude/CLAUDE.md`, and the repository's `.mcp.json` for its MCP servers. It re-reads a file before each change
+  and refuses to overwrite a settings file it cannot parse. It reads `~/.claude.json` for your MCP servers and never
+  writes it, and it never shows a server's `env` or `headers` values, only their names.
   The autopilot's roadmap, `.cockpit/roadmap.md`, and the product owner's `.cockpit/product.md` are written by Claude
   at Cockpit's request; Cockpit writes only the roadmap's title when a goal starts, keeping the one before in
   `.cockpit/roadmaps/`.

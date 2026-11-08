@@ -39,7 +39,8 @@ export async function loadRules($: $) {
 export async function writeMcp($: $, op: Parameters<typeof changeMcp>[1], what: string) {
   const f = await mcpFiles($, await ruleFiles($))
   const { json, error } = parseSettings(f.text)
-  if (error) return toast($, `${f.path} is ${error}: fix it by hand first; Cockpit will not overwrite it`)
+  // Refused, and read again, so the tab shows it read-only
+  if (error) return Promise.all([loadRules($), toast($, `${f.path} is ${error}: fix it by hand first; Cockpit will not overwrite it`)])
   const next = changeMcp(json, op)
   if (JSON.stringify(next) === JSON.stringify(json)) return Promise.all([loadRules($), toast($, 'Nothing changed: the name is taken, or the file moved since it was shown and was read again')])
   await $.fs.write(f.path, settingsText(next)).catch(e => toast($, `Could not write ${f.path}: ${String(e)}`))

@@ -146,3 +146,85 @@ test('MCP servers: every scope and state read, secrets never kept, and .mcp.json
   for (const r of mcpRows(n, {}, [], '/repo')) n = changeMcp(n, { remove: r })
   expect(n).toEqual({ other: 1 })
 })
+
+test('the Rules tab lists the MCP servers of every scope, changes only .mcp.json, and never shows a secret or writes ~/.claude.json', { timeoutMs: 20_000 }, async ($, on) => {
+  const claudeJson = JSON.stringify({ numStartups: 9, mcpServers: { mine: { command: 'my-srv', env: { KEY: 'SECRET_USER' } } }, projects: { '/repo': { mcpServers: { scratch: { command: 'scratch-srv' } }, enabledMcpjsonServers: ['github'] } } })
+  const disk: Record<string, string> = {
+    '/repo/.mcp.json': JSON.stringify({ note: 'kept', mcpServers: { github: { command: 'npx', args: ['-y', '@mcp/github'], env: { GITHUB_TOKEN: 'ghp_SECRET' } }, docs: { type: 'http', url: 'https://docs.example/mcp' } } }, null, 2),
+    '/home/me/.claude.json': claudeJson,
+  }
+  const writes: string[] = []
+  const toasts: string[] = []
+  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('ui.toast', async (_: unknown, e: any) => (toasts.push(String(e.text)), { value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('env.get', async (_: unknown, e: any) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }) as never)
+  on('fs.exists', async (_: unknown, e: any) => ({ value: posix(e.path) in disk }))
+  on('fs.read', async (_: unknown, e: any) => {
+    if (!(posix(e.path) in disk)) throw new Error('ENOENT')
+    return { value: disk[posix(e.path)] } as never
+  })
+  on('fs.write', async (_: unknown, e: any) => (writes.push(posix(e.path)), (disk[posix(e.path)] = e.text), { value: undefined }))
+  on('process.run', async (_: unknown, e: any) => {
+    const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
+    return cmd === 'git rev-parse --show-toplevel' ? ok('/repo\n') : ok('')
+  })
+  on('command.run', async () => ({ text: '' }))
+  await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
+  const ui = await $.ui.mount(pane as never)
+  let d = JSON.stringify(await ui.drawn())
+  // This repository: the project's servers with their state, and this project's local one, read only
+  expect(d).toContain('npx -y @mcp/github')
+  expect(d).toContain('needs approval')
+  expect(d).toContain('secrets: GITHUB_TOKEN')
+  expect(d).toContain('scratch-srv')
+  expect(d).toContain('local, only you')
+  expect(d).toContain('re-m:project/github')
+  expect(d).not.toContain('re-m:local/scratch')
+  expect(d).not.toContain('SECRET')
+  // Add a server: written to .mcp.json, the rest kept
+  await ui.press({ key: 'radd-mcp' })
+  await (ui as any).input({ key: 'rf-ruleA', text: 'pg', kind: 'change' } as never)
+  await (ui as any).input({ key: 'rf-ruleB', text: 'npx -y @mcp/postgres' } as never)
+  let saved = JSON.parse(disk['/repo/.mcp.json']!)
+  expect(saved.mcpServers.pg).toEqual({ command: 'npx', args: ['-y', '@mcp/postgres'] })
+  expect(saved.note).toBe('kept')
+  // Edit what github runs: its token stays in the file, unseen
+  await ui.press({ key: 're-m:project/github' })
+  await (ui as any).input({ key: 'rf-ruleB', text: 'npx -y @mcp/github@2' } as never)
+  saved = JSON.parse(disk['/repo/.mcp.json']!)
+  expect(saved.mcpServers.github).toEqual({ command: 'npx', args: ['-y', '@mcp/github@2'], env: { GITHUB_TOKEN: 'ghp_SECRET' } })
+  expect(JSON.stringify(await ui.drawn())).not.toContain('SECRET')
+  // Delete one, after confirming
+  await ui.press({ key: 'rd-m:project/docs' })
+  expect(JSON.parse(disk['/repo/.mcp.json']!).mcpServers.docs).toBeDefined()
+  await ui.press({ key: 'rdy-m:project/docs' })
+  expect(JSON.parse(disk['/repo/.mcp.json']!).mcpServers.docs).toBeUndefined()
+  // You, everywhere: your servers, read only, no Add
+  await ui.press({ key: 'rscope-user' })
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('my-srv')
+  expect(d).toContain('secrets: KEY')
+  expect(d).not.toContain('radd-mcp')
+  expect(d).not.toContain('re-m:user/mine')
+  expect(d).not.toContain('SECRET')
+  // .mcp.json broken by hand after it was shown: a delete is refused with a toast and the file is left as it was
+  await ui.press({ key: 'rscope-repo' })
+  disk['/repo/.mcp.json'] = '{ "mcpServers": '
+  await ui.press({ key: 'rd-m:project/pg' })
+  await ui.press({ key: 'rdy-m:project/pg' })
+  expect(disk['/repo/.mcp.json']).toBe('{ "mcpServers": ')
+  expect(toasts.join('\n')).toContain('Cockpit will not overwrite it')
+  // Read again, it shows read only
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('Its servers are shown read-only')
+  expect(d).not.toContain('radd-mcp')
+  // Only .mcp.json was ever written; ~/.claude.json is exactly as it was
+  expect([...new Set(writes)]).toEqual(['/repo/.mcp.json'])
+  expect(disk['/home/me/.claude.json']).toBe(claudeJson)
+  await ui.unmount()
+})
