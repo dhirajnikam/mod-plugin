@@ -84,8 +84,7 @@ The details: [Privacy and cost](docs/privacy.md) and the [security policy](SECUR
 Saving a file under `cockpit/hooks/` reloads the mod when the turn ends. The checks, the code's layout and how to write
 a test are in [CONTRIBUTING.md](CONTRIBUTING.md); every change is listed in [CHANGELOG.md](CHANGELOG.md).
 
-Also here: [`ui-template/`](ui-template), a small earlier mod (a clean spinner and a mode · model · effort line; load
-only one of ui-template and Cockpit at a time, as both replace the spinner), and [`design/`](design), the "Powerhouse Mod v2" design Cockpit is built from.
+Also here: [`design/`](design), the "Powerhouse Mod v2" design Cockpit is built from.
 
 ## License
 

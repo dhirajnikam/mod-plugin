@@ -37,7 +37,6 @@ jobs:
       - name: Validate the plugin and the marketplace
         run: |
           claude plugin validate ./cockpit
-          claude plugin validate ./ui-template
           claude plugin validate .
 
       - name: Links in the Markdown

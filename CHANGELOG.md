@@ -9,6 +9,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The parts: `cockpit-core` and its add-ons (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`, `-chat`)
   are gone from the marketplace, along with `scripts/split.py`. Install `cockpit`, which holds all of them; if you
   installed the parts, uninstall them.
+- `ui-template`, the earlier mod Cockpit replaced.
 
 ## [0.6.0] - 2026-11-08
 
