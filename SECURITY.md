@@ -20,7 +20,10 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
   Around every turn, for **Undo this turn**: `git read-tree`, `add -A`, `write-tree` on a temporary index under
   `.git/` (never the real one), `commit-tree`, and `update-ref` of Cockpit's own refs under `refs/cockpit/`,
   dropping those of turns older than the newest 50 (never a branch or tag). Undoing a turn, after you confirm, runs
-  `git restore --worktree` and `git clean` on that turn's files only. `git push`,
+  `git restore --worktree` and `git clean` on that turn's files only. For an agent you start **In its own worktree**:
+  `git worktree add -b cockpit/<id>` under `.git/cockpit-worktrees/` (a refused start removes it again, with
+  `git branch -d`, which never deletes a branch holding a commit), the same snapshot commands inside it, and, after
+  you confirm, `git apply` (files only) to bring its work back or `git worktree remove --force` (its branch kept). `git push`,
   `pull` and `gh pr create` run only when you press them or turn push and pull requests on.
 - **Changes your GitHub login on this machine, when you push.** Before a push it runs `gh auth switch` to the account
   you chose (this changes the active GitHub account for the whole machine) and `gh auth setup-git` (git then asks gh for

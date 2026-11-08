@@ -51,6 +51,26 @@ folder and name any test they leave in the repository.
 - The subagents Claude starts show here as they work, read from Claude Code's own list of agents, so they appear even
   where another plugin's hook keeps Cockpit from seeing them start. A subagent's edits count in the running flow's +/−.
 
+## Agents in their own worktree
+
+Tick **In its own worktree** (in the New agent form, or beside Team, the same setting) and an agent you start from the
+tab runs in a git worktree of its own, so two agents working at once never step on each other or on your files.
+
+- Cockpit makes the worktree just before the agent starts: from your current commit, on a branch of its own
+  (`cockpit/<id>`), under the repository's git folder (`.git/cockpit-worktrees/`), so `git status` and turn
+  snapshots never see it. With no commit yet, or a worktree git refuses to make, the agent runs in your tree and a
+  toast says why; so does one Claude starts for you when Cockpit's own start is refused.
+- Its row shows its branch and, once it finishes, the files and +/− it changed there against the commit it started
+  from (Cockpit's experts never commit, so its files are its work).
+- **⇲ Bring back** asks first, then applies those changes to your working tree's files (never your staged changes):
+  all or nothing, so where they clash with changes of yours it refuses, naming the files, and changes nothing.
+  **Remove worktree** asks first, then removes the worktree and anything in it not brought back; its branch stays.
+  Both wait while the agent is still working.
+- Pipelines (Build, Verify, Review) and the testers always work in your tree, where each expert sees the one before
+  it; a worktree agent's work is tested and committed once you bring it back.
+- A file that is not UTF-8 text cannot be brought back this way (the check refuses it, nothing is changed); copy it
+  from the worktree by hand.
+
 ## Agent memory
 
 Every finished agent run is kept in `.cockpit/history.json`. When a new task is like an earlier one (by the words that

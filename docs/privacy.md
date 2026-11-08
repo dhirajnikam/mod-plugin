@@ -30,7 +30,8 @@ has no row here.
 ## Every command it runs
 
 `git` (status, diff, log, show, ls-files, rev-parse, branch, config; add, commit, switch, init; push and pull;
-read-tree, write-tree, commit-tree, update-ref and for-each-ref for turn snapshots, restore and clean to undo one) and `gh`
+read-tree, write-tree, commit-tree, update-ref and for-each-ref for turn snapshots, restore and clean to undo one;
+worktree add, list, prune and remove, apply, and branch -d for agents in their own worktree) and `gh`
 (auth status, auth login, auth logout, auth switch, auth setup-git, api user, pr create, pr view, pr checks,
 run view). **Fix failing checks** puts the end of each failing CI log into your conversation as a prompt, so it reaches
 the model like anything you paste; GitHub masks the repository's secrets in its logs, but anything else a job prints

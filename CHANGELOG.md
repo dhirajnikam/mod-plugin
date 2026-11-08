@@ -6,6 +6,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Agents in their own worktree**: with **In its own worktree** ticked (New agent form, or beside Team), an agent runs
+  in a git worktree Cockpit makes from your commit on a branch of its own, so agents working at once never collide.
+  Its row shows its branch and what it changed; **Bring back** applies that to your files after you confirm (a clash
+  refuses and changes nothing), **Remove worktree** removes it and keeps the branch. `scripts/check_worktrees.py`
+  proves the git commands on a real repository, in CI.
 - **Undo this turn**, in each of the Overview's Earlier flows: after you confirm, the files that turn changed are put
   back as they were before it, whatever changed them (Edit, Write, a shell command, a script, a subagent), and the
   files it created are deleted. It refuses when one of them changed since the turn ended. Cockpit snapshots the
@@ -33,6 +38,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   spaces in their place.
 
 ### Fixed
+- The Agents tab's Connections header wraps in a narrow pane instead of running past it.
 - The Agents tab no longer marks Cockpit's own experts ↗ (from outside Cockpit) when Claude starts them and the
   engine names their plugin as itself or with its marketplace.
 - A long branch name no longer runs past a narrow pane: the Git tab's header, the pane's header and the commit card
