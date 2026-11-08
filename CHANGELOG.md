@@ -6,6 +6,12 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Undo this turn**, in each of the Overview's Earlier flows: after you confirm, the files that turn changed are put
+  back as they were before it, whatever changed them (Edit, Write, a shell command, a script, a subagent), and the
+  files it created are deleted. It refuses when one of them changed since the turn ended. Cockpit snapshots the
+  working tree before and after every turn under `refs/cockpit/turns/`, from a temporary index, never touching the
+  working tree, the index or branches; the newest 50 turns keep theirs. `scripts/check_turn_undo.py` proves the git
+  commands on a real repository, in CI.
 - The Rules tab opens with what loads into every session: each `CLAUDE.md` that applies and the files it `@import`s
   (5 hops, each once, missing ones marked) with its lines and estimated tokens, a file over 200 lines marked; the
   skills Claude may load by itself, with **Call only** beside the three largest; the MCP servers on; and one estimated

@@ -282,6 +282,8 @@ export type Ph = {
     openDec: string
     openAgent: string
     openFlow: string
+    // The earlier flow whose Undo this turn is waiting for Undo? / Keep
+    undoAsk?: string
     // The commit opened in the graph, and what git show said of it
     openCommit: string
     commitInfo: string

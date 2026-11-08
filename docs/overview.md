@@ -24,7 +24,9 @@ with an arrow only where it folds.
   (a bar, done of all, the task it is on) and each memory a line. Its heading counts what finished this flow and
   what is remembered, with **Open Agents ›**. See [Agents](agents.md).
 - **Changed files**: the first five, each with its kind beside it and its +/−, and Open Git.
-- **Earlier flows**: the three newest (pressing one opens its details), the session's total on the heading.
+- **Earlier flows**: the three newest (pressing one opens its details), the session's total on the heading. A flow's
+  details offer **↶ Undo this turn**, which asks first (Undo / Keep), then puts back the files that turn changed,
+  whatever changed them: Edit and Write, a shell command, a script, a subagent. See [Undoing a turn](#undoing-a-turn).
 - **Context**: the percentage used, the bar, **Compact** (keeps a summary, as `/compact`) and **Clear** (starts the
   conversation afresh, as `/clear`, after you confirm); the tokens by kind are folded.
 - **Decisions**: one line each, the question and what came of it; the judges' mode and rules are folded. See
@@ -58,5 +60,24 @@ with an arrow only where it folds.
   the repository and usage are read again every 15 seconds, so a commit made in a terminal shows up without a turn.
 - **Drawing**: where the surface draws SVG (the desktop app, the editor extension, mobile), the ring, the maps and the
   icons are SVG; in a terminal they are drawn with characters.
+
+## Undoing a turn
+
+Before each turn starts (before Claude's first tool call) and after it ends, Cockpit keeps the whole working tree as a
+snapshot: a commit under `refs/cockpit/turns/<flow>/before` and `after`, built from a temporary index, so your working
+tree, your staged changes and your branches are never touched. The newest 50 turns keep theirs.
+
+- **Undo this turn** puts back what that turn changed: files it edited or deleted come back as they were before it,
+  files it created are deleted (and folders that leaves empty), a file that became a folder or a folder a file is put
+  back. Files the turn did not touch, staged or not, stay as they are.
+- It refuses, naming them, when any of the turn's files changed after the turn ended, so later work is never written
+  over. Your files just before the undo are kept as `refs/cockpit/turns/<flow>/undone`; `git restore
+  --source=refs/cockpit/turns/<flow>/undone --worktree -- <path>` brings one back.
+- Not covered: files your `.gitignore` leaves out (a build folder, `.env`), changes inside submodules, and a
+  background agent that finishes after its turn ended (its changes land in the next turn). An undo after the turn was
+  committed undoes the files only: the commit stays, and the undo shows as changes to commit.
+- Snapshots copy untracked files that are not ignored into git's object store; the refs of older turns are dropped,
+  and `git gc` reclaims the space as usual.
+
 
 [All docs](README.md) · [Project README](../README.md)

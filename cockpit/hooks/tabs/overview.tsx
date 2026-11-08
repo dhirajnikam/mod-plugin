@@ -25,6 +25,7 @@ import {
   useAccount,
   refreshRepo,
   refreshGit,
+  undoFlow,
   set,
   startPipeline,
   setTheme,
@@ -406,6 +407,27 @@ export function Overview($: $, v: V) {
                   <Box flexDirection="column" paddingLeft={2}>
                     <Text color={t.dim} size="footnote" wrap="wrap">{`${fmt(took)} · ${fp.pct}% · ${fp.flow.label} flow · ${f.reached.join(' › ')}${f.status === 'aborted' ? ' · stopped' : ''}`}</Text>
                     <Text color={t.dim} size="footnote">{`${(f.turns ?? 1) > 1 ? `${f.turns} turns · ` : ''}${f.ops} file operations · ${f.decisions} decision${f.decisions === 1 ? '' : 's'}${f.commit ? ` · committed ${f.commit}` : ' · not committed'}`}</Text>
+                    {!live && f.snap?.before && f.snap?.after && (
+                      // Undo asks first: it changes files in the working tree
+                      s.ui.undoAsk === f.id ? (
+                        <Box columnGap={sp(v, 1)} flexWrap="wrap">
+                          <Text color={t.busy} size="footnote">Undo the files this turn changed?</Text>
+                          <Button key={`undo-yes-${f.id}`} plain onPress={() => inBackground($, 'undo', 'Undoing the turn', () => undoFlow($, f.id))}>
+                            <Text color={t.bad} size="footnote">Undo</Text>
+                          </Button>
+                          <Button key={`undo-no-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, undoAsk: '' } }))}>
+                            <Text color={t.dim} size="footnote">Keep</Text>
+                          </Button>
+                        </Box>
+                      ) : (
+                        <Box columnGap={sp(v, 1)}>
+                          <Button key={`undo-${f.id}`} plain onPress={() => set($, st => ({ ui: { ...st.ui, undoAsk: f.id } }))}>
+                            <Text color={t.accent} size="footnote">↶ Undo this turn</Text>
+                          </Button>
+                          {f.snap.undone && <Text color={t.faint} size="footnote">undone once</Text>}
+                        </Box>
+                      )
+                    )}
                   </Box>
                 )}
               </Box>

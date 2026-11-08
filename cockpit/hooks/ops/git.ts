@@ -6,7 +6,7 @@ import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
-import { snapshot, turnRef } from '../turns'
+import { snapshot, turnRef, undoTurn } from '../turns'
 import type { Run } from '../turns'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -518,4 +518,20 @@ export async function pruneTurns(run: Run, keep = TURNS_KEPT) {
   const flows = [...new Set(refs.map(r => r.split('/')[3]!))].sort((a, b) => num(b) - num(a))
   const old = new Set(flows.slice(keep))
   for (const r of refs) if (old.has(r.split('/')[3]!)) await run(['git', 'update-ref', '-d', r], {})
+}
+
+// Undo this turn, once you confirmed: the turn's own changes undone, whatever made them, unless one of its files changed
+// since it ended; the tree as it was just before is kept under its undone ref
+export async function undoFlow($: $, flowId: string) {
+  await set($, st => ({ ui: { ...st.ui, undoAsk: '' } }))
+  const run = await turnRun($)
+  const root = (await repoRoot($)) || '.'
+  const isEmpty = async (dir: string) => (await $.fs.list(`${root}/${dir}`).catch(() => null))?.length === 0
+  const r = await undoTurn(turnRef(flowId, 'before'), turnRef(flowId, 'after'), turnRef(flowId, 'undone'), run, isEmpty)
+  if (r.refuse.length) return toast($, `Not undone: changed since that turn ended: ${r.refuse.slice(0, 3).join(', ')}${r.refuse.length > 3 ? ` and ${r.refuse.length - 3} more` : ''}`)
+  if (!r.done) return toast($, `Not undone: ${r.error}`)
+  await set($, st => ({ flows: st.flows.map(f => (f.id === flowId ? { ...f, snap: { ...f.snap, undone: true } } : f)) }))
+  await refreshRepo($)
+  const n = r.restore.length + r.remove.length
+  await toast($, n ? `Undone: ${r.restore.length} restored, ${r.remove.length} removed · the files as they were just before: ${turnRef(flowId, 'undone')}` : 'That turn changed no files')
 }

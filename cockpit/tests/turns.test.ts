@@ -107,13 +107,14 @@ test('undoTurn takes away what the turn created (git clean, or restore when trac
 })
 
 // A session whose git answers the snapshot plan; repo false: not a repository at all
-function session(on: any, opt: { repo?: boolean; refs?: string } = {}) {
+function session(on: any, opt: { repo?: boolean; refs?: string; changed?: string; since?: () => string; toasts?: string[] } = {}) {
   const ran: string[] = []
   on('clock.now', async () => ({ value: 1_000_000 + ran.length }))
-  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.toast', async (_: unknown, e: any) => (opt.toasts?.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('store.get', async () => ({ value: undefined }))
   on('store.set', async () => ({ value: undefined }))
+  on('fs.list', async () => ({ value: [] }) as never)
   on('session.measure', async () => ({ changed: [] }))
   on('session.cwd', async () => ({ value: '/repo' }))
   on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000, percent: 1, breakdown: { categories: [], totalTokens: 1000 } }, rateLimits: [], cost: { usd: 0 } } }))
@@ -135,6 +136,9 @@ function session(on: any, opt: { repo?: boolean; refs?: string } = {}) {
     if (cmd === 'git write-tree') return out('tree1\n')
     if (cmd.startsWith('git commit-tree')) return out(`snap${ran.length}\n`)
     if (cmd.startsWith('git for-each-ref')) return out(opt.refs ?? '')
+    if (cmd.startsWith('git diff --name-status')) return out(opt.changed ?? '')
+    if (cmd.startsWith('git diff --name-only')) return out(opt.since?.() ?? '')
+    if (cmd === 'git ls-files -z') return out('a.ts\0')
     return out('')
   })
   return ran
@@ -187,4 +191,47 @@ test('outside a git repository no snapshot is taken', async ($, on) => {
   await prompt($, 'fix it')
   await done($, 't1')
   expect(ran.some(r => r.includes('update-ref') || r.includes('commit-tree'))).toBe(false)
+})
+
+const pane = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } }
+
+test("Undo this turn asks first, then undoes the turn's files from its snapshots, and refuses when one changed since", async ($, on) => {
+  const toasts: string[] = []
+  let since = ''
+  const ran = session(on, { changed: 'M\0a.ts\0A\0src/new.ts\0', since: () => since, toasts })
+  await prompt($, 'fix the login')
+  await done($, 't1')
+  await prompt($, 'and the signup')
+  await done($, 't2')
+  const flow = ran.find(r => r.includes('/before'))!.match(/turns\/(f\d+)\//)![1]
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: `flb-${flow}` })
+  expect(JSON.stringify(await ui.drawn())).toContain('↶ Undo this turn')
+  // Pressed: it asks, and nothing has run yet
+  const mark = ran.length
+  await ui.press({ key: `undo-${flow}` })
+  expect(JSON.stringify(await ui.drawn())).toContain('Undo the files this turn changed?')
+  expect(ran.slice(mark).some(r => /git (diff|restore|clean)/.test(r))).toBe(false)
+  // Keep: still nothing
+  await ui.press({ key: `undo-no-${flow}` })
+  expect(ran.slice(mark).some(r => /git (diff|restore|clean)/.test(r))).toBe(false)
+  // Confirmed: the turn's own snapshots, the tree kept as undone, the created file cleaned, the rest restored
+  await ui.press({ key: `undo-${flow}` })
+  await ui.press({ key: `undo-yes-${flow}` })
+  const did = ran.slice(mark).map(r => r.replace(/ @\/repo/, ''))
+  expect(did).toContain(`git diff --name-status --no-renames -z refs/cockpit/turns/${flow}/before refs/cockpit/turns/${flow}/after`)
+  expect(did.some(r => r.startsWith(`git update-ref refs/cockpit/turns/${flow}/undone`))).toBe(true)
+  expect(did).toContain('git clean -f -q -- src/new.ts')
+  expect(did).toContain(`git restore --source=refs/cockpit/turns/${flow}/before --worktree --pathspec-from-file=- --pathspec-file-nul`)
+  expect(toasts.join('\n')).toContain('Undone: 1 restored, 1 removed')
+  expect(JSON.stringify(await ui.drawn())).toContain('undone once')
+  // a.ts edited by hand since that turn: refused, nothing cleaned or restored
+  since = 'a.ts\0'
+  const mark2 = ran.length
+  await ui.press({ key: `undo-${flow}` })
+  await ui.press({ key: `undo-yes-${flow}` })
+  expect(ran.slice(mark2).some(r => /git (restore|clean)/.test(r))).toBe(false)
+  expect(toasts.join('\n')).toContain('Not undone: changed since that turn ended: a.ts')
+  await ui.unmount()
 })
