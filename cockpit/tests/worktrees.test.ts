@@ -284,7 +284,8 @@ test("ticked, an agent runs in Claude Code's own worktree isolation through its 
 })
 
 // A session where the twins register at start and Claude Code makes a worktree for each twin it starts (made: which)
-function twinStand(on: any, made: (spawnedTwins: number) => string[]) {
+function twinStand(on: any, made: (spawnedTwins: number) => string[], opt: { throwFirst?: boolean } = {}) {
+  let thrown = false
   const log = { ran: [] as string[], spawned: [] as { type: string; cwd?: string }[], registered: [] as { name: string; isolation?: string }[] }
   on('clock.now', async () => ({ value: 1_700_000_000_000 }))
   on('ui.toast', async () => ({ value: undefined }))
@@ -302,7 +303,14 @@ function twinStand(on: any, made: (spawnedTwins: number) => string[]) {
   on('session.measure', async () => ({ changed: [] }))
   on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000, percent: 1, breakdown: { categories: [], totalTokens: 1000 } }, rateLimits: [], cost: { usd: 0 } } }) as never)
   on('agent.register', async (_: unknown, e: any) => (log.registered.push({ name: e.name, isolation: e.isolation }), { value: { agent: `cockpit:${e.name}` } }))
-  on('agent.spawn', async (_: unknown, e: any) => (log.spawned.push({ type: e.subagentType ?? e.subagent_type, cwd: e.cwd }), { model: 'haiku', agentId: `ag${log.spawned.length}` }))
+  on('agent.spawn', async (_: unknown, e: any) => {
+    if (opt.throwFirst && !thrown && String(e.subagentType ?? e.subagent_type).endsWith('-in-worktree')) {
+      thrown = true
+      throw new Error('the start broke')
+    }
+    log.spawned.push({ type: e.subagentType ?? e.subagent_type, cwd: e.cwd })
+    return { model: 'haiku', agentId: `ag${log.spawned.length}` }
+  })
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (e.argv as string[]).join(' ')
     log.ran.push(cmd)
@@ -395,5 +403,29 @@ test('an agent made now gets its twin at once, so it can run in a worktree of it
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   expect(log.registered).toContainEqual({ name: 'docs-writer', isolation: undefined })
   expect(log.registered).toContainEqual({ name: 'docs-writer-in-worktree', isolation: 'worktree' })
+  await ui.unmount()
+})
+
+test("a twin start that throws gives back its turn, so the next twin still starts; and a twin whose spawn came first still gets its worktree", async ($, on) => {
+  // Claude Code makes the worktree once the second twin start is under way (the early event's twin is counted first)
+  const log = twinStand(on, n => (n >= 2 ? ['/repo/.claude/worktrees/agent-a1'] : []), { throwFirst: true })
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await ui.press({ key: 'spawn-wt' })
+  // The first twin start breaks
+  await start($, ui, 'breaks').catch(() => null)
+  // The engine's event for the next twin arrives before its start returns; then the start: it must not wait for ever
+  await engineSpawn($, 'cockpit:agent-in-worktree', 'early')
+  // (The form stays open after the broken start)
+  const second = start($, ui, 'works')
+  const settled = await Promise.race([second.then(() => 'started'), new Promise(res => (globalThis as any).setTimeout(() => res('stuck'), 2000))])
+  expect(settled).toBe('started')
+  // The early agent (ag1 from the event) gets the worktree once it finishes
+  await finish($, 'ag1')
+  expect(JSON.stringify(await ui.drawn())).toContain('⎇ worktree-agent-a1')
+  expect(log.spawned.filter(x => x.type === 'cockpit:agent-in-worktree').length).toBe(2)
   await ui.unmount()
 })

@@ -181,10 +181,16 @@ export async function runExpert($: $, type: string, prior: string[] = [], opts: 
   const name = expertName(type)
   await set($, { starting: { name, type, task: s.task || name, ...(s.ui.agentWorktree && !opts.inTree ? { worktree: true } : {}) } })
   const wt = opts.inTree ? null : await worktreeToRun($, type)
-  if (wt && 'twin' in wt) await set($, st => ({ starting: st.starting ? { ...st.starting, type: wt.twin } : null }))
-  const r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type: wt && 'twin' in wt ? wt.twin : type, ...(wt && 'own' in wt ? { cwd: wt.own.path } : {}) })
-  await set($, { starting: null })
-  await keepWorktree($, 'deny' in r ? null : (r.agentId ?? ''), wt)
+  // A twin start holds the one-at-a-time turn until its worktree has been looked for, and gives it back whatever happens
+  let r: Awaited<ReturnType<typeof startAgent>>
+  try {
+    if (wt && 'twin' in wt) await set($, st => ({ starting: st.starting ? { ...st.starting, type: wt.twin } : null }))
+    r = await startAgent($, { prompt: expertPrompt(s, prior), description: name, type: wt && 'twin' in wt ? wt.twin : type, ...(wt && 'own' in wt ? { cwd: wt.own.path } : {}) })
+    await set($, { starting: null })
+    await keepWorktree($, 'deny' in r ? null : (r.agentId ?? ''), wt)
+  } finally {
+    if (wt && 'twin' in wt) wt.release()
+  }
   if ('deny' in r) {
     // Refused for want of a request: Claude starts it instead; '' keeps a pipeline waiting on this step
     if (/no verdict/i.test(r.deny ?? '')) {
@@ -286,18 +292,22 @@ const takeEarly = (id: string) => {
 
 export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' | 'prompt'> & Partial<Pick<Agent, 'by' | 'parent' | 'provider'>> & { cwd?: string }) {
   const at = await $.clock.now()
+  // Its worktree, if one waits for it: by id, by the folder its spawn named, or, for a twin, the next queued for its
+  // type; taken here, once, outside the state's update. A twin with none waiting is noted, for its start to find
+  const isNew = !(await read($, S)).agents.some(x => x.id === a.id)
+  if (a.cwd) spawnedIn.set(slashed(a.cwd), a.id)
+  const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(slashed(a.cwd)) ? slashed(a.cwd) : ''
+  const wt = key ? pendingWorktrees.get(key) : isNew ? pendingTwins.get(a.type)?.shift() : undefined
+  if (key) pendingWorktrees.delete(key)
+  if (isNew && !wt && twinOf.has(a.type)) unmatchedTwins.set(a.type, [...(unmatchedTwins.get(a.type) ?? []), a.id])
+  const plain = plainType(a.type)
   // Started twice (our own spawn, then its agent.spawn event): keep the first record's log and count.
   // A tester a Verify pipeline started on an agent's work is tagged with that agent
   await set($, s => {
     const was = s.agents.find(x => x.id === a.id)
     const p = s.pipeline
-    const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
-    if (a.cwd) spawnedIn.set(slashed(a.cwd), a.id)
-    const queued = pendingTwins.get(a.type)
-    const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(slashed(a.cwd)) ? slashed(a.cwd) : ''
-    const wt = key ? pendingWorktrees.get(key) : queued?.shift()
-    if (key) pendingWorktrees.delete(key)
-    a = { ...a, type: plainType(a.type) }
+    const tests = was?.for ?? (p?.for && p.steps[p.index] === plain ? p.for : undefined)
+    a = { ...a, type: plain }
     return { agents: [...s.agents.filter(x => x.id !== a.id), { ...takeEarly(a.id), ...(wt ? { worktree: wt } : {}), ...was, ...(({ cwd: _c, ...rest }) => rest)(a), status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
   })
 }
@@ -340,10 +350,16 @@ export async function discoverAgentTypes($: $) {
 export async function spawnAgent($: $, task: string, type: string) {
   await set($, s => ({ starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task, ...(s.ui.agentWorktree ? { worktree: true } : {}) } }))
   const wt = await worktreeToRun($, type)
-  if (wt && 'twin' in wt) await set($, st => ({ starting: st.starting ? { ...st.starting, type: wt.twin } : null }))
-  const r = await startAgent($, { prompt: task, description: task.slice(0, 60), type: wt && 'twin' in wt ? wt.twin : type, ...(wt && 'own' in wt ? { cwd: wt.own.path } : {}) })
-  await set($, { starting: null })
-  await keepWorktree($, 'deny' in r ? null : (r.agentId ?? ''), wt)
+  // A twin start holds the one-at-a-time turn until its worktree has been looked for, and gives it back whatever happens
+  let r: Awaited<ReturnType<typeof startAgent>>
+  try {
+    if (wt && 'twin' in wt) await set($, st => ({ starting: st.starting ? { ...st.starting, type: wt.twin } : null }))
+    r = await startAgent($, { prompt: task, description: task.slice(0, 60), type: wt && 'twin' in wt ? wt.twin : type, ...(wt && 'own' in wt ? { cwd: wt.own.path } : {}) })
+    await set($, { starting: null })
+    await keepWorktree($, 'deny' in r ? null : (r.agentId ?? ''), wt)
+  } finally {
+    if (wt && 'twin' in wt) wt.release()
+  }
   if ('deny' in r) {
     if (/no verdict/i.test(r.deny ?? '') && (await handOff($, [{ type, brief: task }]))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
@@ -512,12 +528,19 @@ async function worktreeToRun($: $, type: string): Promise<Plan> {
 // it in your tree), leaves no worktree or branch behind
 const pendingWorktrees = new Map<string, NonNullable<Agent['worktree']>>()
 const pendingTwins = new Map<string, NonNullable<Agent['worktree']>[]>()
+// Twin agents whose spawn event came before their start could hand them a worktree, by twin type, oldest first
+const unmatchedTwins = new Map<string, string[]>()
 // A twin's worktree, made by Claude Code: nothing to undo on a refusal; otherwise the agent waits to have it found
 async function keepIsolated($: $, id: string | null, plan: { twin: string; base: string; before: string[] }) {
   if (id === null) return
   const w = { path: '', branch: '', base: plan.base, claude: true, before: plan.before }
-  // A start that hands no id back: the twin's spawn event, by its type, picks it up; two such starts queue
-  if (!id) return void pendingTwins.set(plan.twin, [...(pendingTwins.get(plan.twin) ?? []), w])
+  // A start that hands no id back: a twin agent already seen without one takes it, else the twin's spawn event, by its
+  // type, picks it up; two such starts queue
+  if (!id) {
+    const waiting = unmatchedTwins.get(plan.twin)?.shift()
+    if (!waiting) return void pendingTwins.set(plan.twin, [...(pendingTwins.get(plan.twin) ?? []), w])
+    id = waiting
+  }
   if ((await read($, S)).agents.some(a => a.id === id)) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: w } : a)) }))
   else pendingWorktrees.set(id, w)
   await findIsolated($, id).catch(() => null)
