@@ -46,3 +46,19 @@ export function spendByDay(list: SessionSpend[], now: number, days = 14): { day:
 export function costliest(list: SessionSpend[], n = 5): SessionSpend[] {
   return [...list].sort((a, b) => b.usd - a.usd || b.startedAt - a.startedAt).slice(0, n)
 }
+
+// Today's dollars: the sessions that started today, as the history keeps them
+export const todaySpend = (list: SessionSpend[], now: number) => spendByDay(list, now, 1)[0]?.usd ?? 0
+
+// Where today's spend stands against a daily budget: none (no budget, or not a positive one), ok, near (80% or more),
+// over (100% or more). A budget only warns; nothing is ever blocked
+export type BudgetLevel = 'none' | 'ok' | 'near' | 'over'
+export function budgetLevel(spend: number, budget: number | undefined): BudgetLevel {
+  if (!budget || !Number.isFinite(budget) || budget <= 0) return 'none'
+  return spend >= budget ? 'over' : spend >= budget * 0.8 ? 'near' : 'ok'
+}
+
+// Every session's spend as it stands now: the earlier ones, and this one with its live figures
+export function withCurrent(past: SessionSpend[] | undefined, at: number | undefined, now: number, usd: number, tokens: number, turns: number): SessionSpend[] {
+  return at ? upsertSession(past ?? [], { id: `s${at}`, startedAt: at, endedAt: now, usd: Math.max(0, Number.isFinite(usd) ? usd : 0), tokens, turns }) : (past ?? [])
+}

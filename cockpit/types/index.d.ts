@@ -227,6 +227,9 @@ export type Ph = {
   past: Flow[]
   // What earlier sessions spent, from history.json; and when this one started (session.usage), to record its own
   pastSessions?: SessionSpend[]
+  // A daily budget in dollars (absent: none), and the last day and level it warned at, so each warns once a day
+  dailyBudget?: number
+  budgetWarned?: { day: string; level: 'near' | 'over' }
   sessionAt?: number
   pastAgents: Agent[]
   // Runs you cleared from the list (the engine still lists them, so a sync must not bring them back), and when: a team
@@ -296,6 +299,8 @@ export type Ph = {
     wtAsk?: string
     // The earlier flow whose Undo this turn is waiting for Undo? / Keep
     undoAsk?: string
+    // What is typed into the daily budget field
+    budgetText?: string
     // The commit opened in the graph, and what git show said of it
     openCommit: string
     commitInfo: string

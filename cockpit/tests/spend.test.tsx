@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { costliest, dayOf, spendByDay, upsertSession } from '../hooks/spend'
+import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, upsertSession } from '../hooks/spend'
 
 // Noon on a day where you are, so a day's edge never depends on the machine's time zone
 const noon = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime()
@@ -44,21 +44,28 @@ test('spend by day covers 14 days, oldest first, a day with none at $0, a sessio
 })
 
 // A session against an in-memory disk; usage says when it started and what it has cost so far
-function stand(on: any, opt: { cost: () => number; startedAt: number; disk: Record<string, string> }) {
+function stand(on: any, opt: { cost: () => number; startedAt: number | (() => number); disk: Record<string, string>; now?: () => number; notices?: { title?: string; text: string }[]; prefs?: Record<string, unknown> }) {
   const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
-  on('clock.now', async () => ({ value: noon(2026, 11, 8, 16) }))
+  on('clock.now', async () => ({ value: opt.now ? opt.now() : noon(2026, 11, 8, 16) }))
   on('clock.every', async () => ({ value: {} }) as never)
   on('command.register', async () => ({ value: {} }) as never)
   on('session.start', async () => ({ cwd: '/repo' }))
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('ui.panes', async () => ({ value: [] }) as never)
-  on('ui.notify', async () => ({ value: { isSent: false, reason: 'no-channel' } }) as never)
-  on('store.get', async () => ({ value: undefined }))
-  on('store.set', async () => ({ value: undefined }))
+  on('ui.notify', async (_: unknown, e: any) => (opt.notices?.push({ title: e.title, text: String(e.text) }), { value: { isSent: true, channel: 'terminal' } }) as never)
+  on('store.get', async (_: unknown, e: any) => ({ value: e.key === 'prefs' ? opt.prefs : undefined }))
+  // The store keeps what is saved, whole: a setting cleared is gone from it
+  on('store.set', async (_: unknown, e: any) => {
+    if (e.key === 'prefs' && opt.prefs) {
+      for (const k of Object.keys(opt.prefs)) delete opt.prefs[k]
+      Object.assign(opt.prefs, JSON.parse(JSON.stringify(e.value ?? {})))
+    }
+    return { value: undefined }
+  })
   on('session.cwd', async () => ({ value: '/repo' }))
   on('session.measure', async () => ({ changed: [] }))
-  on('session.usage', async () => ({ value: { startedAt: opt.startedAt, context: { window: 200000, tokens: 34000, percent: 17, breakdown: { categories: [], totalTokens: 34000 } }, rateLimits: [], cost: { usd: opt.cost() } } }) as never)
+  on('session.usage', async () => ({ value: { startedAt: typeof opt.startedAt === 'function' ? opt.startedAt() : opt.startedAt, context: { window: 200000, tokens: 34000, percent: 17, breakdown: { categories: [], totalTokens: 34000 } }, rateLimits: [], cost: { usd: opt.cost() } } }) as never)
   on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
   on('tool.call', async () => ({ result: 'ok' }))
   on('turn.complete', async () => ({ text: '' }))
@@ -138,4 +145,79 @@ test('sessions all older than 14 days show no spend heading, and say nothing was
   expect(d).toContain('Nothing spent in the last 14 days')
   expect(d).toContain('$4.00')
   await ui.unmount()
+})
+
+test("a daily budget's level: none, ok, near from 80%, over from 100%; today's spend counts only today's sessions", () => {
+  expect(budgetLevel(7.99, 10)).toBe('ok')
+  expect(budgetLevel(8, 10)).toBe('near')
+  expect(budgetLevel(9.99, 10)).toBe('near')
+  expect(budgetLevel(10, 10)).toBe('over')
+  expect(budgetLevel(50, 10)).toBe('over')
+  for (const none of [undefined, 0, -5, Number.NaN, Number.POSITIVE_INFINITY]) expect(budgetLevel(5, none)).toBe('none')
+  const now = noon(2026, 11, 8, 18)
+  expect(todaySpend([ss('today-a', noon(2026, 11, 8, 9), 1.5), ss('today-b', noon(2026, 11, 8, 13), 2), ss('yesterday', noon(2026, 11, 7, 23), 9)], now)).toBe(3.5)
+  expect(todaySpend([], now)).toBe(0)
+})
+
+test('a daily budget warns at 80% and at 100%, once each a day, the band amber then red, a new day quiet; nothing is stopped', { timeoutMs: 30_000 }, async ($, on) => {
+  let usd = 1
+  let now = noon(2026, 11, 8, 10)
+  let started = noon(2026, 11, 8, 9)
+  const notices: { title?: string; text: string }[] = []
+  const prefs: Record<string, unknown> = {}
+  stand(on, { cost: () => usd, startedAt: () => started, disk: {}, now: () => now, notices, prefs })
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await prompt($, 'first')
+  await turnDone($, 'first')
+  // Set the budget in the Overview's Earlier sessions: text that is not a positive number is refused, $10 is kept
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
+  await pane.press({ key: 'fold-past' })
+  await (pane as any).input({ key: 'budget-input', text: 'lots' })
+  expect(prefs.dailyBudget).toBe(undefined)
+  await (pane as any).input({ key: 'budget-input', text: '$10' })
+  expect(prefs.dailyBudget).toBe(10)
+  expect(JSON.stringify(await pane.drawn())).toContain('$1.00 of $10.00 today')
+  const band = async () => {
+    const b = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as never)
+    const d = JSON.stringify(await b.drawn())
+    await b.unmount()
+    return d
+  }
+  expect(await band()).toContain('$1.00 of $10.00 today')
+  // 80%: one warning, the band amber; still 80% on the next turn: no second
+  usd = 8.5
+  await prompt($, 'second')
+  await turnDone($, 'second')
+  await prompt($, 'third')
+  await turnDone($, 'third')
+  expect(notices.filter(n => n.title?.startsWith('Daily budget'))).toEqual([{ title: 'Daily budget at 80%', text: '$8.50 of $10.00 spent today (estimates); nothing is stopped' }])
+  // The Auto theme's amber and red, as Claude Code names them
+  expect(await band()).toContain('{"color":"warning"},"children":["  ·  $8.50 of $10.00 today"]')
+  // 100%: one more, the band red; and the session goes on (nothing is stopped)
+  usd = 10.2
+  await prompt($, 'fourth')
+  await turnDone($, 'fourth')
+  await prompt($, 'fifth')
+  await turnDone($, 'fifth')
+  expect(notices.filter(n => n.title?.startsWith('Daily budget')).map(n => n.title)).toEqual(['Daily budget at 80%', 'Daily budget reached'])
+  expect(await band()).toContain('{"color":"error"},"children":["  ·  $10.20 of $10.00 today"]')
+  expect(prefs.budgetWarned).toEqual({ day: '2026-11-08', level: 'over' })
+  // The next day, a new session: quiet under 80%, and warned again once it crosses
+  now = noon(2026, 11, 9, 10)
+  started = noon(2026, 11, 9, 9)
+  usd = 2
+  await prompt($, 'next day')
+  await turnDone($, 'next day')
+  expect(notices.filter(n => n.title?.startsWith('Daily budget')).length).toBe(2)
+  usd = 9
+  await prompt($, 'next day again')
+  await turnDone($, 'next day again')
+  expect(notices.filter(n => n.title?.startsWith('Daily budget')).length).toBe(3)
+  // Clear: no budget, no figure on the band
+  await pane.press({ key: 'budget-clear' })
+  expect(prefs.dailyBudget).toBe(undefined)
+  expect(await band()).not.toContain('today')
+  await pane.unmount()
 })

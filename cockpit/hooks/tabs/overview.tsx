@@ -1,7 +1,7 @@
 import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
 import type { Account, Agent, Decision, GitForm, Ph, SessionSpend, Tab, ThemeId } from '../../types'
-import { costliest, dayOf, spendByDay, upsertSession } from '../spend'
+import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, withCurrent } from '../spend'
 import {
   inBackground,
   applyAccount,
@@ -27,6 +27,7 @@ import {
   refreshRepo,
   refreshGit,
   undoFlow,
+  setBudget,
   set,
   startPipeline,
   setTheme,
@@ -89,7 +90,7 @@ import type { $, UI, V } from './shared'
 import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
 
 export function Overview($: $, v: V) {
-  const { Box, Button, Text, Svg } = v.ui
+  const { Box, Button, Input, Text, Svg } = v.ui
   const { s, t, w } = v
   const p = progress(s)
   const cur = s.flows[s.flows.length - 1]
@@ -130,10 +131,11 @@ export function Overview($: $, v: V) {
   )
   const ctxCol = s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.dim
   // Spend: every session saved in history, this one with its live figures
-  const sessions: SessionSpend[] = s.sessionAt ? upsertSession(s.pastSessions ?? [], { id: `s${s.sessionAt}`, startedAt: s.sessionAt, endedAt: v.now, usd: s.cost, tokens: s.ctx.used, turns: s.flows.length }) : (s.pastSessions ?? [])
+  const sessions: SessionSpend[] = withCurrent(s.pastSessions, s.sessionAt, v.now, s.cost, s.ctx.used, s.flows.length)
   const days = spendByDay(sessions, v.now, 14)
   const peak = Math.max(0.01, ...days.map(d => d.usd))
   const spent = days.reduce((a, d) => a + d.usd, 0)
+  const level = budgetLevel(todaySpend(sessions, v.now), s.dailyBudget)
   const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -461,6 +463,18 @@ export function Overview($: $, v: V) {
                   <Text color={t.dim} size="footnote" mono>{d.usd ? `$${d.usd.toFixed(2)}` : ''}</Text>
                 </Box>
               ))}
+              <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
+                <Input key="budget-input" label="Daily budget ($)" placeholder="none" value={s.ui.budgetText ?? (s.dailyBudget ? String(s.dailyBudget) : '')} submitLabel="set" onInput={(val: string) => set($, st => ({ ui: { ...st.ui, budgetText: val } }))} onSubmit={(val: string) => setBudget($, val)} />
+                {s.dailyBudget ? (
+                  <Text color={level === 'over' ? t.bad : level === 'near' ? t.busy : t.dim} size="footnote">{`$${todaySpend(sessions, v.now).toFixed(2)} of $${s.dailyBudget.toFixed(2)} today`}</Text>
+                ) : null}
+                {s.dailyBudget ? (
+                  <Button key="budget-clear" plain onPress={() => set($, st => ({ dailyBudget: undefined, ui: { ...st.ui, budgetText: '' } }))}>
+                    <Text color={t.dim} size="footnote">Clear</Text>
+                  </Button>
+                ) : null}
+              </Box>
+              <Text color={t.faint} size="footnote" wrap="wrap">It warns at 80% and 100%, once each a day; nothing is ever stopped.</Text>
               <Text color={t.dim} size="footnote">Costliest sessions</Text>
               {costliest(sessions, 5).map(x => (
                 <Box key={`dear-${x.id}`} columnGap={sp(v, 1)} justifyContent="space-between">

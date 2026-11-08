@@ -6,6 +6,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Daily budget**: set dollars a day in the Overview's Earlier sessions; the band shows today's spend against it,
+  amber from 80% and red from 100%, and crossing each sends one notice that day. It only warns; nothing is stopped.
 - **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
   Overview's Earlier sessions shows what the last 14 days cost, a bar for each day, and the five costliest sessions,
   marked as Claude Code's estimates.

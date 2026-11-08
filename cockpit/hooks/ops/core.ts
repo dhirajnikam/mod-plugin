@@ -16,7 +16,7 @@ export type $ = EngineInterface
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 
 // The choices that outlast a session, a reload and a change of the state's shape: kept in the store, read at session start
-const PREFS = ['focus', 'theme', 'mode', 'autoVerify', 'testAgents', 'notifyDone'] as const
+const PREFS = ['focus', 'theme', 'mode', 'autoVerify', 'testAgents', 'notifyDone', 'dailyBudget', 'budgetWarned'] as const
 export async function set($: $, patch: Patch) {
   let saved: Record<string, unknown> | null = null
   await update($, S, s => {

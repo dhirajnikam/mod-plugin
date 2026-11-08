@@ -44,6 +44,7 @@ import {
   snapTurn,
   measureWorktree,
   tellDone,
+  checkBudget,
   plainType,
   toast,
   refreshGit,
@@ -56,6 +57,7 @@ import {
 import { ACTS, act } from './acts'
 import { EXPERTS, FLOWS, activityOf, applyPlan, expertName, flowOf, progress, selfCheck, stepOf, toOp, verifyState } from './logic'
 import { memoryText } from './memory'
+import { withCurrent } from './spend'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
 import { drawings } from './drawings'
@@ -564,6 +566,9 @@ export const register: Register = on => {
     if (didChange && (s.autoVerify || commitAfterTests)) await startPipeline($, 'verify')
     if (didChange && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
     await saveHistory($)
+    // The daily budget: a warning at 80% and at 100%, once each a day
+    const sb = await read($, S)
+    await checkBudget($, withCurrent(sb.pastSessions, sb.sessionAt, await $.clock.now(), sb.cost, sb.ctx.used, sb.flows.length), await $.clock.now()).catch(() => null)
     return r
   }).catch(async ($, e, next) => {
     // Whatever failed, the main turn is over: the band and the timers must not think it still runs
