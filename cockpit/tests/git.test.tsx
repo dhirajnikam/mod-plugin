@@ -399,3 +399,49 @@ test('with no origin and no main, master or develop, the branch you are on is no
   expect(drawn).toContain('no checks')
   await ui.unmount()
 })
+
+test('a base set to the branch you are on, with no real base around, is let go on the next read; with no base a commit skips the PR and says why', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran: string[] = []
+  const toasts: string[] = []
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('ui.toast', async (_, e) => (toasts.push(String((e as { text?: unknown }).text ?? '')), { value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    ran.push(cmd)
+    const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd.startsWith('git status')) return out('## feat/x\0 M a.txt\0')
+    if (cmd.startsWith('git diff --numstat')) return out('1\t0\ta.txt\0')
+    if (cmd.startsWith('git branch')) return out('feat/x\n')
+    if (cmd.startsWith('git symbolic-ref')) return out('', 1)
+    if (cmd.startsWith('git rev-parse')) return out('abc1234\n')
+    if (cmd.startsWith('gh pr view')) return out('{"number":5,"title":"Lonely branch","state":"OPEN"}')
+    if (cmd.startsWith('gh pr checks')) return out('[]')
+    return out('')
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const ui = await $.ui.mount(PANE as never)
+  for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
+  // The branch you are on, picked as the base, as the old fallback saved it
+  await ui.press({ key: 'git-more' })
+  await ui.select({ key: 'git-base', value: 'feat/x' })
+  // The next read lets it go: the PR is read, not skipped as the base's
+  ran.length = 0
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  expect(ran.filter(c => c.startsWith('gh pr view')).length).toBe(1)
+  expect(JSON.stringify(await ui.drawn())).toContain('#5')
+  // Push and pull requests on, no base: the commit is pushed, no PR is asked of gh, and the toast says why
+  await ui.press({ key: 'opt-push' })
+  await ui.press({ key: 'opt-pr' })
+  expect(JSON.stringify(await ui.drawn())).toContain('PR → no base picked')
+  ran.length = 0
+  await ui.press({ key: 'git-commit' })
+  expect(ran.some(c => c.startsWith('git push'))).toBe(true)
+  expect(ran.some(c => c.startsWith('gh pr create'))).toBe(false)
+  expect(toasts.join('\n')).toContain('no PR: pick a base in Patterns & options')
+  await ui.unmount()
+})
