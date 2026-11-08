@@ -2,7 +2,20 @@
 
 The Rules tab shows the hooks, permission rules and instructions Claude Code follows, for **this repository** (`.claude/settings.json` and `CLAUDE.md`) or **you, everywhere** (`~/.claude/settings.json` and `~/.claude/CLAUDE.md`). Hooks with their event, matcher and command; permission rules as allow, ask or deny; instructions as the bullet lines of `CLAUDE.md`. Each row has ✎ to edit it in place and ✕ to delete it (after you confirm), each section **+ Add**. Every change reads the file again first and writes it back with the rest of it kept (a row that moved meanwhile is left alone); a settings file that is not valid JSON is shown read-only with the error, never overwritten. Hooks run shell commands: read one before you add it.
 
-## MCP servers
+## What loads every session
+
+At the top of the tab, before either scope: an estimate of what Claude Code puts in context before you type.
+
+- **Each `CLAUDE.md` that loads**: the repository's `CLAUDE.md`, `.claude/CLAUDE.md` and `CLAUDE.local.md`, and
+  `~/.claude/CLAUDE.md`, then every file they pull in with `@path` (relative to the file, from `~/`, or absolute; not
+  inside code), up to 5 hops as Claude Code follows them, each file once. Each shows its lines and estimated tokens;
+  one over 200 lines is marked (Claude Code's guidance is to keep it shorter and move reference material into
+  skills), an import that cannot be read is marked *missing*, and an imported file is marked ↳.
+- **Skills Claude may load**: how many, and the estimated tokens of their names and descriptions; the three largest
+  each have **Call only**, which keeps that skill out of context until you call `/name` (see Skills below).
+- **MCP servers on**: counted, not priced. What their tools cost depends on how Claude Code loads them (names only, or
+  full schemas), so `/context` has their real figure.
+- Estimates are characters ÷ 4, and leave out Claude Code's own system prompt and built-in tools.
 
 The servers Claude Code would start here, each with its name, its kind (stdio, http, sse), what it runs (the command
 and its arguments, or the URL) and whether it runs: **on**, **off** (switched off with `/mcp`, or listed in

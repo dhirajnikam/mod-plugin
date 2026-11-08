@@ -67,6 +67,15 @@ export type RuleFiles = { settingsPath: string; settings: string; mdPath: string
 // An MCP server Claude Code would start here: env and header names only, never their values
 // target: what it runs with tokens masked (masked: some were); shadowed: a server of the same name in a nearer scope wins
 export type McpRow = { key: string; name: string; scope: 'project' | 'local' | 'user'; kind: 'stdio' | 'http' | 'sse'; target: string; masked: boolean; secrets: string[]; state: 'on' | 'off' | 'approval' | 'shadowed' }
+// What loads into every session before you type: each memory file (label: its path from the repository, or from ~),
+// the skills Claude may load by itself, the largest three, the MCP servers on, and the estimated tokens of files and skills
+export type StartupLoad = {
+  files: { path: string; label?: string; via?: string; missing?: boolean; lines: number; tokens: number; long: boolean }[]
+  skills: { path: string; name: string; tokens: number }[]
+  largest: { path: string; name: string; tokens: number }[]
+  mcpOn: number
+  total: number
+}
 // A skill's SKILL.md: its folder, what its frontmatter says, and why it cannot be changed, if so
 export type SkillFile = { path: string; folder: string; name: string; description: string; auto: boolean; error: string }
 // The project's .mcp.json (its path, the only one Cockpit writes, and why it cannot be changed, if so) and every server
@@ -197,7 +206,7 @@ export type Ph = {
   goal?: { text: string; at: number }
   autopilot?: Autopilot
   // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
-  rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles; skills?: { repo: SkillFile[]; user: SkillFile[] } }
+  rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles; skills?: { repo: SkillFile[]; user: SkillFile[] }; load?: StartupLoad }
   // Slow work a press started, running past the press: its kind and the words that say it ("Pushing")
   busy?: Record<string, string>
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current

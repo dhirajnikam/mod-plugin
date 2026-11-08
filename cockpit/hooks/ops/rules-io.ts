@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Account, Agent, Autopilot, Changed, RuleFiles, SkillFile, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { changeMcp, mcpRows, parseSettings, setInvocation, settingsText, skillListed, skillOf } from '../rules'
+import { changeMcp, mcpRows, parseSettings, resolveMemory, setInvocation, settingsText, skillListed, skillOf, startupLoad } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
@@ -58,7 +58,13 @@ export async function loadRules($: $) {
   // The repository being your home folder: its skills are yours, listed once
   const mine = home && home.replace(/\/+$/, '') !== root.replace(/\\/g, '/').replace(/\/+$/, '') ? `${home}/.claude/skills` : ''
   const [mcp, repo, user] = await Promise.all([mcpFiles($, files), skillFiles($, `${root}/.claude/skills`), skillFiles($, mine)])
-  await set($, { rules: { ...files, mcp: mcp.file, skills: { repo, user } } })
+  // The memory files Claude Code loads at start, and what they import
+  const starts = [`${root}/CLAUDE.md`, `${root}/.claude/CLAUDE.md`, `${root}/CLAUDE.local.md`, ...(home ? [`${home}/.claude/CLAUDE.md`] : [])]
+  const memory = await resolveMemory(starts, p => $.fs.read(p).then(String).catch(() => null), home)
+  const load = startupLoad(memory, [...repo, ...user], mcp.file.rows)
+  const label = (p: string) => (p.startsWith(`${root}/`) ? p.slice(root.length + 1) : home && p.startsWith(`${home}/`) ? `~/${p.slice(home.length + 1)}` : p)
+  load.files = load.files.map(f => ({ ...f, label: label(f.path), ...(f.via ? { via: label(f.via) } : {}) }))
+  await set($, { rules: { ...files, mcp: mcp.file, skills: { repo, user }, load } })
 }
 // A skill switched between Claude loading it by itself and /name only: its SKILL.md read again first, only that
 // line changed, and a file whose frontmatter cannot be read never written

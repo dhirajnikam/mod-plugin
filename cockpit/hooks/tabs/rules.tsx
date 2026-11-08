@@ -140,6 +140,7 @@ export function Rules($: $, v: V) {
   const mcp = s.rules?.mcp
   const mcpError = mcp?.error ?? ''
   const skills = s.rules?.skills?.[scope] ?? []
+  const load = s.rules?.load
   const servers: McpRow[] = (mcp?.rows ?? []).filter(m => (scope === 'repo' ? m.scope !== 'user' : m.scope === 'user'))
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -149,6 +150,36 @@ export function Rules($: $, v: V) {
           <Text color={t.dim} size="footnote">↻ Read again</Text>
         </Button>
       </Box>
+      {load && (
+        <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+          <Box justifyContent="space-between" columnGap={sp(v, 1)} flexWrap="wrap">
+            <Text color={t.dim} size="footnote" bold>LOADS EVERY SESSION</Text>
+            <Text color={t.accent} size="footnote" bold>{`≈ ${load.total.toLocaleString('en-US')} tokens`}</Text>
+          </Box>
+          {load.files.map(fl => (
+            <Box key={`ld-f-${fl.path}`} columnGap={sp(v, 1)} justifyContent="space-between">
+              <Box flexShrink={1}>
+                <Text color={fl.missing ? t.bad : t.text} size="footnote" wrap="truncate-start">{`${fl.via ? '↳ ' : ''}${fl.label ?? fl.path}`}</Text>
+              </Box>
+              <Text color={fl.missing || fl.long ? t.bad : t.dim} size="footnote">{fl.missing ? 'missing' : `${fl.lines} lines · ≈${fl.tokens}${fl.long ? ' · over 200' : ''}`}</Text>
+            </Box>
+          ))}
+          {load.files.length === 0 && <Text color={t.faint} size="footnote">No CLAUDE.md here or in ~/.claude.</Text>}
+          <Text color={t.dim} size="footnote" wrap="wrap">{`Skills Claude may load: ${load.skills.length} · ≈${load.skills.reduce((a, k) => a + k.tokens, 0)}`}</Text>
+          {load.largest.map(k => (
+            <Box key={`ld-k-${k.path}`} columnGap={sp(v, 1)} justifyContent="space-between" alignItems="center">
+              <Box flexShrink={1}>
+                <Text color={t.text} size="footnote" wrap="truncate-end">{`  ${k.name} · ≈${k.tokens}`}</Text>
+              </Box>
+              <Button key={`ld-${k.path}`} plain onPress={() => writeSkill($, k.path, false)}>
+                <Text color={t.accent} size="footnote">Call only</Text>
+              </Button>
+            </Box>
+          ))}
+          <Text color={t.dim} size="footnote" wrap="wrap">{`MCP servers on: ${load.mcpOn} · their tools' cost: /context`}</Text>
+          <Text color={t.faint} size="footnote" wrap="wrap">Estimates (characters ÷ 4), before Claude Code's own system prompt and tools.</Text>
+        </Box>
+      )}
       <Text color={t.faint} size="footnote" wrap="wrap">{scope === 'repo' ? 'Shared with everyone who works in this repository (commit them to share them).' : 'Yours, in every repository on this machine.'} Hooks run shell commands: read one before you add it.</Text>
       {error !== '' && <Text color={t.bad} wrap="wrap">{`${f.settingsPath} is ${error}. Hooks and permissions are shown read-only until it is fixed by hand.`}</Text>}
 

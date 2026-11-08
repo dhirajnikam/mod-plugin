@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf } from '../hooks/rules'
+import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf, importsOf, resolveMemory, startupLoad } from '../hooks/rules'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -429,4 +429,121 @@ test('only a SKILL.md the tab listed may be written', async () => {
   expect(skillListed('/repo/.claude/skills/release/SKILL.md', undefined)).toBe(false)
   // A listed entry whose path is not a SKILL.md is never written either
   expect(skillListed('/repo/.claude/skills/x/README.md', { repo: [k('/repo/.claude/skills/x/README.md')], user: [] })).toBe(false)
+})
+
+test('what loads every session: @imports followed as Claude Code does, and the figures added up', async () => {
+  // @imports: relative, from ~/ and absolute; not in code spans, fenced blocks or email addresses
+  expect(importsOf('See @docs/style.md and @~/notes.md and @/etc/team.md.\nMail me@example.com\n`@not/this`\n```\n@nor/this\n```\n@../up.md')).toEqual(['docs/style.md', '~/notes.md', '/etc/team.md', '../up.md'])
+  const disk: Record<string, string> = {
+    '/repo/CLAUDE.md': '# Repo\n@docs/style.md\n@~/.claude/shared.md\n@gone.md\n',
+    '/repo/docs/style.md': 'Use tabs.\n@../CLAUDE.md\n@deep/1.md\n',
+    '/repo/docs/deep/1.md': '@2.md', '/repo/docs/deep/2.md': '@3.md', '/repo/docs/deep/3.md': '@4.md', '/repo/docs/deep/4.md': '@5.md', '/repo/docs/deep/5.md': 'end',
+    '/home/me/.claude/shared.md': 'Shared rule\n',
+    '/home/me/.claude/CLAUDE.md': '- Be brief\n',
+  }
+  const read = async (p: string) => disk[p] ?? null
+  const files = await resolveMemory(['/repo/CLAUDE.md', '/repo/.claude/CLAUDE.md', '/home/me/.claude/CLAUDE.md'], read, '/home/me')
+  expect(files.map(f => `${f.path}${f.via ? ` < ${f.via}` : ''}${f.missing ? ' (missing)' : ''}`)).toEqual([
+    '/repo/CLAUDE.md',
+    '/repo/docs/style.md < /repo/CLAUDE.md',
+    // The cycle back to CLAUDE.md is not followed again; 4.md is the fifth hop, so 5.md is not read
+    '/repo/docs/deep/1.md < /repo/docs/style.md',
+    '/repo/docs/deep/2.md < /repo/docs/deep/1.md',
+    '/repo/docs/deep/3.md < /repo/docs/deep/2.md',
+    '/repo/docs/deep/4.md < /repo/docs/deep/3.md',
+    '/home/me/.claude/shared.md < /repo/CLAUDE.md',
+    '/repo/gone.md < /repo/CLAUDE.md (missing)',
+    // .claude/CLAUDE.md does not exist and was not imported: left out
+    '/home/me/.claude/CLAUDE.md',
+  ])
+  // The figures
+  const skill = (name: string, description: string, auto = true, error = '') => ({ path: `/s/${name}/SKILL.md`, folder: name, name, description, auto, error })
+  const skills = [skill('a', 'x'.repeat(398)), skill('b', 'short'), skill('c', 'y'.repeat(98)), skill('d', 'z'.repeat(40)), skill('off', 'q'.repeat(1000), false), skill('bad', 'w'.repeat(1000), true, 'broken')]
+  const mcp = [{ state: 'on' }, { state: 'on' }, { state: 'off' }, { state: 'approval' }, { state: 'shadowed' }] as never
+  const long = { path: '/repo/BIG.md', text: 'line\n'.repeat(201) }
+  const load = startupLoad([{ path: '/repo/CLAUDE.md', text: 'abcdefgh\nij' }, long, { path: '/repo/gone.md', text: '', via: '/repo/CLAUDE.md', missing: true }], skills, mcp)
+  expect(load.files).toEqual([
+    { path: '/repo/CLAUDE.md', lines: 2, tokens: 3, long: false },
+    { path: '/repo/BIG.md', lines: 201, tokens: 252, long: true },
+    { path: '/repo/gone.md', via: '/repo/CLAUDE.md', missing: true, lines: 0, tokens: 0, long: false },
+  ])
+  // name + ": " + description, ÷ 4 rounded up; call-only and broken skills add nothing
+  expect(load.skills.map(s => `${s.name}:${s.tokens}`)).toEqual(['a:101', 'b:2', 'c:26', 'd:11'])
+  expect(load.largest.map(s => s.name)).toEqual(['a', 'c', 'd'])
+  expect(load.mcpOn).toBe(2)
+  expect(load.total).toBe(3 + 252 + 101 + 2 + 26 + 11)
+  // Switching a skill to call only takes exactly its tokens off the total
+  const lighter = startupLoad([{ path: '/repo/CLAUDE.md', text: 'abcdefgh\nij' }, long], skills.map(s => (s.name === 'a' ? { ...s, auto: false } : s)), mcp)
+  expect(load.total - lighter.total).toBe(101)
+})
+
+test('the Rules tab shows what loads every session, from the real files and their imports, and Call only takes a skill off the total', { timeoutMs: 20_000 }, async ($, on) => {
+  const bigSkill = '---\nname: big\ndescription: ' + 'A long description. '.repeat(20) + '\n---\n'
+  const disk: Record<string, string> = {
+    '/repo/CLAUDE.md': '# Repo\n- Run the tests\n@docs/style.md\n@gone.md\n',
+    '/repo/docs/style.md': 'Use tabs.\n',
+    '/repo/CLAUDE.local.md': 'mine\n'.repeat(250),
+    '/home/me/.claude/CLAUDE.md': '- Be brief\n',
+    '/repo/.claude/skills/big/SKILL.md': bigSkill,
+    '/repo/.claude/skills/small/SKILL.md': '---\nname: small\ndescription: tiny\n---\n',
+    '/home/me/.claude/skills/quiet/SKILL.md': '---\nname: quiet\ndescription: never counted\ndisable-model-invocation: true\n---\n',
+    '/repo/.mcp.json': JSON.stringify({ mcpServers: { on1: { command: 'a' }, waiting: { command: 'b' } } }),
+    '/repo/.claude/settings.local.json': JSON.stringify({ enabledMcpjsonServers: ['on1'] }),
+  }
+  const writes: string[] = []
+  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('env.get', async (_: unknown, e: any) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }) as never)
+  on('fs.exists', async (_: unknown, e: any) => ({ value: posix(e.path) in disk }))
+  on('fs.list', async (_: unknown, e: any) => {
+    const dir = `${posix(e.path)}/`
+    const kids = new Map<string, string>()
+    for (const p of Object.keys(disk)) if (p.startsWith(dir)) { const [first, ...rest] = p.slice(dir.length).split('/'); kids.set(first!, rest.length ? 'dir' : 'file') }
+    return { value: [...kids].map(([name, kind]) => ({ name, kind })) } as never
+  })
+  on('fs.read', async (_: unknown, e: any) => {
+    if (!(posix(e.path) in disk)) throw new Error('ENOENT')
+    return { value: disk[posix(e.path)] } as never
+  })
+  on('fs.write', async (_: unknown, e: any) => (writes.push(posix(e.path)), (disk[posix(e.path)] = e.text), { value: undefined }))
+  on('process.run', async (_: unknown, e: any) => {
+    const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
+    return cmd === 'git rev-parse --show-toplevel' ? ok('/repo\n') : ok('')
+  })
+  on('command.run', async () => ({ text: '' }))
+  await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
+  const ui = await $.ui.mount(pane as never)
+  const total = (d: string) => Number(d.match(/≈ ([\d,]+) tokens/)![1]!.replace(/,/g, ''))
+  let d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('LOADS EVERY SESSION')
+  // Each file by its path from the repository or from ~, with its lines and tokens
+  expect(d).toContain('"CLAUDE.md"')
+  expect(d).toContain('4 lines · ≈12')
+  expect(d).toContain('↳ docs/style.md')
+  expect(d).toContain('↳ gone.md')
+  expect(d).toContain('"missing"')
+  expect(d).toContain('250 lines · ≈313 · over 200')
+  expect(d).toContain('~/.claude/CLAUDE.md')
+  // Skills Claude may load: big and small, not the call-only one; the servers on, not the one waiting for approval
+  expect(d).toContain('Skills Claude may load: 2')
+  expect(d).not.toContain('quiet · ≈')
+  expect(d).toContain('MCP servers on: 1')
+  // Every figure adds up to the total shown
+  const files = 12 + 3 + 313 + 3
+  const big = Math.ceil(`big: ${'A long description. '.repeat(20).trim()}`.length / 4)
+  const small = Math.ceil('small: tiny'.length / 4)
+  expect(total(d)).toBe(files + big + small)
+  // Call only beside the largest skill: written to its SKILL.md, and the total drops by exactly its tokens
+  await ui.press({ key: 'ld-/repo/.claude/skills/big/SKILL.md' })
+  expect(disk['/repo/.claude/skills/big/SKILL.md']).toContain('disable-model-invocation: true')
+  d = JSON.stringify(await ui.drawn())
+  expect(total(d)).toBe(files + small)
+  expect(d).toContain('Skills Claude may load: 1')
+  expect(writes).toEqual(['/repo/.claude/skills/big/SKILL.md'])
+  await ui.unmount()
 })

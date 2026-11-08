@@ -1,4 +1,4 @@
-import type { McpRow, SkillFile } from '../types'
+import type { McpRow, SkillFile, StartupLoad } from '../types'
 
 // Hooks, permission rules and instructions, as Claude Code keeps them: settings.json ("hooks", "permissions") and
 // CLAUDE.md, for the repository and for the user. Pure: the Rules tab reads the files, these read and change their
@@ -286,3 +286,75 @@ export function setInvocation(text: string, auto: boolean): string | null {
 // A SKILL.md the Rules tab listed, in either scope: the only files a skill's switch may write
 export const skillListed = (path: string, skills?: { repo: SkillFile[]; user: SkillFile[] }) =>
   path.endsWith('/SKILL.md') && [...(skills?.repo ?? []), ...(skills?.user ?? [])].some(k => k.path === path)
+
+// What loads into every session before you type: the CLAUDE.md files and what they @import, the descriptions of the
+// skills Claude may load by itself, and the MCP servers that are on. Tokens are estimated (characters ÷ 4)
+
+// The @imports in a memory file, as Claude Code reads them: @path at a word's start, outside code spans and fenced
+// blocks; an email address is not one
+export function importsOf(text: string): string[] {
+  const out: string[] = []
+  let fenced = false
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
+    for (const m of line.replace(/`[^`]*`/g, ' ').matchAll(/(?:^|\s)@((?:~\/|\.{1,2}\/|\/)?[\w.\-/~]+)/g)) out.push(m[1]!.replace(/[.,;:]+$/, ''))
+  }
+  return out
+}
+
+// A path made whole: from ~/, absolute, or relative to the folder of the file that names it; . and .. folded away
+function joinPath(from: string, p: string, home: string) {
+  const base = p.startsWith('~/') ? `${home}/${p.slice(2)}` : p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) ? p : `${from.replace(/[\\/][^\\/]*$/, '')}/${p}`
+  const parts: string[] = []
+  for (const seg of base.replace(/\\/g, '/').split('/')) {
+    if (seg === '..') parts.length > 1 && parts.pop()
+    else if (seg !== '.' && (seg !== '' || !parts.length)) parts.push(seg)
+  }
+  return parts.join('/')
+}
+
+export type MemoryFile = { path: string; text: string; via?: string; missing?: boolean }
+// Every memory file that loads: the ones that exist of `starts`, then what they import, up to 5 hops as Claude Code
+// follows them, each file once however often it is named (so a cycle ends). An import that cannot be read is kept,
+// marked missing
+export async function resolveMemory(starts: string[], read: (path: string) => Promise<string | null>, home: string): Promise<MemoryFile[]> {
+  const seen = new Set<string>()
+  const out: MemoryFile[] = []
+  const visit = async (path: string, depth: number, via?: string) => {
+    if (seen.has(path)) return
+    seen.add(path)
+    const text = await read(path)
+    if (text === null) {
+      if (via) out.push({ path, text: '', via, missing: true })
+      return
+    }
+    out.push({ path, text, ...(via ? { via } : {}) })
+    if (depth >= 5) return
+    for (const imp of importsOf(text)) await visit(joinPath(path, imp, home), depth + 1, path)
+  }
+  for (const s of starts) await visit(s, 0)
+  return out
+}
+
+export const tokensOf = (text: string) => Math.ceil(text.length / 4)
+// The figures: each file's lines and tokens (over 200 lines is flagged, as Claude Code's guidance draws the line),
+// each skill Claude may load by the tokens of its name and description, the servers on, and one total of files and
+// skills. MCP servers are counted, not priced: what their tools cost depends on how Claude Code loads them
+export function startupLoad(files: MemoryFile[], skills: SkillFile[], mcp: McpRow[]): StartupLoad {
+  const f = files.map(x => {
+    const lines = x.text ? x.text.replace(/\r?\n$/, '').split(/\r?\n/).length : 0
+    return { path: x.path, ...(x.via ? { via: x.via } : {}), ...(x.missing ? { missing: true } : {}), lines, tokens: tokensOf(x.text), long: lines > 200 }
+  })
+  const k = skills.filter(s => s.auto && !s.error).map(s => ({ path: s.path, name: s.name || s.folder, tokens: tokensOf(`${s.name || s.folder}: ${s.description}`) }))
+  return {
+    files: f,
+    skills: k,
+    largest: [...k].sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name)).slice(0, 3),
+    mcpOn: mcp.filter(m => m.state === 'on').length,
+    total: f.reduce((a, x) => a + x.tokens, 0) + k.reduce((a, x) => a + x.tokens, 0),
+  }
+}

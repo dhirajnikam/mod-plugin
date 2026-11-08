@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The Rules tab opens with what loads into every session: each `CLAUDE.md` that applies and the files it `@import`s
+  (5 hops, each once, missing ones marked) with its lines and estimated tokens, a file over 200 lines marked; the
+  skills Claude may load by itself, with **Call only** beside the three largest; the MCP servers on; and one estimated
+  total of files and skills.
 - The Rules tab lists the skills in `.claude/skills` and `~/.claude/skills`, each with its name, description and
   whether Claude loads it by itself or only when you call `/name`. **Call only** and **Let Claude** set or remove
   `disable-model-invocation` in its `SKILL.md`, changing nothing else; a `SKILL.md` whose frontmatter cannot be read

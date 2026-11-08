@@ -106,11 +106,13 @@ test("the Git tab's pull request fits every width, and draws pending and passing
 })
 
 // The Rules tab's MCP servers: a long command, a long URL, every state and many secret names
-test("the Rules tab's MCP servers and skills fit every width", { timeoutMs: 20_000 }, async ($, on) => {
+test("the Rules tab's startup load, MCP servers and skills fit every width", { timeoutMs: 20_000 }, async ($, on) => {
   const disk: Record<string, string> = {
     '/repo/.mcp.json': JSON.stringify({ mcpServers: { 'a-server-with-a-rather-long-name': { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/Users/someone/projects/a/very/deep/folder'], env: { GITHUB_PERSONAL_ACCESS_TOKEN: 'x', ANOTHER_LONG_SECRET_NAME: 'y' } }, web: { type: 'http', url: 'https://mcp.example.com/a/very/long/path/to/the/server/endpoint' } } }),
     '/repo/.claude/skills/a-skill-folder-with-a-rather-long-name/SKILL.md': '---\nname: a-skill-with-a-rather-long-name-indeed\ndescription: Does a great many things, described at length so that the description runs well past the width of any narrow pane it is drawn in\n---\n',
     '/home/me/.claude/skills/notes/SKILL.md': '---\nname: notes\ndisable-model-invocation: true\n---\n',
+    '/repo/CLAUDE.md': '@docs/a/very/deeply/nested/folder/with/a/long/name/style-guide-for-everything.md\n@missing/also/a/long/path/to/nowhere.md\n' + 'x\n'.repeat(1200),
+    '/repo/docs/a/very/deeply/nested/folder/with/a/long/name/style-guide-for-everything.md': 'Use tabs.\n',
     '/home/me/.claude.json': JSON.stringify({ mcpServers: { mine: { type: 'sse', url: 'https://live.example.com/sse' } }, projects: { '/repo': { mcpServers: { scratch: { command: 'scratch' } }, disabledMcpServers: ['web'] } } }),
   }
   on('clock.now', async () => ({ value: 1_000_000 }))
@@ -144,7 +146,7 @@ test("the Rules tab's MCP servers and skills fit every width", { timeoutMs: 20_0
         if (scope === 'user' && surface === 'terminal' && w === WIDTHS[0]) await pane.press({ key: 'rscope-user' })
         const drawn = await pane.drawn()
         const text = JSON.stringify(drawn)
-        for (const want of scope === 'repo' ? ['a-server-with-a-rather-long-name', 'needs approval', 'off', 'local, only you', 'a-skill-with-a-rather-long-name-indeed', 'Claude loads it'] : ['mine', 'sse', 'only when you call /notes']) if (!text.includes(want)) bad.push(`${scope} ${surface} @${w}: no ${want}`)
+        for (const want of scope === 'repo' ? ['a-server-with-a-rather-long-name', 'needs approval', 'off', 'local, only you', 'a-skill-with-a-rather-long-name-indeed', 'Claude loads it', 'LOADS EVERY SESSION', 'over 200', 'missing', 'MCP servers on: 2'] : ['mine', 'sse', 'only when you call /notes']) if (!text.includes(want)) bad.push(`${scope} ${surface} @${w}: no ${want}`)
         for (const n of wide(drawn, w)) bad.push(`${scope} ${surface} rules @${w}: ${n}`)
         await pane.unmount()
       }
