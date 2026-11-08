@@ -60,43 +60,50 @@ test("undoing a turn restores what it changed or deleted, deletes what it create
   expect(undoPlan('', '')).toEqual({ restore: [], remove: [], refuse: [] })
 })
 
-test('undoTurn deletes what the turn created and the folders that leaves empty before restoring the rest, and refuses on a later edit', async () => {
+test('undoTurn takes away what the turn created (git clean, or restore when tracked) and the folders it emptied, then restores the rest; a later edit refuses', async () => {
   const steps: string[] = []
   let since = ''
   const run = async (argv: string[], env: Record<string, string>, stdin?: string) => {
     const cmd = argv.join(' ')
     steps.push(`${cmd}${stdin !== undefined ? ` <${stdin.split('\0').join('|')}>` : ''}${env.GIT_LITERAL_PATHSPECS ? ' [literal]' : ''}`)
-    if (cmd.startsWith('git diff --name-status')) return { exitCode: 0, stdout: 'M\0a.txt\0A\0src/deep/new.ts\0D\0gone.md\0' }
+    if (cmd.startsWith('git diff --name-status')) return { exitCode: 0, stdout: 'M\0a.txt\0A\0src/deep/new.ts\0A\0committed.ts\0D\0gone.md\0' }
     if (cmd.startsWith('git diff --name-only')) return { exitCode: 0, stdout: since }
+    // committed.ts was auto-committed after the turn: it is tracked now
+    if (cmd === 'git ls-files -z') return { exitCode: 0, stdout: 'a.txt\0committed.ts\0' }
     if (cmd === 'git write-tree') return { exitCode: 0, stdout: 'tree\n' }
     if (cmd.startsWith('git commit-tree')) return { exitCode: 0, stdout: 'now9\n' }
     if (cmd.startsWith('git rev-parse --git-path')) return { exitCode: 0, stdout: '.git/cockpit-index\n' }
     if (cmd.startsWith('git rev-parse --verify')) return { exitCode: 0, stdout: 'h\n' }
     return { exitCode: 0, stdout: '' }
   }
-  const remove = async (p: string) => steps.push(`rm ${p}`)
-  const rmdir = async (p: string) => steps.push(`rmdir ${p}`)
-  expect(await undoTurn('b1', 'a1', 'refs/cockpit/turns/f/undone', run, remove, rmdir)).toEqual({ done: true, restore: ['a.txt', 'gone.md'], remove: ['src/deep/new.ts'], refuse: [], error: '' })
-  const order = steps.filter(x => /^(rm|rmdir|git restore|git update-ref|git diff --name-only)/.test(x))
-  expect(order).toEqual([
+  // src/deep empties when new.ts goes; src still holds other files
+  const isEmpty = async (d: string) => d === 'src/deep'
+  expect(await undoTurn('b1', 'a1', 'refs/cockpit/turns/f/undone', run, isEmpty)).toEqual({ done: true, restore: ['a.txt', 'gone.md'], remove: ['src/deep/new.ts', 'committed.ts'], refuse: [], error: '' })
+  expect(steps.filter(x => /^git (update-ref|diff --name-only|clean|restore)/.test(x))).toEqual([
     // The tree as it is now kept first, so the undo can be undone
     'git update-ref refs/cockpit/turns/f/undone now9',
     'git diff --name-only --no-renames -z a1 now9',
-    'rm src/deep/new.ts',
-    'rmdir src/deep',
-    'rmdir src',
-    // Files on standard input, NUL between them, read literally
-    'git restore --source=b1 --worktree --pathspec-from-file=- --pathspec-file-nul <a.txt|gone.md> [literal]',
+    'git clean -f -q -- src/deep/new.ts [literal]',
+    'git clean -d -f -q -- src/deep/ [literal]',
+    // The tracked created file goes with the restore (it is not in before), files on standard input, read literally
+    'git restore --source=b1 --worktree --pathspec-from-file=- --pathspec-file-nul <a.txt|gone.md|committed.ts> [literal]',
   ])
   expect(LITERAL).toEqual({ GIT_LITERAL_PATHSPECS: '1' })
-  // A later change to another file does not matter; one to the turn's own files refuses, deleting and restoring nothing
+  // A later change to another file does not matter; one to the turn's own files refuses, removing and restoring nothing
   steps.length = 0
   since = 'unrelated.txt\0'
-  expect((await undoTurn('b1', 'a1', 'u', run, remove, rmdir)).done).toBe(true)
+  expect((await undoTurn('b1', 'a1', 'u', run, isEmpty)).done).toBe(true)
   steps.length = 0
   since = 'unrelated.txt\0a.txt\0'
-  expect(await undoTurn('b1', 'a1', 'u', run, remove, rmdir)).toEqual({ done: false, restore: [], remove: [], refuse: ['a.txt'], error: '' })
-  expect(steps.some(x => /^(rm |git restore)/.test(x))).toBe(false)
+  expect(await undoTurn('b1', 'a1', 'u', run, isEmpty)).toEqual({ done: false, restore: [], remove: [], refuse: ['a.txt'], error: '' })
+  expect(steps.some(x => /^git (clean|restore)/.test(x))).toBe(false)
+  // Hundreds of created files go 100 a command
+  const many = Array.from({ length: 250 }, (_, i) => `A\0f${i}.txt\0`).join('')
+  steps.length = 0
+  since = ''
+  const runMany = async (argv: string[], env: Record<string, string>, stdin?: string) => (argv.join(' ').startsWith('git diff --name-status') ? { exitCode: 0, stdout: many } : run(argv, env, stdin))
+  await undoTurn('b1', 'a1', 'u', runMany, isEmpty)
+  expect(steps.filter(x => x.startsWith('git clean -f')).map(x => x.split(' ').length - 6)).toEqual([100, 100, 50])
 })
 
 // A session whose git answers the snapshot plan; repo false: not a repository at all
@@ -161,15 +168,16 @@ test('every turn is snapshot before Claude starts and after it ends, on the temp
 
 test('only the newest 50 turns keep their snapshots, and no branch is touched', async ($, on) => {
   // 52 turns' refs, newest first: the two oldest go, both their refs, and no branch is touched
-  const refs = Array.from({ length: 52 }, (_, i) => `refs/cockpit/turns/f${100 - i}/after\nrefs/cockpit/turns/f${100 - i}/before`).join('\n') + '\n'
+  // In git's own order (by name), which is not the flows' age
+  const refs = Array.from({ length: 52 }, (_, i) => `refs/cockpit/turns/f${49 + i}/after\nrefs/cockpit/turns/f${49 + i}/before`).join('\n') + '\n'
   const ran = session(on, { refs })
   await prompt($, 'fix it')
   await done($, 't1')
   expect(ran.filter(r => r.startsWith('git update-ref -d')).map(r => r.replace(/ @\/repo/, ''))).toEqual([
-    'git update-ref -d refs/cockpit/turns/f50/after',
-    'git update-ref -d refs/cockpit/turns/f50/before',
     'git update-ref -d refs/cockpit/turns/f49/after',
     'git update-ref -d refs/cockpit/turns/f49/before',
+    'git update-ref -d refs/cockpit/turns/f50/after',
+    'git update-ref -d refs/cockpit/turns/f50/before',
   ])
   expect(ran.some(r => /update-ref -d refs\/heads/.test(r))).toBe(false)
 })
@@ -178,5 +186,5 @@ test('outside a git repository no snapshot is taken', async ($, on) => {
   const ran = session(on, { repo: false })
   await prompt($, 'fix it')
   await done($, 't1')
-  expect(ran.some(r => r.includes('refs/cockpit') || r.includes('commit-tree'))).toBe(false)
+  expect(ran.some(r => r.includes('update-ref') || r.includes('commit-tree'))).toBe(false)
 })

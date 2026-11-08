@@ -487,7 +487,8 @@ export async function applyAccount($: $) {
 const TURNS_KEPT = 50
 async function turnRun($: $): Promise<Run> {
   const cwd = (await repoRoot($)) || '.'
-  return (argv, env, stdin) => $.process.run(argv, { cwd, env, ...(stdin !== undefined ? { stdin } : {}) })
+  // ponytail: 30 s a command; a git that hangs (a lock, a huge add) fails the snapshot instead of holding every turn
+  return (argv, env, stdin) => $.process.run(argv, { cwd, env, timeoutMs: 30_000, ...(stdin !== undefined ? { stdin } : {}) })
 }
 // One snapshot at a time: they share the one temporary index
 let snapping: Promise<unknown> = Promise.resolve()
@@ -497,7 +498,8 @@ export async function snapTurn($: $, flowId: string | undefined, which: 'before'
   return mine
 }
 async function snapTurnNow($: $, flowId: string | undefined, which: 'before' | 'after') {
-  if (!flowId || !(await read($, S)).repo.isRepo) return
+  // Outside a repository the plan's first git command fails, and no snapshot is made
+  if (!flowId) return
   const run = await turnRun($)
   const ref = turnRef(flowId, which)
   if (which === 'before' && (await run(['git', 'rev-parse', '--verify', '-q', ref], {})).exitCode === 0) return
@@ -508,10 +510,12 @@ async function snapTurnNow($: $, flowId: string | undefined, which: 'before' | '
 }
 // Only the newest turns' refs are kept; older ones go (Cockpit's own refs under refs/cockpit/turns, never a branch)
 export async function pruneTurns(run: Run, keep = TURNS_KEPT) {
-  const list = await run(['git', 'for-each-ref', '--sort=-creatordate', '--format=%(refname)', 'refs/cockpit/turns/'], {})
+  const list = await run(['git', 'for-each-ref', '--format=%(refname)', 'refs/cockpit/turns/'], {})
   if (list.exitCode !== 0) return
   const refs = list.stdout.split('\n').filter(r => r.startsWith('refs/cockpit/turns/'))
-  const flows = [...new Set(refs.map(r => r.split('/')[3]))]
+  // Newest first by the flow's id (f and the time it opened), whatever ref was written last
+  const num = (f: string) => Number(f.replace(/\D/g, '')) || 0
+  const flows = [...new Set(refs.map(r => r.split('/')[3]!))].sort((a, b) => num(b) - num(a))
   const old = new Set(flows.slice(keep))
-  for (const r of refs) if (old.has(r.split('/')[3])) await run(['git', 'update-ref', '-d', r], {})
+  for (const r of refs) if (old.has(r.split('/')[3]!)) await run(['git', 'update-ref', '-d', r], {})
 }

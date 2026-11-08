@@ -42,8 +42,8 @@ def git_in(repo, argv, env, stdin):
     return r
 
 def undo(repo, before, after):
-    # undoTurn of cockpit/hooks/turns.ts, in its order: read the changes, keep now, refuse if stale, delete what the turn
-    # created and the folders that leaves empty, then restore the rest
+    # undoTurn of cockpit/hooks/turns.ts, in its order: read the changes, keep now, refuse if stale, git clean what the
+    # turn created that nothing tracks and the folders that leaves empty, then restore the rest with the tracked ones
     fill = lambda argv, v: [re.sub(r'\{(\w+)\}', lambda m: v[m.group(1)], a) for a in argv]
     parts = [p for p in git(repo, fill(UNDO['changed'], {'before': before, 'after': after})).stdout.split('\0') if p]
     restore, remove = [], []
@@ -56,16 +56,18 @@ def undo(repo, before, after):
     stale = [p for p in git(repo, fill(UNDO['since'], {'after': after, 'now': now})).stdout.split('\0') if p and p in mine]
     if stale:
         return stale
-    for p in remove:
-        os.remove(os.path.join(repo, p))
+    tracked = set(git(repo, UNDO['tracked']).stdout.split('\0'))
+    untracked = [p for p in remove if p not in tracked]
+    for i in range(0, len(untracked), 100):
+        git(repo, UNDO['clean'] + untracked[i:i + 100], LITERAL)
     dirs = sorted({'/'.join(p.split('/')[:i + 1]) for p in remove for i in range(len(p.split('/')) - 1)}, key=len, reverse=True)
     for d in dirs:
-        try:
-            os.rmdir(os.path.join(repo, d))
-        except OSError:
-            pass
-    if restore:
-        git_in(repo, fill(UNDO['restore'], {'before': before}), LITERAL, '\0'.join(restore))
+        full = os.path.join(repo, d)
+        if os.path.isdir(full) and not os.listdir(full):
+            git(repo, UNDO['cleanDir'] + [d + '/'], LITERAL)
+    back = restore + [p for p in remove if p in tracked]
+    if back:
+        git_in(repo, fill(UNDO['restore'], {'before': before}), LITERAL, '\0'.join(back))
     return []
 
 def files(repo):
@@ -134,6 +136,18 @@ with tempfile.TemporaryDirectory() as repo:
     os.remove(os.path.join(repo, 'd/inner.txt')); os.rmdir(os.path.join(repo, 'd')); write(repo, 'd', 'now a file\n')
     after = snapshot(repo, 'refs/cockpit/turns/s/after')
     check('a file that became a folder, and a folder a file, come back', undo(repo, before, after) == [] and files(repo) == files0)
+
+with tempfile.TemporaryDirectory() as repo:
+    # What the turn created was auto-committed afterwards, so it is tracked: undo still takes it away
+    git(repo, ['git', 'init', '-q'])
+    git(repo, ['git', 'config', 'user.name', 'Dev']); git(repo, ['git', 'config', 'user.email', 'dev@x.io'])
+    write(repo, 'keep.txt', 'k\n'); git(repo, ['git', 'add', '-A']); git(repo, ['git', 'commit', '-qm', 'base'])
+    files0 = files(repo)
+    before = snapshot(repo, 'refs/cockpit/turns/c/before')
+    write(repo, 'made/by/turn.txt', 'new\n'); write(repo, 'keep.txt', 'changed\n')
+    after = snapshot(repo, 'refs/cockpit/turns/c/after')
+    git(repo, ['git', 'add', '-A']); git(repo, ['git', 'commit', '-qm', 'auto-commit'])
+    check('a turn already auto-committed is undone in the working tree, created files and their folders gone', undo(repo, before, after) == [] and files(repo) == files0)
 
 with tempfile.TemporaryDirectory() as repo:
     # A repository with no commit yet

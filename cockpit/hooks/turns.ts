@@ -29,7 +29,10 @@ export const SNAPSHOT_PLAN = [
 export const UNDO_COMMANDS = {
   "changed": ["git", "diff", "--name-status", "--no-renames", "-z", "{before}", "{after}"],
   "since": ["git", "diff", "--name-only", "--no-renames", "-z", "{after}", "{now}"],
-  "restore": ["git", "restore", "--source={before}", "--worktree", "--pathspec-from-file=-", "--pathspec-file-nul"]
+  "restore": ["git", "restore", "--source={before}", "--worktree", "--pathspec-from-file=-", "--pathspec-file-nul"],
+  "tracked": ["git", "ls-files", "-z"],
+  "clean": ["git", "clean", "-f", "-q", "--"],
+  "cleanDir": ["git", "clean", "-d", "-f", "-q", "--"]
 }
 // undo:end
 export const LITERAL = { GIT_LITERAL_PATHSPECS: '1' }
@@ -71,10 +74,12 @@ export function undoPlan(nameStatus: string, stale: string): { restore: string[]
 }
 
 // Undoes a turn: what it changed is read from its snapshots, the tree as it is now is kept as `undoneRef` (so the undo
-// can be undone), and unless a file changed since the turn ended, what the turn created is deleted (and the folders that
-// leaves empty) before the rest is restored, so a file that became a folder, or a folder a file, comes back too.
-// remove deletes a file at a path from the top folder; rmdir removes a folder only if it is empty
-export async function undoTurn(before: string, after: string, undoneRef: string, run: Run, remove: (path: string) => Promise<unknown>, rmdir: (path: string) => Promise<unknown>) {
+// can be undone), and unless one of the turn's files changed since it ended, what it created goes first (and the
+// folders that leaves empty), then the rest is restored, so a file that became a folder, or a folder a file, comes back
+// too. Claude Code's file API cannot delete, so git does: `clean` takes a created file nothing tracks, and restore
+// (which deletes a tracked file its source lacks) takes one that is tracked, say because it was auto-committed.
+// isEmpty: whether a folder, from the top folder, holds nothing
+export async function undoTurn(before: string, after: string, undoneRef: string, run: Run, isEmpty: (dir: string) => Promise<boolean>) {
   const fill = (argv: string[], v: Record<string, string>) => argv.map(a => a.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? ''))
   const changed = await run(fill(UNDO_COMMANDS.changed, { before, after }), {})
   if (changed.exitCode !== 0) return { done: false, restore: [], remove: [], refuse: [], error: 'its snapshots could not be read' }
@@ -87,12 +92,16 @@ export async function undoTurn(before: string, after: string, undoneRef: string,
   const mine = new Set(files)
   const refuse = since.stdout.split('\0').filter(p => p && mine.has(p))
   if (refuse.length) return { done: false, restore: [], remove: [], refuse, error: '' }
-  for (const p of plan.remove) await remove(p).catch(() => null)
+  const tracked = new Set((await run(UNDO_COMMANDS.tracked, {})).stdout.split('\0'))
+  const untracked = plan.remove.filter(p => !tracked.has(p))
+  // ponytail: 100 paths a command, well under any system's command-line limit
+  for (let i = 0; i < untracked.length; i += 100) await run([...UNDO_COMMANDS.clean, ...untracked.slice(i, i + 100)], LITERAL)
   // The folders a created file leaves empty, deepest first; one that still holds anything stays
   const dirs = [...new Set(plan.remove.flatMap(p => p.split('/').slice(0, -1).map((_, i, all) => all.slice(0, i + 1).join('/'))))].sort((a, b) => b.length - a.length)
-  for (const d of dirs) await rmdir(d).catch(() => null)
-  if (plan.restore.length) {
-    const r = await run(fill(UNDO_COMMANDS.restore, { before }), LITERAL, plan.restore.join('\0'))
+  for (const d of dirs) if (await isEmpty(d).catch(() => false)) await run([...UNDO_COMMANDS.cleanDir, `${d}/`], LITERAL)
+  const back = [...plan.restore, ...plan.remove.filter(p => tracked.has(p))]
+  if (back.length) {
+    const r = await run(fill(UNDO_COMMANDS.restore, { before }), LITERAL, back.join('\0'))
     if (r.exitCode !== 0) return { done: false, ...plan, refuse: [], error: `git restore failed: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? ''}` }
   }
   return { done: true, ...plan, refuse: [], error: '' }

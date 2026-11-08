@@ -81,6 +81,8 @@ export const register: Register = on => {
   let carryOn = false
   // The live-figure timers, so a second session.start (an enable) replaces them rather than doubling them
   let timers: { cancel: () => void }[] = []
+  // The flow the running main turn belongs to, for its after-snapshot
+  let turnFlow = ''
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     root = await $.session.cwd()
@@ -288,8 +290,10 @@ export const register: Register = on => {
         changesAtStart = atStartOf(await resumeFlow($, now))
       }
     }
-    // The working tree as it is before Claude's first tool call, to undo this turn by
-    await snapTurn($, (await read($, S)).flows.at(-1)?.id, 'before').catch(() => null)
+    // The working tree as it is before Claude's first tool call, to undo this turn by; the flow is kept for its end,
+    // which may run after the next turn has opened another
+    turnFlow = (await read($, S)).flows.at(-1)?.id ?? ''
+    await snapTurn($, turnFlow, 'before').catch(() => null)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -460,6 +464,7 @@ export const register: Register = on => {
     // failure below must not carry them into it
     const changed = changedThisTurn
     const atStart = changesAtStart
+    const snapFlow = turnFlow
     const linesWere = linesAtStart
     if (!e.agentId) {
       changedThisTurn = false
@@ -500,7 +505,7 @@ export const register: Register = on => {
     })
     await refreshRepo($)
     // And as the turn left it, before any auto-commit
-    await snapTurn($, flowId, 'after').catch(() => null)
+    await snapTurn($, snapFlow || flowId, 'after').catch(() => null)
     await measure($)
     await syncAgents($)
     const s = await read($, S)
