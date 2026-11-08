@@ -20,7 +20,7 @@ Saving a file under `cockpit/hooks/` reloads the mod when the current turn ends.
 
 ## The checks
 
-Every change must pass all six, run from the repository root:
+Every change must pass all seven, run from the repository root:
 
 ```sh
 claude plugin test ./cockpit                 # the tests
@@ -29,10 +29,11 @@ claude plugin validate ./cockpit             # what the engine would refuse
 python3 scripts/check_links.py               # every relative link in the Markdown resolves
 python3 scripts/check_privacy.py             # every model call is documented in docs/privacy.md
 python3 scripts/check_turn_undo.py           # turn undo's git commands, run on a real temporary repository
+python3 scripts/check_worktrees.py           # agents in worktrees: bring back and remove, on a real repository
 ```
 
 The type-check needs the types Claude Code writes into `cockpit/.claude-plugin/types/` (git-ignored) when it loads the
-mod, so run `./dev.sh` once before it. CI runs the other five on every push and pull request
+mod, so run `./dev.sh` once before it. CI runs the other six on every push and pull request
 ([.github/workflows/ci.yml](.github/workflows/ci.yml)); it cannot load the mod in a session, so the type-check is yours
 to run before you open a pull request.
 

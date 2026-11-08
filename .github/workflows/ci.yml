@@ -48,3 +48,7 @@ jobs:
       # The test kit cannot start processes, so turn undo's git commands are proven here, on a real repository
       - name: Turn undo on real git
         run: python3 scripts/check_turn_undo.py
+
+      # And agents in worktrees: bring-back and remove, on a real repository
+      - name: Agents in worktrees on real git
+        run: python3 scripts/check_worktrees.py
