@@ -202,20 +202,22 @@ export function changeMcp(j: Json, op: { add: { name: string; target: string } }
   }
   const row = 'edit' in op ? op.edit : op.remove
   // Only a server written as an object is changed: anything else in the file is left for you to fix by hand
-  const raw = has(row.name) ? servers[row.name] : undefined
+  // The name as the file has it (a row's name is cleaned for drawing; its key keeps the original)
+  const id = row.key.slice(row.key.indexOf('/') + 1)
+  const raw = has(id) ? servers[id] : undefined
   const cur = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as McpServer) : undefined
   if (row.scope !== 'project' || !cur || maskTarget(mcpTarget(cur)) !== row.target) return j
   const entries = Object.entries(servers)
-  if ('remove' in op) next.mcpServers = Object.fromEntries(entries.filter(([n]) => n !== row.name))
+  if ('remove' in op) next.mcpServers = Object.fromEntries(entries.filter(([n]) => n !== id))
   else {
-    const name = op.name.trim() || row.name
-    if ((name !== row.name && (has(name) || !mcpNameOk(name))) || (row.masked && op.target.trim() && op.target.trim() !== row.target)) return j
+    const name = op.name.trim() || id
+    if ((name !== id && (has(name) || !mcpNameOk(name))) || (row.masked && op.target.trim() && op.target.trim() !== row.target)) return j
     // Its text unchanged (or a masked one, never retyped): what it runs stays exactly as it is
     const typed = op.target.trim()
     const same = !typed || typed === row.target
     const { type: _t, command: _c, args: _a, url: _u, ...rest } = cur
     const server = same ? cur : { ...serverOf(typed), ...rest }
-    next.mcpServers = Object.fromEntries(entries.map(([n, v]) => (n === row.name ? [name, server] : [n, v])))
+    next.mcpServers = Object.fromEntries(entries.map(([n, v]) => (n === id ? [name, server] : [n, v])))
   }
   if (!Object.keys(obj(next.mcpServers)).length) delete next.mcpServers
   return next

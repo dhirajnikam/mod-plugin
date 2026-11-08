@@ -274,4 +274,10 @@ test("MCP servers: tokens in a target are masked, nearer servers win, Windows pr
   expect(changeMcp(junk, { edit: mcpRows(junk, {}, [], '/r')[0]!, name: 'b', target: 'x' })).toEqual(junk)
   expect(changeMcp(junk, { remove: mcpRows(junk, {}, [], '/r')[0]! })).toEqual(junk)
   expect(changeMcp({ mcpServers: ['keep'] }, { add: { name: 'x', target: 'x' } })).toEqual({ mcpServers: ['keep'] })
+  // A name with a control character in it draws cleaned, and can still be renamed and deleted
+  const odd = { mcpServers: { 'a\u0007b': { command: 'x' } } }
+  const oddRow = mcpRows(odd, {}, [], '/r')[0]!
+  expect(oddRow.name).toBe('a b')
+  expect(changeMcp(odd, { edit: oddRow, name: 'ab', target: '' })).toEqual({ mcpServers: { ab: { command: 'x' } } })
+  expect(changeMcp(odd, { remove: oddRow })).toEqual({})
 })
