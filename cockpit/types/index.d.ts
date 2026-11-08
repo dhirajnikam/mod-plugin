@@ -273,6 +273,10 @@ export type Ph = {
   custom: { type: string; name: string; what: string }[]
   // A description being turned into an agent right now
   creating: string
+  // Several repos under the session folder (empty otherwise): the chosen one, and whether the person picked it by hand
+  repos: { dir: string; name: string; branch: string; changed: number }[]
+  repoDir: string
+  repoHand: boolean
   git: GitForm
   // log: the recent commits of every branch, remote and tag, in graph order; unpushed: the current branch's commits its upstream lacks
   // pr: the current branch's pull request as gh reports it; null when it has none, absent before gh was asked

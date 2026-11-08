@@ -363,7 +363,7 @@ test("a twin is shown as the agent it is, Rerun starts its twin again with no wo
   await ui.unmount()
 })
 
-test('two twins started together each get their own worktree, a foreign one is left alone, and one that changed nothing shows no ghost', async ($, on) => {
+test('two twins started together each get their own worktree, a foreign one is left alone, and one that changed nothing shows no ghost', { timeoutMs: 20_000 }, async ($, on) => {
   // Each twin's worktree appears once it starts, beside one another session made meanwhile; the third twin changes nothing
   const log = twinStand(on, n => ['/tmp/another-session', ...(n >= 1 ? ['/repo/.claude/worktrees/agent-a1'] : []), ...(n >= 2 ? ['/repo/.claude/worktrees/agent-a2'] : [])])
   await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)

@@ -12,7 +12,7 @@ import { cockpitDir, git, note, repoRoot, set, toast } from './core'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 // The steps of this prompt's task, written by a quick model in the background; the template stands until they come
 export async function writeSteps($: $, flowId: string, task: string) {

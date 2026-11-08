@@ -52,6 +52,7 @@ import {
   registerExperts,
   set,
   startPipeline,
+  followEdit,
   setTheme,
   trackAgent,
 } from './actions'
@@ -65,7 +66,7 @@ import { drawings } from './drawings'
 import { fullPane } from './full-pane'
 
 // The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git', 'rules']
 
@@ -356,6 +357,7 @@ export const register: Register = on => {
     }
     if (op && (op.op === 'Write' || op.op === 'Edit' || op.op === 'Delete')) changedThisTurn = true
     if (op && (op.op === 'Write' || op.op === 'Edit')) await updateMemory($, op.path)
+    if (/^(Edit|Write)$/.test(e.tool) && typeof input.file_path === 'string') await followEdit($, input.file_path).catch(() => null)
     return r
   }).catch(($, e, next) => next(e))
 

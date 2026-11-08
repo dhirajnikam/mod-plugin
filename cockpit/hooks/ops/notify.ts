@@ -8,7 +8,7 @@ import type { $ } from './core'
 
 // Telling you when work is done, while you are not watching: one notice per finish, through Claude Code's own
 // notification channel (ui.notify), in words made from what Cockpit already knows
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 export type Finish =
   | { kind: 'turn'; task: string; files: number; add: number; del: number; tests?: { pass: number; total: number } }

@@ -11,7 +11,7 @@ import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { repoRoot, set, toast } from './core'
 
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-23' })
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-24' })
 
 // The Rules tab: the hooks, permission rules and instructions of the repository and of the user, read from their files
 // and written back with the rest of each file kept. Each change reads the file again first, and a settings file that is
