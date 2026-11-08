@@ -87,6 +87,8 @@ export const register: Register = on => {
   let timers: { cancel: () => void }[] = []
   // The flow the running main turn belongs to, for its after-snapshot
   let turnFlow = ''
+  // Agents finished while others of theirs still ran, for the one notice when the last is done
+  const batch = new Map<string, number>()
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     root = await $.session.cwd()
@@ -487,7 +489,17 @@ export const register: Register = on => {
       if (inWorktree && !(await measureWorktree($, e.agentId).catch(() => null))) await toast($, 'Could not read what the agent changed in its worktree; Bring back reads it again')
       // A notice while you are not watching; a pipeline's step tells you with its pipeline instead
       const fin = (await read($, S)).agents.find(x => x.id === e.agentId)
-      if (!isStep && fin) await tellDone($, `agent:${e.agentId}`, { kind: 'agent', agent: fin }).catch(() => null)
+      // One you stopped yourself needs no notice; several that ran together tell you once, when the last is done
+      const all = (await read($, S)).agents
+      const busy = all.filter(x => x.id !== e.agentId && x.status === 'running' && !x.for)
+      if (!isStep && fin && fin.status !== 'stopped' && !e.isAborted) {
+        if (busy.length) batch.set(e.agentId, fin.startedAt)
+        else {
+          const ran = [...batch.keys()].map(id => all.find(x => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x && x.status !== 'stopped')
+          batch.clear()
+          await tellDone($, `agent:${[...ran.map(x => x.id), e.agentId].join(',')}`, ran.length ? { kind: 'agents', agents: [...ran, fin] } : { kind: 'agent', agent: fin }).catch(() => null)
+        }
+      }
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
       // Its work is in its worktree, not your tree: the testers and auto-commit, which work on your tree, wait for Bring back
       if (!isStep && !e.isAborted && !inWorktree) await testAgent($, e.agentId, true)
@@ -543,7 +555,7 @@ export const register: Register = on => {
     const now2 = await read($, S)
     const ap = now2.autopilot
     const fl = now2.flows.find(f => f.id === flowId)
-    if (ap && endedCycle) await tellDone($, `cycle:${ap.at}:${endedCycle}`, { kind: 'cycle', cycle: endedCycle, ticked: ap.done, total: ap.total, spent: Math.max(0, now2.cost - ap.costAt) }).catch(() => null)
+    if (ap && endedCycle && !e.isAborted) await tellDone($, `cycle:${ap.at}:${endedCycle}`, { kind: 'cycle', cycle: endedCycle, ticked: ap.done, total: ap.total, spent: Math.max(0, now2.cost - ap.costAt), ...(ap.status !== 'running' ? { ended: ap.status } : {}) }).catch(() => null)
     else if (fl && !e.isAborted) {
       const vs = verifyState(now2.agents)
       await tellDone($, `turn:${flowId}:${e.turnId}`, { kind: 'turn', task: fl.task, files: now2.repo.changed.length, add: fl.add, del: fl.del, ...(vs.cases.length ? { tests: { pass: vs.pass, total: vs.cases.length } } : {}) }).catch(() => null)

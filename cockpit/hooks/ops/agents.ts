@@ -260,8 +260,9 @@ export async function advancePipeline($: $, agentId: string, answer: string, abo
     const after = await read($, S)
     // A notice while you are not watching: passed, or the first case that failed
     const vs = verifyState(after.agents)
-    const failing = after.agents.flatMap(a => a.cases).find(c => c.st === 'fail')
-    await tellDone($, `pipeline:${p.name}:${p.at}`, { kind: 'pipeline', label, passed: p.name === 'verify' ? vs.passed : true, ...(failing ? { failing: failing.n } : {}) })
+    // The first failing case of this run's testers (the latest Prover and Breaker), never an older run's
+    const failing = vs.cases.find(c => c.st === 'fail')
+    await tellDone($, `pipeline:${p.name}:${p.at}:${agentId}`, { kind: 'pipeline', label, passed: p.name === 'verify' ? vs.passed : true, ...(failing ? { failing: failing.n } : {}) })
     if (p.name === 'verify' && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && verifyState(after.agents).passed) {
       // The testers may have written files since the turn's end read the repository
       await refreshRepo($)

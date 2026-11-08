@@ -15,6 +15,10 @@ test("each kind of finish says what finished and how it went", () => {
   expect(doneText({ kind: 'pipeline', label: 'Verify', passed: true })).toEqual({ title: 'Verify finished', text: 'All checks passed' })
   expect(doneText({ kind: 'pipeline', label: 'Verify', passed: false, failing: 'empty password' }).text).toBe('Failed: empty password')
   expect(doneText({ kind: 'cycle', cycle: 4, ticked: 3, total: 5, spent: 1.234 })).toEqual({ title: 'Autopilot cycle 4 done', text: '3 of 5 milestones ticked · $1.23 spent' })
+  expect(doneText({ kind: 'cycle', cycle: 6, ticked: 5, total: 5, spent: 2, ended: 'done' }).title).toBe('Autopilot done after cycle 6')
+  expect(doneText({ kind: 'cycle', cycle: 3, ticked: 1, total: 5, spent: 2, ended: 'paused' }).title).toBe('Autopilot paused after cycle 3')
+  // Agents that ran together, in one notice
+  expect(doneText({ kind: 'agents', agents: [agent, { ...agent, name: 'Scribe', report: 'REPORT: docs updated' }] })).toEqual({ title: '2 agents finished', text: 'Reviewer: Two findings, none blocking · Scribe: docs updated' })
   // A long task is cut to one line
   expect(doneText({ kind: 'turn', task: 'x'.repeat(300), files: 0, add: 0, del: 0 }).text.length).toBe(120)
 })
@@ -25,7 +29,7 @@ function stand(on: any, opt: { watching?: () => boolean } = {}) {
   on('clock.now', async () => ({ value: 1_700_000_000_000 }))
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
-  on('ui.panes', async () => ({ value: opt.watching?.() ? [{ id: 'cockpit', title: 'Cockpit', isFocused: true, isPlaced: true }] : [] }) as never)
+  on('ui.panes', async () => ({ value: opt.watching?.() ? [{ id: 'cockpit', title: 'Cockpit', isShown: true, isFocused: false, isPlaced: true }] : [] }) as never)
   on('ui.notify', async (_: unknown, e: any) => (log.notices.push({ title: e.title, text: String(e.text) }), { value: { isSent: true, channel: 'terminal' } }) as never)
   on('store.get', async () => ({ value: undefined }))
   on('store.set', async () => ({ value: undefined }))
@@ -85,11 +89,18 @@ test('a turn, a background agent and a pipeline each tell you once when they fin
   await agentDone($, breaker, 'CASE FAIL empty password :: crashes')
   const pipeline = log.notices.slice(before)
   expect(pipeline).toEqual([{ title: 'Verify finished', text: 'Failed: empty password' }])
-  // Watching the pane (open and focused): quiet
+  // A second Verify whose testers both pass: passed, whatever an older run's testers found
+  const before2 = log.notices.length
+  await $.command.run({ command: 'cockpit', args: 'test' } as never)
+  await agentDone($, log.ids.filter(x => x.type === 'cockpit:prover').at(-1)!.id, 'CASE PASS login works :: ok')
+  await agentDone($, log.ids.filter(x => x.type === 'cockpit:breaker').at(-1)!.id, 'CASE PASS empty password :: refused')
+  expect(log.notices.slice(before2)).toEqual([{ title: 'Verify finished', text: 'All checks passed' }])
+  // Watching the pane (on screen, even with the keyboard in the prompt): quiet
   watching = true
+  const before3 = log.notices.length
   await prompt($, 'and the signup')
   await turnDone($, 't-and the signup')
-  expect(log.notices.length).toBe(before + 1)
+  expect(log.notices.length).toBe(before3)
 })
 
 test('Tell me when work is done can be turned off in the Agents settings, and on again', async ($, on) => {
@@ -107,4 +118,21 @@ test('Tell me when work is done can be turned off in the Agents settings, and on
   await turnDone($, 't-loud one')
   expect(log.notices.map(x => x.title)).toEqual(['Claude is done'])
   await ui.unmount()
+})
+
+test('agents started together tell you once, when the last is done; a stopped one tells you nothing', async ($, on) => {
+  const log = stand(on)
+  const spawn = (id: string, type: string) => $.agent.spawn({ tool_use_id: id, prompt: id, description: id, subagentType: type, provider: { plugin: 'cockpit', tier: 'user' }, parentModel: 'x', background: true, fork: false } as never)
+  await spawn('r', 'cockpit:reviewer')
+  await spawn('s', 'cockpit:scribe')
+  await spawn('p', 'cockpit:planner')
+  await agentDone($, 'ag1', 'REPORT: two findings')
+  await agentDone($, 'ag2', 'REPORT: docs updated')
+  expect(log.notices).toEqual([])
+  await agentDone($, 'ag3', 'REPORT: three steps')
+  expect(log.notices).toEqual([{ title: '3 agents finished', text: 'Reviewer: two findings · Scribe: docs updated · Planner: three steps' }])
+  // Stopped by you: no notice
+  await spawn('b', 'cockpit:builder')
+  await $.turn.complete({ agentId: 'ag4', answer: '', reason: 'answer', turnId: 'ag4', isAborted: true, durationMs: 10 } as never)
+  expect(log.notices.length).toBe(1)
 })

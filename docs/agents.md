@@ -26,12 +26,14 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
 
 ## Told when work is done
 
-While you are not watching the Cockpit pane (it is closed, or another window has the focus), each finish sends one
+While the Cockpit pane is not on screen (closed, or behind another tab), each finish sends one
 notice through Claude Code's own notification channel (your terminal's notification or bell; a `Notification` hook
 sees it too): the main turn ("Claude is done", its task, files and +/−, tests), each agent you or Claude started
 (its REPORT line or its tests, and *Bring back ready* for a worktree agent with work to bring back), each pipeline
-("Verify finished", passed or its first failing case), and, while the autopilot runs, each cycle (its milestones and
-spend) instead of the turn. One notice per finish, never while you watch; **Tell me when work is done** in Settings
+("Verify finished", passed or this run's first failing case), and, while the autopilot runs, each cycle (its
+milestones and spend, and whether the run paused, stopped or is done) instead of the turn. Agents that ran together
+send one notice when the last is done, naming each; one you stopped, or a turn you interrupted, sends none. One notice
+per finish, never while the pane is on screen; **Tell me when work is done** in Settings
 turns them off, and the choice is kept across sessions.
 
 ## The experts
