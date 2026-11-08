@@ -160,3 +160,66 @@ test("the Rules tab's startup load, MCP servers and skills fit every width", { t
   }
   expect(bad).toEqual([])
 })
+
+// A worktree agent's row: its branch, what it changed, Bring back and Remove, and each confirm
+test("a worktree agent's row fits every width, with its confirms", { timeoutMs: 20_000 }, async ($, on) => {
+  on('clock.now', async () => ({ value: 1_700_000_000_000 }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('fs.list', async () => ({ value: [] }) as never)
+  on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
+  on('tool.check', async () => ({ decision: 'allow' }) as never)
+  on('turn.complete', async () => ({ text: '' }))
+  on('session.measure', async () => ({ changed: [] }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000, percent: 1, breakdown: { categories: [], totalTokens: 1000 } }, rateLimits: [], cost: { usd: 0 } } }) as never)
+  let n = 0
+  on('agent.spawn', async () => ({ model: 'haiku', agentId: `ag${++n}` }))
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (cmd === 'git rev-parse --show-toplevel') return out('/repo\n')
+    if (cmd === 'git rev-parse --verify -q HEAD') return out('head1\n')
+    if (cmd === 'git rev-parse --git-common-dir') return out('.git\n')
+    if (cmd === 'git rev-parse --git-path cockpit-index') return out('.git/cockpit-index\n')
+    if (cmd === 'git write-tree') return out('tree1\n')
+    if (cmd.startsWith('git commit-tree')) return out('snap1\n')
+    if (cmd.startsWith('git diff --numstat')) return out(Array.from({ length: 12 }, (_, i) => `120\t45\tsrc/features/authentication/a-rather-long-file-name-${i}.ts\0`).join(''))
+    if (cmd.startsWith('git status')) return out('## main\0')
+    return out('')
+  })
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const setup = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } } as never)
+  await setup.press({ key: 'spawn-toggle' })
+  await setup.press({ key: 'spawn-wt' })
+  await (setup as any).input({ key: 'spawn-task', text: 'refactor the whole authentication flow', kind: 'change' })
+  await setup.press({ key: 'spawn-go' })
+  await $.agent.spawn({ tool_use_id: 's1', prompt: 'refactor', description: 'refactor', subagentType: 'general-purpose', cwd: '/repo/.git/cockpit-worktrees/ag1700000000000-1', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: true, fork: false } as never)
+  await $.turn.complete({ agentId: 'ag2', answer: 'REPORT: done', reason: 'answer', turnId: 'x', isAborted: false, durationMs: 1000 } as never)
+  // The New agent form closed: this measures the agent's row
+  await setup.press({ key: 'spawn-toggle' })
+  await setup.unmount()
+  const bad: string[] = []
+  for (const ask of ['', 'back', 'rm']) {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      for (const w of WIDTHS) {
+        const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 300 }, view: {} } } as never)
+        if (ask && surface === 'terminal' && w === WIDTHS[0]) await pane.press({ key: `wt-${ask}-ag2` })
+        const drawn = await pane.drawn()
+        const text = JSON.stringify(drawn)
+        const want = ask === 'back' ? 'Apply its changes to your files?' : ask === 'rm' ? 'Remove the worktree (its branch stays)?' : '12 files +1440 −540'
+        if (!text.includes(want)) bad.push(`${ask || 'row'} ${surface} @${w}: no ${want}`)
+        for (const k of wide(drawn, w)) bad.push(`${ask || 'row'} ${surface} agents @${w}: ${k}`)
+        await pane.unmount()
+      }
+      if (ask && surface === 'desktop') {
+        const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 300 }, view: {} } } as never)
+        await pane.press({ key: 'wt-no-ag2' })
+        await pane.unmount()
+      }
+    }
+  }
+  expect(bad).toEqual([])
+})

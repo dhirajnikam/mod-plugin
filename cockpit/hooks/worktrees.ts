@@ -15,7 +15,9 @@ export const WORKTREE_COMMANDS = {
   "check": ["git", "apply", "--check", "--whitespace=nowarn", "-"],
   "apply": ["git", "apply", "--whitespace=nowarn", "-"],
   "remove": ["git", "worktree", "remove", "--force", "{path}"],
-  "dropBranch": ["git", "branch", "-d", "{branch}"]
+  "dropBranch": ["git", "branch", "-d", "{branch}"],
+  "prune": ["git", "worktree", "prune"],
+  "list": ["git", "worktree", "list", "--porcelain"]
 }
 // wt:end
 

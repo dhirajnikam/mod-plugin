@@ -285,7 +285,8 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
     const was = s.agents.find(x => x.id === a.id)
     const p = s.pipeline
     const tests = was?.for ?? (p?.for && p.steps[p.index] === a.type ? p.for : undefined)
-    const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(a.cwd) ? a.cwd : ''
+    if (a.cwd) spawnedIn.set(slashed(a.cwd), a.id)
+    const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(slashed(a.cwd)) ? slashed(a.cwd) : ''
     const wt = key ? pendingWorktrees.get(key) : undefined
     if (key) pendingWorktrees.delete(key)
     return { agents: [...s.agents.filter(x => x.id !== a.id), { ...takeEarly(a.id), ...(wt ? { worktree: wt } : {}), ...was, ...(({ cwd: _c, ...rest }) => rest)(a), status: was && was.status !== 'running' ? was.status : ('running' as const), startedAt: was?.startedAt ?? at, tools: was?.tools ?? 0, log: was?.log ?? [], cases: was?.cases ?? [], report: was?.report ?? '', ...(tests ? { for: tests } : {}) }].slice(-40) }
@@ -464,10 +465,13 @@ async function worktreeToRun($: $) {
 // one whose record is not made yet gets it when it is. A start that was refused (null), or handed to Claude (who starts
 // it in your tree), leaves no worktree or branch behind
 const pendingWorktrees = new Map<string, NonNullable<Agent['worktree']>>()
+// The folder each agent's spawn event named, for a worktree whose start handed no id back but whose event came first
+const spawnedIn = new Map<string, string>()
+const slashed = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
 async function keepWorktree($: $, id: string | null, wt: { path: string; branch: string; base: string } | null) {
   if (!wt) return
   if (id === null) return dropWorktree($, wt)
-  const key = id || wt.path
-  if (id && (await read($, S)).agents.some(a => a.id === id)) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: wt } : a)) }))
-  else pendingWorktrees.set(key, wt)
+  const owner = id || spawnedIn.get(slashed(wt.path)) || ''
+  if (owner && (await read($, S)).agents.some(a => a.id === owner)) await set($, s => ({ agents: s.agents.map(a => (a.id === owner ? { ...a, worktree: wt } : a)) }))
+  else pendingWorktrees.set(owner || slashed(wt.path), wt)
 }

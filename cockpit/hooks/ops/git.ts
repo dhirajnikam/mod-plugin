@@ -573,9 +573,12 @@ export async function measureWorktree($: $, agentId: string) {
 // nothing; a clash with your own changes refuses, naming the files, and changes nothing
 export async function bringBack($: $, agentId: string) {
   await set($, s => ({ ui: { ...s.ui, wtAsk: '' } }))
-  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  const ag = (await read($, S)).agents.find(a => a.id === agentId)
+  const w = ag?.worktree
   if (!w || w.removed) return toast($, 'That worktree is gone')
-  const m = await measureWorktree($, agentId)
+  if (ag.status === 'running') return toast($, 'Not brought back: the agent is still working')
+  // Read afresh; a worktree that can no longer be read (deleted by hand) brings back what was last measured of it
+  const m = (await measureWorktree($, agentId)) ?? (w.snap && w.files ? { snap: w.snap, files: w.files, add: w.add ?? 0, del: w.del ?? 0 } : null)
   if (!m) return toast($, 'Not brought back: its worktree could not be read')
   if (!m.files.length) return toast($, 'Nothing to bring back: the agent changed no files')
   const run = await turnRun($)
@@ -595,11 +598,18 @@ export async function bringBack($: $, agentId: string) {
 // Remove, once you confirmed: the worktree goes (with anything in it not brought back), its branch stays
 export async function removeWorktree($: $, agentId: string) {
   await set($, s => ({ ui: { ...s.ui, wtAsk: '' } }))
-  const w = (await read($, S)).agents.find(a => a.id === agentId)?.worktree
+  const ag = (await read($, S)).agents.find(a => a.id === agentId)
+  const w = ag?.worktree
   if (!w || w.removed) return
+  if (ag.status === 'running') return toast($, 'Not removed: the agent is still working in it')
   const run = await turnRun($)
   const r = await run(fillArgs(WORKTREE_COMMANDS.remove, { path: w.path }), {})
-  if (r.exitCode !== 0) return toast($, `Not removed: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? ''}`)
+  if (r.exitCode !== 0) {
+    // Deleted by hand already: git's record of it is pruned, and once git lists it no more it counts as removed
+    await run(WORKTREE_COMMANDS.prune, {})
+    const listed = (await run(WORKTREE_COMMANDS.list, {})).stdout.split('\n').some(l => l.replace(/^worktree /, '').replace(/\\/g, '/') === w.path)
+    if (listed) return toast($, `Not removed: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? ''}`)
+  }
   await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, removed: true } } : a)) }))
   await toast($, `Worktree removed; its branch ${w.branch} is kept`)
 }

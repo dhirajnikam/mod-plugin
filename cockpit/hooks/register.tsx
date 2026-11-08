@@ -43,6 +43,7 @@ import {
   refreshRepo,
   snapTurn,
   measureWorktree,
+  toast,
   refreshGit,
   registerExperts,
   set,
@@ -479,7 +480,7 @@ export const register: Register = on => {
       await finishAgent($, e.agentId, e.answer, e.isAborted, e.reason === 'error')
       // One that ran in its own worktree: what it changed there, against where it started
       const inWorktree = !!(await read($, S)).agents.find(x => x.id === e.agentId)?.worktree
-      if (inWorktree) await measureWorktree($, e.agentId).catch(() => null)
+      if (inWorktree && !(await measureWorktree($, e.agentId).catch(() => null))) await toast($, 'Could not read what the agent changed in its worktree; Bring back reads it again')
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
       // Its work is in its worktree, not your tree: the testers and auto-commit, which work on your tree, wait for Bring back
       if (!isStep && !e.isAborted && !inWorktree) await testAgent($, e.agentId, true)

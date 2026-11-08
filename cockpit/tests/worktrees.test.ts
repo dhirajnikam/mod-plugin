@@ -26,7 +26,7 @@ test("a worktree's place, its changes and what will not apply are read from git'
 })
 
 // A session that spawns from the Agents tab; git answers as a repository with a commit, or none (fresh)
-function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => boolean } = {}) {
+function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => boolean; gone?: () => boolean } = {}) {
   const log = { ran: [] as string[], spawned: [] as { type: string; cwd?: string }[], toasts: [] as string[] }
   on('clock.now', async () => ({ value: 1_700_000_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
@@ -49,6 +49,9 @@ function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => bo
     if (cmd === 'git rev-parse --verify -q HEAD') return opt.fresh ? out('', 1) : out('head1\n')
     if (cmd === 'git rev-parse --git-common-dir') return out('.git\n')
     if (cmd.startsWith('git status')) return out('## main\0')
+    // A worktree deleted by hand: git cannot remove it, and lists only the main one
+    if (opt.gone?.() && cmd.startsWith('git worktree remove')) return out('', 128)
+    if (cmd.startsWith('git worktree list')) return out('worktree /repo\n')
     if (cmd === 'git rev-parse --git-path cockpit-index') return out('.git/cockpit-index\n')
     if (cmd === 'git write-tree') return out('tree1\n')
     if (cmd.startsWith('git commit-tree')) return out('snap1\n')
@@ -176,5 +179,29 @@ test("a worktree agent's row shows what it changed; Bring back and Remove each a
   d = JSON.stringify(await ui.drawn())
   expect(d).toContain('removed, branch kept')
   expect(d).not.toContain('wt-rm-ag2')
+  await ui.unmount()
+})
+
+test('a worktree whose spawn event came before its start returned, and one deleted by hand, are still handled', async ($, on) => {
+  let gone = false
+  const log = stand(on, { gone: () => gone })
+  // The engine's spawn event for the worktree's folder arrives first (the start hands no id back)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'spawn-toggle' })
+  await ui.press({ key: 'spawn-wt' })
+  const wt = '/repo/.git/cockpit-worktrees/ag1700000000000-1'
+  await $.agent.spawn({ tool_use_id: 'early', prompt: 'p', description: 'early one', subagentType: 'general-purpose', cwd: wt.replace(/\//g, '\\'), provider: { plugin: 'engine', tier: 'core' }, parentModel: 'x', background: true, fork: false } as never)
+  await (ui as any).input({ key: 'spawn-task', text: 'early one', kind: 'change' })
+  await ui.press({ key: 'spawn-go' })
+  await $.turn.complete({ agentId: 'ag1', answer: 'REPORT: ok', reason: 'answer', turnId: 'y', isAborted: false, durationMs: 1000 } as never)
+  // Matched by its folder, Windows slashes and all: the row is there with what it changed
+  expect(JSON.stringify(await ui.drawn())).toContain('⎇ cockpit/ag1700000000000-1 · 1 file +2 −1')
+  // Deleted by hand: Remove prunes git's record and, with git listing it no more, the row says removed
+  gone = true
+  await ui.press({ key: 'wt-rm-ag1' })
+  await ui.press({ key: 'wt-yes-ag1' })
+  expect(log.ran).toContain('git worktree prune @/repo')
+  expect(JSON.stringify(await ui.drawn())).toContain('removed, branch kept')
   await ui.unmount()
 })

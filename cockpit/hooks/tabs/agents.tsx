@@ -123,7 +123,7 @@ function AgentMap($: $, v: V, agents: Agent[]) {
   const open = !s.ui.collapsed['ag-map']
   return (
     <Box flexDirection="column">
-      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
+      <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)} flexWrap="wrap">
         <Button key="ag-map" plain onPress={() => set($, st => ({ ui: { ...st.ui, collapsed: { ...st.ui.collapsed, 'ag-map': open } } }))}>
           <Text size="footnote" bold>
             <Text color={t.faint}>{open ? '⌄ ' : '› '}</Text>
@@ -253,31 +253,6 @@ export function Agents($: $, v: V) {
                           {`⎇ ${a.worktree.branch}${a.worktree.files ? ` · ${a.worktree.files.length} file${a.worktree.files.length === 1 ? '' : 's'} +${a.worktree.add ?? 0} −${a.worktree.del ?? 0}` : live ? ' · working in its own worktree' : ''}${a.worktree.back ? ' · brought back' : ''}${a.worktree.removed ? ' · removed, branch kept' : ''}`}
                         </Text>
                       )}
-                      {a.worktree && !live && !a.worktree.removed && (
-                        // Both change files: each asks first
-                        s.ui.wtAsk === `back:${a.id}` || s.ui.wtAsk === `rm:${a.id}` ? (
-                          <Box columnGap={sp(v, 1)} flexWrap="wrap">
-                            <Text color={t.busy} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Apply its changes to your files?' : 'Remove the worktree (its branch stays)?'}</Text>
-                            <Button key={`wt-yes-${a.id}`} plain onPress={() => ((s.ui.wtAsk ?? '').startsWith('back') ? inBackground($, 'wt', 'Bringing the work back', () => bringBack($, a.id)) : inBackground($, 'wt', 'Removing the worktree', () => removeWorktree($, a.id)))}>
-                              <Text color={t.bad} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Bring back' : 'Remove'}</Text>
-                            </Button>
-                            <Button key={`wt-no-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: '' } }))}>
-                              <Text color={t.dim} size="footnote">Keep</Text>
-                            </Button>
-                          </Box>
-                        ) : (
-                          <Box columnGap={sp(v, 2)} flexWrap="wrap">
-                            {!a.worktree.back && (
-                              <Button key={`wt-back-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `back:${a.id}` } }))}>
-                                <Text color={t.accent} size="footnote">⇲ Bring back</Text>
-                              </Button>
-                            )}
-                            <Button key={`wt-rm-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `rm:${a.id}` } }))}>
-                              <Text color={t.dim} size="footnote">Remove worktree</Text>
-                            </Button>
-                          </Box>
-                        )
-                      )}
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
                       {/* The count stands for the result only when the run finished; a stopped or failed run says so first */}
@@ -298,6 +273,32 @@ export function Agents($: $, v: V) {
                       <Text color={t.faint}>✎</Text>
                     </Button>
                   </Box>
+                  {/* Its worktree's controls on a line of their own, under the row */}
+                  {a.worktree && !live && !a.worktree.removed && (
+                    // Both change files: each asks first
+                    s.ui.wtAsk === `back:${a.id}` || s.ui.wtAsk === `rm:${a.id}` ? (
+                      <Box columnGap={sp(v, 1)} flexWrap="wrap">
+                        <Text color={t.busy} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Apply its changes to your files?' : 'Remove the worktree (its branch stays)?'}</Text>
+                        <Button key={`wt-yes-${a.id}`} plain onPress={() => ((s.ui.wtAsk ?? '').startsWith('back') ? inBackground($, 'wt', 'Bringing the work back', () => bringBack($, a.id)) : inBackground($, 'wt', 'Removing the worktree', () => removeWorktree($, a.id)))}>
+                          <Text color={t.bad} size="footnote">{(s.ui.wtAsk ?? '').startsWith('back') ? 'Bring back' : 'Remove'}</Text>
+                        </Button>
+                        <Button key={`wt-no-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: '' } }))}>
+                          <Text color={t.dim} size="footnote">Keep</Text>
+                        </Button>
+                      </Box>
+                    ) : (
+                      <Box columnGap={sp(v, 2)} flexWrap="wrap">
+                        {!a.worktree.back && (
+                          <Button key={`wt-back-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `back:${a.id}` } }))}>
+                            <Text color={t.accent} size="footnote">⇲ Bring back</Text>
+                          </Button>
+                        )}
+                        <Button key={`wt-rm-${a.id}`} plain onPress={() => set($, x => ({ ui: { ...x.ui, wtAsk: `rm:${a.id}` } }))}>
+                          <Text color={t.dim} size="footnote">Remove worktree</Text>
+                        </Button>
+                      </Box>
+                    )
+                  )}
                   {s.ui.rerunFor === a.id && instructions(a.id, `Run the ${a.name.toLowerCase()} again, and…`)}
                   {(open ? a.cases : failing).map((c, i) => (
                     <Text key={`case-${a.id}-${i}`} size="footnote" wrap="truncate-end">
