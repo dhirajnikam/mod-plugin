@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, upsertSession } from '../hooks/spend'
+import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, upsertSession, withCurrent } from '../hooks/spend'
 
 // Noon on a day where you are, so a day's edge never depends on the machine's time zone
 const noon = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime()
@@ -238,4 +238,13 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   expect(prefs.dailyBudget).toBe(undefined)
   expect(await band()).not.toContain('today')
   await pane.unmount()
+})
+
+test('a figure that is not a number never poisons a session: NaN, Infinity or negative count as 0, and the higher of two readings stays', () => {
+  const a = { id: 's1', startedAt: 1, endedAt: 2, usd: 3, tokens: 100, turns: 4 }
+  const [r] = upsertSession([a], { ...a, endedAt: Number.NaN, usd: Number.NaN, tokens: Number.NaN, turns: Number.NaN })
+  expect(r).toEqual({ id: 's1', startedAt: 1, endedAt: 2, usd: 3, tokens: 0, turns: 4 })
+  const [c] = withCurrent([], 5, 6, Number.POSITIVE_INFINITY, Number.NaN, -2)
+  expect(c).toEqual({ id: 's5', startedAt: 5, endedAt: 6, usd: 0, tokens: 0, turns: 0 })
+  expect(JSON.parse(JSON.stringify(c)).tokens).toBe(0)
 })

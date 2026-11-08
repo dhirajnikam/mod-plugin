@@ -10,6 +10,10 @@ export type { SessionSpend }
 // One record per session, by its start: a session's later figures replace its earlier ones in place, its dollars and
 // turns never going down (clearing the finished flows, or a resume that counts afresh, loses none); the newest 200
 export function upsertSession(list: SessionSpend[], s: SessionSpend, keep = 200): SessionSpend[] {
+  // A figure that is not a finite number of 0 or more counts as 0, so one bad reading never poisons the record (a NaN
+  // would be written as null and the whole record dropped on the next load)
+  const n = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0)
+  s = { ...s, usd: n(s.usd), tokens: n(s.tokens), turns: n(s.turns), endedAt: Number.isFinite(s.endedAt) ? s.endedAt : s.startedAt }
   const was = list.find(x => x.id === s.id)
   const rest = list.filter(x => x.id !== s.id)
   const next = was ? { ...s, usd: Math.max(s.usd, was.usd), turns: Math.max(s.turns, was.turns), endedAt: Math.max(s.endedAt, was.endedAt) } : s
@@ -60,5 +64,5 @@ export function budgetLevel(spend: number, budget: number | undefined): BudgetLe
 
 // Every session's spend as it stands now: the earlier ones, and this one with its live figures
 export function withCurrent(past: SessionSpend[] | undefined, at: number | undefined, now: number, usd: number, tokens: number, turns: number): SessionSpend[] {
-  return at ? upsertSession(past ?? [], { id: `s${at}`, startedAt: at, endedAt: now, usd: Math.max(0, Number.isFinite(usd) ? usd : 0), tokens, turns }) : (past ?? [])
+  return at ? upsertSession(past ?? [], { id: `s${at}`, startedAt: at, endedAt: now, usd, tokens, turns }) : (past ?? [])
 }
