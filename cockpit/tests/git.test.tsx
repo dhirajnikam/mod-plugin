@@ -428,7 +428,8 @@ test('a base set to the branch you are on, with no real base around, is let go o
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   // The branch you are on, picked as the base, as the old fallback saved it
   await ui.press({ key: 'git-more' })
-  await ui.select({ key: 'git-base', value: 'feat/x' })
+  // A desktop pane draws Selects; the mount's type covers every surface, so it is named here
+  await (ui as unknown as { select: (t: { key: string; value: string }) => Promise<unknown> }).select({ key: 'git-base', value: 'feat/x' })
   // The next read lets it go: the PR is read, not skipped as the base's
   ran.length = 0
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
