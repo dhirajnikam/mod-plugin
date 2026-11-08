@@ -254,3 +254,33 @@ test('a figure that is not a number never poisons a session: NaN, Infinity or ne
   expect(c).toEqual({ id: 's5', startedAt: 5, endedAt: 6, usd: 0, tokens: 0, turns: 0 })
   expect(JSON.parse(JSON.stringify(c)).tokens).toBe(0)
 })
+
+test('saved settings of the wrong kind are left out: a word for the budget or a switch never reaches the band; right ones are kept', { timeoutMs: 30_000 }, async ($, on) => {
+  const prefs: Record<string, unknown> = { dailyBudget: 'lots', focus: 'yes', mode: 99, theme: '<script>', budgetWarned: 'x', notifyDone: 'no' }
+  stand(on, { cost: () => 2, startedAt: noon(2026, 11, 8, 9), disk: {}, prefs })
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  const band = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as never)
+  const d = JSON.stringify(await band.drawn())
+  expect(d).not.toContain('today')
+  expect(d).not.toContain('lots')
+  await band.unmount()
+  // A mode of 99 would have turned the judges off without a word; it is left out, so the mode stays Auto
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} } } as never)
+  const p = JSON.stringify(await pane.drawn())
+  expect(p).toContain('Auto · judge')
+  expect(p).not.toContain('Judges off')
+  await pane.unmount()
+})
+
+test('a right budget from the saved settings is kept and shows on the band', { timeoutMs: 30_000 }, async ($, on) => {
+  stand(on, { cost: () => 2, startedAt: noon(2026, 11, 8, 9), disk: {}, prefs: { dailyBudget: 10, focus: 'yes' } })
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await prompt($, 'one')
+  await turnDone($, 'one')
+  const band = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as never)
+  expect(JSON.stringify(await band.drawn())).toContain('of $10.00 today')
+  await band.unmount()
+})

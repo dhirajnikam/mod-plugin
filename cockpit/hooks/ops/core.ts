@@ -96,7 +96,20 @@ export async function loadHistory($: $) {
 export async function loadPrefs($: $) {
   const p = (await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined
   if (!p || typeof p !== 'object') return
-  const pick = Object.fromEntries(PREFS.filter(k => k in p && p[k] !== undefined && (k !== 'theme' || THEME_IDS.includes(p.theme as ThemeId))).map(k => [k, p[k]]))
+  // Each saved setting is taken only if it is of its kind: a store edited by hand cannot put a word where a switch goes
+  const w = p.budgetWarned
+  const ok: Record<(typeof PREFS)[number], (v: unknown) => boolean> = {
+    theme: v => THEME_IDS.includes(v as ThemeId),
+    mode: v => v === 'auto' || v === 'ask' || v === 'off',
+    dailyBudget: v => typeof v === 'number' && Number.isFinite(v) && v > 0,
+    budgetWarned: () => !!w && typeof w === 'object' && typeof w.day === 'string' && (w.level === 'near' || w.level === 'over'),
+    focus: v => typeof v === 'boolean',
+    autoVerify: v => typeof v === 'boolean',
+    testAgents: v => typeof v === 'boolean',
+    notifyDone: v => typeof v === 'boolean',
+    chooseModel: v => typeof v === 'boolean',
+  }
+  const pick = Object.fromEntries(PREFS.filter(k => k in p && p[k] !== undefined && ok[k](p[k])).map(k => [k, p[k]]))
   await update($, S, s => ({ ...s, ...pick }))
 }
 
