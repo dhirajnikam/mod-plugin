@@ -1,4 +1,4 @@
-import type { McpRow } from '../types'
+import type { McpRow, SkillFile } from '../types'
 
 // Hooks, permission rules and instructions, as Claude Code keeps them: settings.json ("hooks", "permissions") and
 // CLAUDE.md, for the repository and for the user. Pure: the Rules tab reads the files, these read and change their
@@ -282,3 +282,7 @@ export function setInvocation(text: string, auto: boolean): string | null {
   }
   return joinLines(keep.map(k => k[0]), keep.map(k => k[1] ?? ''))
 }
+
+// A SKILL.md the Rules tab listed, in either scope: the only files a skill's switch may write
+export const skillListed = (path: string, skills?: { repo: SkillFile[]; user: SkillFile[] }) =>
+  path.endsWith('/SKILL.md') && [...(skills?.repo ?? []), ...(skills?.user ?? [])].some(k => k.path === path)

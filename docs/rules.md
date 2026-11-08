@@ -37,6 +37,8 @@ description sits in every session's context so Claude can pick it) or it runs **
 - The `SKILL.md` is read again before each switch; one whose frontmatter cannot be read (no `---` at its top, never
   closed, or a line that is not a `key: value`, an indented line under one, a comment or blank) is shown read only with
   why, never written. Every copy of the key is changed together, and each line keeps its own line ending.
+- Only a `SKILL.md` the tab listed is written. It is read once more just before the write: if you edited it while the
+  switch was worked out, nothing is written, the tab says so and shows your edit.
 - Skills a plugin brings are not listed here; the Agents tab shows the agents plugins add.
 
 ![The Rules tab](images/rules.png)

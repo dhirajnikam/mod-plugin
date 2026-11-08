@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillOf } from '../hooks/rules'
+import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf } from '../hooks/rules'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -361,9 +361,13 @@ test("the Rules tab lists each scope's skills and switches one between Claude lo
     for (const p of Object.keys(disk)) if (p.startsWith(dir)) { const [first, ...rest] = p.slice(dir.length).split('/'); kids.set(first!, rest.length ? 'dir' : 'file') }
     return { value: [...kids].map(([name, kind]) => ({ name, kind })) } as never
   })
+  // An edit made by hand the moment after Cockpit first reads a file
+  let editAfterRead: { path: string; text: string } | null = null
   on('fs.read', async (_: unknown, e: any) => {
     if (!(posix(e.path) in disk)) throw new Error('ENOENT')
-    return { value: disk[posix(e.path)] } as never
+    const now = disk[posix(e.path)]
+    if (editAfterRead?.path === posix(e.path)) ((disk[editAfterRead.path] = editAfterRead.text), (editAfterRead = null))
+    return { value: now } as never
   })
   on('fs.write', async (_: unknown, e: any) => (writes.push(posix(e.path)), (disk[posix(e.path)] = e.text), { value: undefined }))
   on('process.run', async (_: unknown, e: any) => {
@@ -386,6 +390,15 @@ test("the Rules tab lists each scope's skills and switches one between Claude lo
   expect(JSON.stringify(await ui.drawn())).toContain('only when you call /release')
   await ui.press({ key: 'sk-/repo/.claude/skills/release/SKILL.md' })
   expect(disk['/repo/.claude/skills/release/SKILL.md']).toBe(release)
+  // Edited by hand while the switch was worked out: nothing is written over the edit
+  const edited = release.replace('Cut a release', 'Cut a careful release')
+  editAfterRead = { path: '/repo/.claude/skills/release/SKILL.md', text: edited }
+  const before = writes.length
+  await ui.press({ key: 'sk-/repo/.claude/skills/release/SKILL.md' })
+  expect(writes.length).toBe(before)
+  expect(disk['/repo/.claude/skills/release/SKILL.md']).toBe(edited)
+  expect(toasts.join('\n')).toContain('changed while it was being switched')
+  expect(JSON.stringify(await ui.drawn())).toContain('Cut a careful release')
   // You, everywhere: notes, kept for /notes; let Claude load it, the CRLF file kept as CRLF
   await ui.press({ key: 'rscope-user' })
   d = JSON.stringify(await ui.drawn())
@@ -401,4 +414,19 @@ test("the Rules tab lists each scope's skills and switches one between Claude lo
   // Only those two SKILL.md files were ever written
   expect([...new Set(writes)].sort()).toEqual(['/home/me/.claude/skills/notes/SKILL.md', '/repo/.claude/skills/release/SKILL.md'])
   await ui.unmount()
+})
+
+test('only a SKILL.md the tab listed may be written', async () => {
+  const k = (path: string) => ({ path, folder: 'x', name: 'x', description: '', auto: true, error: '' })
+  const skills = { repo: [k('/repo/.claude/skills/release/SKILL.md')], user: [k('/home/me/.claude/skills/notes/SKILL.md')] }
+  expect(skillListed('/repo/.claude/skills/release/SKILL.md', skills)).toBe(true)
+  expect(skillListed('/home/me/.claude/skills/notes/SKILL.md', skills)).toBe(true)
+  // Not listed, another file in a listed folder, a path that only ends like a listed one, or nothing listed at all
+  expect(skillListed('/repo/.claude/skills/other/SKILL.md', skills)).toBe(false)
+  expect(skillListed('/repo/.claude/skills/release/script.sh', skills)).toBe(false)
+  expect(skillListed('/evil/repo/.claude/skills/release/SKILL.md', skills)).toBe(false)
+  expect(skillListed('/etc/passwd', skills)).toBe(false)
+  expect(skillListed('/repo/.claude/skills/release/SKILL.md', undefined)).toBe(false)
+  // A listed entry whose path is not a SKILL.md is never written either
+  expect(skillListed('/repo/.claude/skills/x/README.md', { repo: [k('/repo/.claude/skills/x/README.md')], user: [] })).toBe(false)
 })

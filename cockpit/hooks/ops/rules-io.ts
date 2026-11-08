@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Account, Agent, Autopilot, Changed, RuleFiles, SkillFile, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { changeMcp, mcpRows, parseSettings, setInvocation, settingsText, skillOf } from '../rules'
+import { changeMcp, mcpRows, parseSettings, setInvocation, settingsText, skillListed, skillOf } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
@@ -64,13 +64,16 @@ export async function loadRules($: $) {
 // line changed, and a file whose frontmatter cannot be read never written
 export async function writeSkill($: $, path: string, auto: boolean) {
   // Only a SKILL.md the tab listed is ever written
-  const listed = (await read($, S)).rules?.skills
-  if (!path.endsWith('/SKILL.md') || ![...(listed?.repo ?? []), ...(listed?.user ?? [])].some(k => k.path === path)) return loadRules($)
+  if (!skillListed(path, (await read($, S)).rules?.skills)) return loadRules($)
   const text = await $.fs.read(path).then(String).catch(() => null)
   if (text === null) return Promise.all([loadRules($), toast($, `${path} is gone: the skills were read again`)])
   const next = setInvocation(text, auto)
   if (next === null) return Promise.all([loadRules($), toast($, `${path}: ${skillOf(text).error}; fix it by hand first, Cockpit will not change it`)])
   if (next === text) return loadRules($)
+  // Read once more just before writing: an edit made meanwhile is kept, not written over
+  // ponytail: the engine has no lock or compare-and-swap; what is left is the gap between this read and the write
+  const now = await $.fs.read(path).then(String).catch(() => null)
+  if (now !== text) return Promise.all([loadRules($), toast($, `${path} changed while it was being switched: nothing was written, and the skills were read again`)])
   const failed = await $.fs.write(path, next).then(() => false, async e => (await toast($, `Could not write ${path}: ${String(e)}`), true))
   await loadRules($)
   if (!failed) await toast($, `${auto ? 'Claude may load it by itself' : 'Only when you call it'} · ${path}`)
