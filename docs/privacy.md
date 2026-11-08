@@ -38,6 +38,13 @@ the model like anything you paste; GitHub masks the repository's secrets in its 
 goes with it. When each runs, and what it
 changes on your machine, is in the [security policy](../SECURITY.md#what-cockpit-can-do-on-your-machine).
 
+## Notices
+
+**Tell me when work is done** (on until you turn it off) sends each finish's notice through Claude Code's own
+notification channel, to your terminal and any `Notification` hook you have: a task's first words, file counts, an
+agent's REPORT line or a failing case's name. Nothing leaves your machine through Cockpit; a hook you set up may send
+it on.
+
 ## What costs, and what is on by default
 
 - **On**: each prompt makes one small model call to write its flow steps; another writes the next commit message from

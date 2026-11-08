@@ -6,6 +6,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Told when work is done**: while you are not watching the pane, the main turn, each agent (with *Bring back ready*
+  for a worktree agent), each pipeline and each autopilot cycle sends one notice through Claude Code's notification
+  channel, saying what finished and how it went. **Tell me when work is done** in the Agents tab's Settings turns it
+  off.
 - **Agents in their own worktree**: with **In its own worktree** ticked (New agent form, or beside Team), an agent runs
   in a worktree of its own through Claude Code's worktree isolation (each expert, agent you made and a general-purpose
   agent has a `-in-worktree` twin registered with `isolation: 'worktree'`; another plugin's type gets a worktree

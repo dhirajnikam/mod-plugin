@@ -10,6 +10,7 @@ import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { cockpitDir, note, saveHistory, set, summary, toast } from './core'
 import { beforeIsolated, decideCommit, dropWorktree, findIsolated, makeWorktree, refreshRepo } from './git'
+import { tellDone } from './notify'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
@@ -257,6 +258,10 @@ export async function advancePipeline($: $, agentId: string, answer: string, abo
     await toast($, `${label} pipeline done`)
     await note($, `⧉ ${label} pipeline done · ${reports.length} experts`)
     const after = await read($, S)
+    // A notice while you are not watching: passed, or the first case that failed
+    const vs = verifyState(after.agents)
+    const failing = after.agents.flatMap(a => a.cases).find(c => c.st === 'fail')
+    await tellDone($, `pipeline:${p.name}:${p.at}`, { kind: 'pipeline', label, passed: p.name === 'verify' ? vs.passed : true, ...(failing ? { failing: failing.n } : {}) })
     if (p.name === 'verify' && after.git.commitMode !== 'manual' && after.git.autoWhen === 'tests' && verifyState(after.agents).passed) {
       // The testers may have written files since the turn's end read the repository
       await refreshRepo($)

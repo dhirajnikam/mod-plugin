@@ -22,7 +22,17 @@ Start, stop and follow subagents, and read what each found. Each run shows in on
   its run (`running ↑`, `done ↓`) instead of repeating it.
 - **Finished**: the three newest runs, each with its result (`3/3 passed`, its report), the rest a press away, each with ↻ Restart and ✎; **Clear** empties the list.
   **■ Stop all**, beside Running, stops every live run.
-- **Settings**, folded: test each agent's work, and Verify after each turn.
+- **Settings**, folded: test each agent's work, Verify after each turn, and **Tell me when work is done**.
+
+## Told when work is done
+
+While you are not watching the Cockpit pane (it is closed, or another window has the focus), each finish sends one
+notice through Claude Code's own notification channel (your terminal's notification or bell; a `Notification` hook
+sees it too): the main turn ("Claude is done", its task, files and +/−, tests), each agent you or Claude started
+(its REPORT line or its tests, and *Bring back ready* for a worktree agent with work to bring back), each pipeline
+("Verify finished", passed or its first failing case), and, while the autopilot runs, each cycle (its milestones and
+spend) instead of the turn. One notice per finish, never while you watch; **Tell me when work is done** in Settings
+turns them off, and the choice is kept across sessions.
 
 ## The experts
 

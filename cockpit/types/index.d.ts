@@ -253,6 +253,8 @@ export type Ph = {
   autoVerify: boolean
   // Run the positive and the negative tester on each agent's run that changed files
   testAgents: boolean
+  // Tell me when work is done: a notice for each finish while the pane is not watched (absent: on)
+  notifyDone?: boolean
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by

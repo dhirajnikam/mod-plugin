@@ -10,7 +10,9 @@ const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g,
 const settle = () => new Promise(res => (globalThis as any).setTimeout(res, 60))
 
 function stand(on: any) {
-  const log = { submitted: [] as string[], notes: [] as string[], judged: [] as string[], files: {} as Record<string, string>, vote: '1 - it is fine' }
+  const log = { submitted: [] as string[], notes: [] as string[], judged: [] as string[], files: {} as Record<string, string>, vote: '1 - it is fine', notices: [] as { title?: string; text: string }[] }
+  on('ui.notify', async (_: unknown, e: any) => (log.notices.push({ title: e.title, text: String(e.text) }), { value: { isSent: true, channel: 'terminal' } }) as never)
+  on('ui.panes', async () => ({ value: [] }) as never)
   let clock = 1_000_000
   on('clock.now', async () => ({ value: (clock += 1000) }))
   on('clock.after', async (_: unknown, e: any) => (await new Promise(res => (globalThis as any).setTimeout(res, e.ms)), { value: undefined }) as never)
@@ -246,4 +248,17 @@ test('DONE claim on the third no-change cycle is judged, not paused', { timeoutM
   log.vote = '1 - done'
   await cycle($, log, 'AUTOPILOT: DONE all good', false)
   expect(log.judged.length).toBeGreaterThan(0)
+})
+
+test("while the autopilot runs, each cycle's end tells you once, with its milestones and spend, instead of a turn's notice", { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand(on)
+  await $.command.run({ command: 'cockpit', args: 'task tidy the docs' } as never)
+  await settle()
+  log.files['/repo/.cockpit/roadmap.md'] = '# Roadmap: tidy the docs\n- [x] readme: links pass\n- [ ] guide: links pass\n'
+  await cycle($, log, 'Ticked the readme.\nAUTOPILOT: CONTINUE guide')
+  const cycleNotes = log.notices.filter(x => x.title?.startsWith('Autopilot cycle'))
+  expect(cycleNotes.length).toBe(1)
+  expect(cycleNotes[0]!.title).toBe('Autopilot cycle 1 done')
+  expect(cycleNotes[0]!.text).toMatch(/^1 of 2 milestones ticked · \$\d+\.\d\d spent$/)
+  expect(log.notices.some(x => x.title === 'Claude is done')).toBe(false)
 })

@@ -43,6 +43,7 @@ import {
   refreshRepo,
   snapTurn,
   measureWorktree,
+  tellDone,
   plainType,
   toast,
   refreshGit,
@@ -53,7 +54,7 @@ import {
   trackAgent,
 } from './actions'
 import { ACTS, act } from './acts'
-import { EXPERTS, FLOWS, activityOf, applyPlan, expertName, flowOf, progress, selfCheck, stepOf, toOp } from './logic'
+import { EXPERTS, FLOWS, activityOf, applyPlan, expertName, flowOf, progress, selfCheck, stepOf, toOp, verifyState } from './logic'
 import { memoryText } from './memory'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
@@ -484,6 +485,9 @@ export const register: Register = on => {
       // One that ran in its own worktree: what it changed there, against where it started
       const inWorktree = !!(await read($, S)).agents.find(x => x.id === e.agentId)?.worktree
       if (inWorktree && !(await measureWorktree($, e.agentId).catch(() => null))) await toast($, 'Could not read what the agent changed in its worktree; Bring back reads it again')
+      // A notice while you are not watching; a pipeline's step tells you with its pipeline instead
+      const fin = (await read($, S)).agents.find(x => x.id === e.agentId)
+      if (!isStep && fin) await tellDone($, `agent:${e.agentId}`, { kind: 'agent', agent: fin }).catch(() => null)
       await advancePipeline($, e.agentId, e.answer, e.isAborted)
       // Its work is in its worktree, not your tree: the testers and auto-commit, which work on your tree, wait for Bring back
       if (!isStep && !e.isAborted && !inWorktree) await testAgent($, e.agentId, true)
@@ -521,6 +525,8 @@ export const register: Register = on => {
     const didChange = changed || (atStart !== null && s.repo.changed.length > 0 && changesOf(s.repo.changed) !== atStart)
     // The autopilot's next cycle, once this turn's figures are in (cost for its budget, changes for its stall count)
     // A failure here must not leave the run marked running with no next cycle: it pauses, saying why
+    // The cycle this turn was, before the autopilot moves on to the next
+    const endedCycle = s.autopilot?.status === 'running' ? s.autopilot.cycle : 0
     await autopilotTurnEnd($, e.answer ?? '', didChange, !!e.isAborted, s.turnStart).catch(err => stopAutopilot($, 'paused', `its turn's end failed: ${String((err as Error)?.message ?? err).slice(0, 120)}`).catch(() => null))
     // Files a shell command or script changed reach the memory here
     if (didChange) for (const c of s.repo.changed.slice(0, 40)) await updateMemory($, `${await repoRootOf($)}/${c.path}`)
@@ -532,6 +538,15 @@ export const register: Register = on => {
       const add = s.repo.changed.reduce((n, c) => n + Math.max(0, c.add - (was.get(c.path)?.add ?? 0)), 0)
       const del = s.repo.changed.reduce((n, c) => n + Math.max(0, c.del - (was.get(c.path)?.del ?? 0)), 0)
       await set($, st => ({ flows: st.flows.map(f => (f.id === flowId ? { ...f, add: Math.max(f.add, add), del: Math.max(f.del, del) } : f)) }))
+    }
+    // A notice while you are not watching: the autopilot's cycle while one runs, else the turn
+    const now2 = await read($, S)
+    const ap = now2.autopilot
+    const fl = now2.flows.find(f => f.id === flowId)
+    if (ap && endedCycle) await tellDone($, `cycle:${ap.at}:${endedCycle}`, { kind: 'cycle', cycle: endedCycle, ticked: ap.done, total: ap.total, spent: Math.max(0, now2.cost - ap.costAt) }).catch(() => null)
+    else if (fl && !e.isAborted) {
+      const vs = verifyState(now2.agents)
+      await tellDone($, `turn:${flowId}:${e.turnId}`, { kind: 'turn', task: fl.task, files: now2.repo.changed.length, add: fl.add, del: fl.del, ...(vs.cases.length ? { tests: { pass: vs.pass, total: vs.cases.length } } : {}) }).catch(() => null)
     }
     const commitAfterTests = s.git.commitMode !== 'manual' && s.git.autoWhen === 'tests'
     if (didChange && (s.autoVerify || commitAfterTests)) await startPipeline($, 'verify')

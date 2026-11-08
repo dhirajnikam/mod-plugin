@@ -538,11 +538,12 @@ export function Agents($: $, v: V) {
           <Text size="footnote" bold>
             <Text color={t.faint}>{s.ui.collapsed['ag-settings'] ? '⌄ ' : '› '}</Text>
             <Text color={t.dim}>SETTINGS</Text>
-            <Text color={t.faint} bold={false}>{`  both testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'}`}</Text>
+            <Text color={t.faint} bold={false}>{`  both testers ${s.testAgents ? 'on' : 'off'} · verify each turn ${s.autoVerify ? 'on' : 'off'} · notices ${s.notifyDone !== false ? 'on' : 'off'}`}</Text>
           </Text>
         </Button>
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="testagents" on={s.testAgents} label="Test each agent's work: a positive and a negative tester" onPress={() => set($, st => ({ testAgents: !st.testAgents }))} />}
         {s.ui.collapsed['ag-settings'] && <Check v={v} id="autoverify" on={s.autoVerify} label="Verify after each turn that changes files" onPress={() => set($, st => ({ autoVerify: !st.autoVerify }))} />}
+        {s.ui.collapsed['ag-settings'] && <Check v={v} id="notify-done" on={s.notifyDone !== false} label="Tell me when work is done (while I am not watching this pane)" onPress={() => set($, st => ({ notifyDone: st.notifyDone === false }))} />}
       </Box>
     </Box>
   )
