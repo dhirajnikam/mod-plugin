@@ -41,6 +41,7 @@ import {
   openPane,
   pickFlow,
   refreshRepo,
+  livePr,
   snapTurn,
   measureWorktree,
   tellDone,
@@ -118,6 +119,8 @@ export const register: Register = on => {
     timers.push($.clock.every(15000, async () => {
       if ((await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) {
         await refreshRepo($)
+        // The branch's PR while a check is pending: green or red by itself, and a notice when the run finishes
+        await livePr($).catch(() => null)
         await measure($)
         // The accounts too while their box is on screen (the Git tab's setup, or its options open): a gh login added
         // or a token that stopped working shows by itself

@@ -14,6 +14,7 @@ export type Finish =
   | { kind: 'turn'; task: string; files: number; add: number; del: number; tests?: { pass: number; total: number } }
   | { kind: 'agent'; agent: Pick<Agent, 'name' | 'status' | 'report' | 'cases' | 'worktree'> }
   | { kind: 'pipeline'; label: string; passed: boolean; failing?: string }
+  | { kind: 'ci'; number: number; title: string; passed: boolean; failing?: string }
   | { kind: 'budget'; level: 'near' | 'over'; spend: number; budget: number }
   | { kind: 'agents'; agents: Pick<Agent, 'name' | 'status' | 'report' | 'cases' | 'worktree'>[] }
   | { kind: 'cycle'; cycle: number; ticked: number; total: number; spent: number; ended?: 'paused' | 'done' | 'stopped' }
@@ -39,6 +40,7 @@ export function doneText(f: Finish): { title: string; text: string } {
   }
   // Several agents that ran together: one notice when the last is done, naming each and what it said
   if (f.kind === 'agents') return { title: `${f.agents.length} agents finished`, text: cut(f.agents.map(a => `${a.name}: ${doneText({ kind: 'agent', agent: a }).text}`).join(' · '), 200) }
+  if (f.kind === 'ci') return { title: `CI ${f.passed ? 'passed' : 'failed'} on #${f.number}`, text: cut(f.passed ? f.title : `${f.failing ?? 'a check'} failed · ${f.title}`) }
   if (f.kind === 'budget') return { title: f.level === 'over' ? 'Daily budget reached' : 'Daily budget at 80%', text: `$${f.spend.toFixed(2)} of $${f.budget.toFixed(2)} spent today (estimates); nothing is stopped` }
   if (f.kind === 'pipeline') return { title: `${f.label} finished`, text: f.passed ? 'All checks passed' : `Failed${f.failing ? `: ${cut(f.failing, 100)}` : ''}` }
   return { title: f.ended ? `Autopilot ${f.ended === 'done' ? 'done' : f.ended} after cycle ${f.cycle}` : `Autopilot cycle ${f.cycle} done`, text: `${f.ticked} of ${f.total} milestones ticked · $${f.spent.toFixed(2)} spent` }

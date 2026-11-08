@@ -12,6 +12,7 @@ import type { Run } from '../turns'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { claim, git, moveSaved, note, release, repoRoot, set, toast } from './core'
+import { tellDone } from './notify'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
@@ -411,8 +412,14 @@ export async function fixChecks($: $) {
 // no checks asked for when gh has no PR or cannot answer (not installed, not logged in, not a GitHub repository)
 // Each read numbered: an older one that answers after a newer one is dropped
 let prReads = 0
+// When gh was last asked, so a pending run is read again every 30 s, not on every 15 s tick
+let prAt = 0
+// The branch and PR last seen with a check pending ("feat/x#7"): kept through an unreadable answer, so the read that
+// finds the run finished still tells you
+let pendingPr = ''
 export async function loadPr($: $) {
   const n = ++prReads
+  prAt = await $.clock.now().catch(() => Date.now())
   const s = await read($, S)
   const br = s.repo.current
   if (!s.repo.isRepo || !br || br === s.git.base) return
@@ -428,6 +435,24 @@ export async function loadPr($: $) {
   const pr = view.exitCode === 0 ? parsePr(view.stdout, listed) : null
   if (n !== prReads) return
   await set($, st => (st.repo.current === br ? { repo: { ...st.repo, pr } } : {}))
+  // The same PR was pending and now none is: the run finished; one notice (while you are not watching)
+  const key = pr ? `${br}#${pr.number}` : ''
+  if (!pr || pr.checks.unknown) return
+  if (pr.checks.pending > 0) pendingPr = key
+  else if (pendingPr === key) {
+    pendingPr = ''
+    if (pr.checks.pass + pr.checks.fail > 0) await tellDone($, `ci:${key}:${prAt}`, { kind: 'ci', number: pr.number, title: pr.title, passed: pr.checks.fail === 0, failing: pr.checks.failing[0]?.name }).catch(() => null)
+  }
+}
+
+// Called by the 15 s timer while the pane is placed: an open PR with a check still pending is read again once 30 s
+// have passed since the last read. Nothing pending, closed, or no PR (a new branch clears it): nothing is asked
+export async function livePr($: $) {
+  const pr = (await read($, S)).repo.pr
+  const br = (await read($, S)).repo.current
+  if (!pr || pr.state !== 'OPEN' || !(pr.checks.unknown ? pendingPr === `${br}#${pr.number}` : pr.checks.pending > 0)) return
+  if ((await $.clock.now().catch(() => Date.now())) - prAt < 30_000) return
+  await loadPr($)
 }
 
 export async function saveAccount($: $, a: Account) {
