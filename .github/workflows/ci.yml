@@ -52,3 +52,7 @@ jobs:
       # And agents in worktrees: bring-back and remove, on a real repository
       - name: Agents in worktrees on real git
         run: python3 scripts/check_worktrees.py
+
+      # A release carries one version, a dated changelog section and every feature described
+      - name: Release is consistent
+        run: python3 scripts/check_release.py

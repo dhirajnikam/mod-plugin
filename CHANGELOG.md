@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-08
+
 ### Added
 - **Told when work is done**: while you are not watching the pane, the main turn, each agent (with *Bring back ready*
   for a worktree agent), each pipeline and each autopilot cycle sends one notice through Claude Code's notification

@@ -27,10 +27,10 @@ at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin up
 
 | Tab | What you see and do |
 |---|---|
-| [**Overview**](docs/overview.md) | The task's progress ring and steps, checks that turn red when something fails, the agents at work as a neural view with what is remembered from similar tasks, changed files, context with Compact and Clear, and the judges' decisions |
+| [**Overview**](docs/overview.md) | The task's progress ring and steps, checks that turn red when something fails, the agents at work as a neural view with what is remembered from similar tasks, changed files, context with Compact and Clear, the judges' decisions, and **Undo this turn** on each earlier flow (whatever made its changes) |
 | [**Activity**](docs/activity.md) | A live feed of every file read, edited or searched; your codebase's features as a map, with what is being worked on lit; the impact of a change |
-| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change |
-| [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch |
+| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change; agents **in their own worktree** (Claude Code's isolation) with Bring back and Remove; a notice when work is done while you are not watching |
+| [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch; the branch's **pull request** with its review and CI checks, and Fix failing checks |
 | [**Rules**](docs/rules.md) | What loads into every session, with its estimated tokens; the hooks, permission rules, MCP servers, skills and `CLAUDE.md` instructions of the repository or of you, to add, edit, delete or switch |
 
 Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in
