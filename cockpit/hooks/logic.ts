@@ -471,6 +471,13 @@ export function parsePr(view: string, checks: string): PrStatus | null {
   return { number: v.number, title: clean(v.title), url: clean(v.url), state: (['OPEN', 'CLOSED', 'MERGED'].includes(v.state) ? v.state : 'OPEN'), review, checks: c }
 }
 
+// The base branch: the one you picked, else the repository's (origin's HEAD, main, master, develop), else none. A
+// saved base that is only the branch you are on, with no real base around, is what an earlier version guessed; it is
+// let go, or that branch's pull request would never be read
+export function baseFor(saved: string, current: string, detected: string) {
+  return saved && !(saved === current && !detected) ? saved : detected
+}
+
 // Self-check: the parts a broken edit would quietly corrupt
 export function selfCheck() {
   const g = { branch: '', branchAuto: true, branchPattern: '{type}/{ticket}-{slug}', ticket: 'API-142', user: 'dev', base: 'main', type: 'feat', scope: 'auth', subject: 'add rate limiting to login', body: '', msgPattern: '{type}({scope}): {subject}', commitMode: 'ask', autoWhen: 'step', setupDone: true, breaking: false, push: false, pr: false, draft: false, signoff: false, gpg: false, preTest: false } as GitForm
@@ -546,6 +553,11 @@ export function selfCheck() {
     [parsePr('no pull requests found for branch "x"', ''), null],
     [parsePr('{"title":"no number"}', '[]'), null],
     [parsePr('null', '[]'), null],
+    [baseFor('', 'feat/x', 'main'), 'main'],
+    [baseFor('develop', 'feat/x', 'main'), 'develop'],
+    [baseFor('feat/x', 'feat/x', ''), ''],
+    [baseFor('main', 'main', 'main'), 'main'],
+    [baseFor('', 'feat/x', ''), ''],
     [parsePr('{"number":7,"title":"a\\u001b[31mb\\nc"}', '[{"name":"t\\u0007","bucket":"fail"}]')?.title + '|' + parsePr('{"number":7}', '[{"name":"t\\u0007","bucket":"fail"}]')?.checks.failing[0]?.name, 'a [31mb c|t '],
   ]
   return checks.filter(([a, b]) => a !== b)

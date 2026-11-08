@@ -88,6 +88,10 @@ test("the Git tab's pull request fits every width, and draws pending and passing
       for (const want of ['#1234', 'changes requested', '✓ 1 passed', '✗ 4 failed', '◌ 1 running', '+1 more failed']) if (!text.includes(want)) bad.push(`${surface} @${w}: no ${want}`)
       for (const n of wide(drawn, w)) bad.push(`${surface} git @${w}: ${n}`)
       await pane.unmount()
+      // The band above the prompt names the branch too
+      const band = await $.ui.mount({ plugin: 'cockpit', surface, component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: true, maxRows: 12, bodyColumns: w, scroll, view: {} } } as never)
+      for (const n of wide(await band.drawn(), w)) bad.push(`${surface} band @${w}: ${n}`)
+      await band.unmount()
     }
   }
   // All passed: no failing rows

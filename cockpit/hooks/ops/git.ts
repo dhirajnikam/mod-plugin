@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
 import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
+import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
@@ -132,7 +132,7 @@ export async function refreshRepo($: $) {
   const up = await git($, ['log', '--format=%h', '@{u}..HEAD'])
   const unpushed = up.exitCode === 0 ? up.stdout.split('\n').filter(Boolean) : []
   // The branch's pull request is read only by loadPr (it asks GitHub); kept while the branch stays the same
-  await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed, ...(s.repo.current === current && s.repo.pr !== undefined ? { pr: s.repo.pr } : {}) }, git: { ...s.git, base: s.git.base || base } }))
+  await set($, s => ({ repo: { isRepo: true, current, ahead, behind, changed, branches, log, unpushed, ...(s.repo.current === current && s.repo.pr !== undefined ? { pr: s.repo.pr } : {}) }, git: { ...s.git, base: baseFor(s.git.base, current, base) } }))
   // The next commit's message is written in the background; Commit waits for it
   void suggestCommit($).catch(() => null)
 }
@@ -208,8 +208,10 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
   if (g.push) {
     const p = await git($, ['push', '-u', 'origin', br])
     extra.push(p.exitCode === 0 ? 'pushed' : `push failed: ${firstLine(p)}`)
-    if (p.exitCode === 0 && g.pr) {
-      const base = g.base || s.repo.current
+    // No base to open it against: gh would be asked for a PR from the branch into itself
+    if (p.exitCode === 0 && g.pr && !g.base) extra.push('no PR: pick a base in Patterns & options')
+    if (p.exitCode === 0 && g.pr && g.base) {
+      const base = g.base
       const pr = await $.process
         .run(['gh', 'pr', 'create', '--base', base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])], { cwd: (await repoRoot($)) || '.' })
         .catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))

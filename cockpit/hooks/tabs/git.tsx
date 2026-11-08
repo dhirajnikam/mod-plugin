@@ -113,12 +113,15 @@ export function Git($: $, v: V) {
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
-        <Text wrap="truncate-end">
-          <Text color={t.accent} bold>{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
-          {s.repo.ahead > 0 && <Text color={t.busy}>{`  ↑${s.repo.ahead} to push`}</Text>}
-          {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
-          {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
-        </Text>
+        {/* A long branch name gives way, its counts stay */}
+        <Box flexShrink={1}>
+          <Text color={t.accent} bold wrap="truncate-end">{`⎇ ${s.repo.current || '(no branch)'}`}</Text>
+          <Text>
+            {s.repo.ahead > 0 && <Text color={t.busy}>{`  ↑${s.repo.ahead} to push`}</Text>}
+            {s.repo.behind > 0 && <Text color={t.hi}>{`  ↓${s.repo.behind} to pull`}</Text>}
+            {s.repo.changed.length > 0 && <Text color={t.dim}>{`  ·  ${s.repo.changed.length} changed`}</Text>}
+          </Text>
+        </Box>
         <Box gap={sp(v, 1)} flexWrap="wrap">
           {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => inBackground($, 'pull', 'Pulling', () => pullNow($))} />}
           {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => inBackground($, 'push', 'Pushing', () => pushNow($))} />}
@@ -159,7 +162,7 @@ export function Git($: $, v: V) {
         <Text color={plan.msg ? t.hi : t.dim} mono wrap="truncate-end">{plan.msg || 'Send a prompt, or change a file'}</Text>
         <Text size="footnote" wrap="truncate-end">
           <Text color={newBranch ? t.ok : t.dim}>{newBranch ? `⎇ new ${plan.branch}` : `⎇ ${plan.branch}`}</Text>
-          <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base}` : ''}`}</Text>
+          <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base || 'no base picked'}` : ''}`}</Text>
         </Text>
         <Box justifyContent="flex-end">
           {staged > 0 ? <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => inBackground($, 'commit', g.push ? 'Committing and pushing' : 'Committing', () => commit($, false))} /> : <Text color={t.dim} size="footnote">Tick a file to commit it</Text>}

@@ -13,6 +13,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and after a push; not on the base branch. A pull request title or check name with control characters draws with
   spaces in their place.
 
+### Fixed
+- A long branch name no longer runs past a narrow pane: the Git tab's header, the pane's header and the commit card
+  cut it with an ellipsis.
+- A repository with no `origin` and no main, master or develop branch no longer keeps the branch you first opened
+  the Git tab on as its base (which hid that branch's pull request); the base stays empty until you pick one, and a
+  base saved that way earlier is let go. With no base, a commit with pull requests on says to pick one instead of
+  asking gh for a pull request from the branch into itself.
+
 ### Removed
 - The parts: `cockpit-core` and its add-ons (`cockpit-overview`, `-activity`, `-agents`, `-git`, `-rules`, `-chat`)
   are gone from the marketplace, along with `scripts/split.py`. Install `cockpit`, which holds all of them; if you
