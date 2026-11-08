@@ -48,7 +48,8 @@ test('from a subfolder, a turn that changed files by any means is committed and 
   await $.prompt.submit({ text: 'fix the limiter', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   edited = true
   await $.turn.complete({ answer: 'done', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
-  const add = ran.find(r => r.cmd.startsWith('git add'))
+  // The commit's own add (a turn snapshot's `git add -A` runs on Cockpit's temporary index, not this one)
+  const add = ran.find(r => r.cmd.startsWith('git add -A --'))
   expect(add?.cmd).toBe('git add -A -- cockpit/a.ts')
   expect(add?.cwd).toBe('/repo')
   expect(ran.some(r => r.cmd.startsWith('git commit') && r.cwd === '/repo')).toBe(true)

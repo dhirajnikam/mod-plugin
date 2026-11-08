@@ -21,19 +21,21 @@ export const SNAPSHOT_PLAN = [
 ]
 // plan:end
 
-// The commands undoing a turn runs, as data for the same reason; files go after the "--" of each. They run with
-// GIT_LITERAL_PATHSPECS=1, so a file named with * or : is that file and no pattern
+// The commands undoing a turn runs, as data for the same reason. No file is put on a command line (none too long for a
+// turn that touched thousands): `since` lists every change after the turn and the turn's own are picked from it, and
+// restore reads its files on standard input, NUL between them, with GIT_LITERAL_PATHSPECS=1 so a file named with * or
+// : is that file and no pattern. All run from the repository's top folder, where git's paths start
 // undo:start
 export const UNDO_COMMANDS = {
   "changed": ["git", "diff", "--name-status", "--no-renames", "-z", "{before}", "{after}"],
-  "since": ["git", "diff", "--name-only", "--no-renames", "-z", "{after}", "{now}", "--"],
-  "restore": ["git", "restore", "--source={before}", "--worktree", "--"]
+  "since": ["git", "diff", "--name-only", "--no-renames", "-z", "{after}", "{now}"],
+  "restore": ["git", "restore", "--source={before}", "--worktree", "--pathspec-from-file=-", "--pathspec-file-nul"]
 }
 // undo:end
 export const LITERAL = { GIT_LITERAL_PATHSPECS: '1' }
 
 type Step = { out?: string; run: string[]; when?: string; index?: boolean; author?: boolean; optional?: boolean }
-export type Run = (argv: string[], env: Record<string, string>) => Promise<{ exitCode: number; stdout: string; stderr?: string }>
+export type Run = (argv: string[], env: Record<string, string>, stdin?: string) => Promise<{ exitCode: number; stdout: string; stderr?: string }>
 export const AUTHOR = { GIT_AUTHOR_NAME: 'Cockpit', GIT_AUTHOR_EMAIL: 'cockpit@localhost', GIT_COMMITTER_NAME: 'Cockpit', GIT_COMMITTER_EMAIL: 'cockpit@localhost' }
 
 // Runs the plan for one ref; the snapshot's commit, or why it could not be made
@@ -66,4 +68,32 @@ export function undoPlan(nameStatus: string, stale: string): { restore: string[]
   }
   const refuse = stale.split('\0').filter(Boolean)
   return refuse.length ? { restore: [], remove: [], refuse } : { restore, remove, refuse: [] }
+}
+
+// Undoes a turn: what it changed is read from its snapshots, the tree as it is now is kept as `undoneRef` (so the undo
+// can be undone), and unless a file changed since the turn ended, what the turn created is deleted (and the folders that
+// leaves empty) before the rest is restored, so a file that became a folder, or a folder a file, comes back too.
+// remove deletes a file at a path from the top folder; rmdir removes a folder only if it is empty
+export async function undoTurn(before: string, after: string, undoneRef: string, run: Run, remove: (path: string) => Promise<unknown>, rmdir: (path: string) => Promise<unknown>) {
+  const fill = (argv: string[], v: Record<string, string>) => argv.map(a => a.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? ''))
+  const changed = await run(fill(UNDO_COMMANDS.changed, { before, after }), {})
+  if (changed.exitCode !== 0) return { done: false, restore: [], remove: [], refuse: [], error: 'its snapshots could not be read' }
+  const plan = undoPlan(changed.stdout, '')
+  const files = [...plan.restore, ...plan.remove]
+  if (!files.length) return { done: true, ...plan, error: '' }
+  const now = await snapshot(undoneRef, run)
+  if (!now.commit) return { done: false, ...plan, error: now.error }
+  const since = await run(fill(UNDO_COMMANDS.since, { after, now: now.commit }), {})
+  const mine = new Set(files)
+  const refuse = since.stdout.split('\0').filter(p => p && mine.has(p))
+  if (refuse.length) return { done: false, restore: [], remove: [], refuse, error: '' }
+  for (const p of plan.remove) await remove(p).catch(() => null)
+  // The folders a created file leaves empty, deepest first; one that still holds anything stays
+  const dirs = [...new Set(plan.remove.flatMap(p => p.split('/').slice(0, -1).map((_, i, all) => all.slice(0, i + 1).join('/'))))].sort((a, b) => b.length - a.length)
+  for (const d of dirs) await rmdir(d).catch(() => null)
+  if (plan.restore.length) {
+    const r = await run(fill(UNDO_COMMANDS.restore, { before }), LITERAL, plan.restore.join('\0'))
+    if (r.exitCode !== 0) return { done: false, ...plan, refuse: [], error: `git restore failed: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? ''}` }
+  }
+  return { done: true, ...plan, refuse: [], error: '' }
 }

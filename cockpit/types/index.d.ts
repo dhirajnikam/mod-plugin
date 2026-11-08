@@ -161,6 +161,8 @@ export type Pending = { type: string; branch: string; msg: string; files: string
 // One prompt's work: its steps, time, changes, decisions and commit
 export type Flow = {
   id: string
+  // The turn's snapshots under refs/cockpit/turns/<id>/: taken before and after it, so it can be undone
+  snap?: { before?: boolean; after?: boolean; undone?: boolean }
   task: string
   startedAt: number
   endedAt?: number

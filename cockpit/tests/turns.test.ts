@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { AUTHOR, SNAPSHOT_PLAN, snapshot, turnRef, undoPlan } from '../hooks/turns'
+import { AUTHOR, LITERAL, SNAPSHOT_PLAN, snapshot, turnRef, undoPlan, undoTurn } from '../hooks/turns'
 
 // A git that answers the plan's commands, recording each with the env it ran in
 function fakeGit(hasHead: boolean, fail = '') {
@@ -58,4 +58,125 @@ test("undoing a turn restores what it changed or deleted, deletes what it create
   expect(undoPlan(ns, 'src/a.ts\0new.txt\0')).toEqual({ restore: [], remove: [], refuse: ['src/a.ts', 'new.txt'] })
   // A turn that changed nothing undoes nothing
   expect(undoPlan('', '')).toEqual({ restore: [], remove: [], refuse: [] })
+})
+
+test('undoTurn deletes what the turn created and the folders that leaves empty before restoring the rest, and refuses on a later edit', async () => {
+  const steps: string[] = []
+  let since = ''
+  const run = async (argv: string[], env: Record<string, string>, stdin?: string) => {
+    const cmd = argv.join(' ')
+    steps.push(`${cmd}${stdin !== undefined ? ` <${stdin.split('\0').join('|')}>` : ''}${env.GIT_LITERAL_PATHSPECS ? ' [literal]' : ''}`)
+    if (cmd.startsWith('git diff --name-status')) return { exitCode: 0, stdout: 'M\0a.txt\0A\0src/deep/new.ts\0D\0gone.md\0' }
+    if (cmd.startsWith('git diff --name-only')) return { exitCode: 0, stdout: since }
+    if (cmd === 'git write-tree') return { exitCode: 0, stdout: 'tree\n' }
+    if (cmd.startsWith('git commit-tree')) return { exitCode: 0, stdout: 'now9\n' }
+    if (cmd.startsWith('git rev-parse --git-path')) return { exitCode: 0, stdout: '.git/cockpit-index\n' }
+    if (cmd.startsWith('git rev-parse --verify')) return { exitCode: 0, stdout: 'h\n' }
+    return { exitCode: 0, stdout: '' }
+  }
+  const remove = async (p: string) => steps.push(`rm ${p}`)
+  const rmdir = async (p: string) => steps.push(`rmdir ${p}`)
+  expect(await undoTurn('b1', 'a1', 'refs/cockpit/turns/f/undone', run, remove, rmdir)).toEqual({ done: true, restore: ['a.txt', 'gone.md'], remove: ['src/deep/new.ts'], refuse: [], error: '' })
+  const order = steps.filter(x => /^(rm|rmdir|git restore|git update-ref|git diff --name-only)/.test(x))
+  expect(order).toEqual([
+    // The tree as it is now kept first, so the undo can be undone
+    'git update-ref refs/cockpit/turns/f/undone now9',
+    'git diff --name-only --no-renames -z a1 now9',
+    'rm src/deep/new.ts',
+    'rmdir src/deep',
+    'rmdir src',
+    // Files on standard input, NUL between them, read literally
+    'git restore --source=b1 --worktree --pathspec-from-file=- --pathspec-file-nul <a.txt|gone.md> [literal]',
+  ])
+  expect(LITERAL).toEqual({ GIT_LITERAL_PATHSPECS: '1' })
+  // A later change to another file does not matter; one to the turn's own files refuses, deleting and restoring nothing
+  steps.length = 0
+  since = 'unrelated.txt\0'
+  expect((await undoTurn('b1', 'a1', 'u', run, remove, rmdir)).done).toBe(true)
+  steps.length = 0
+  since = 'unrelated.txt\0a.txt\0'
+  expect(await undoTurn('b1', 'a1', 'u', run, remove, rmdir)).toEqual({ done: false, restore: [], remove: [], refuse: ['a.txt'], error: '' })
+  expect(steps.some(x => /^(rm |git restore)/.test(x))).toBe(false)
+})
+
+// A session whose git answers the snapshot plan; repo false: not a repository at all
+function session(on: any, opt: { repo?: boolean; refs?: string } = {}) {
+  const ran: string[] = []
+  on('clock.now', async () => ({ value: 1_000_000 + ran.length }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async () => ({ value: undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('session.measure', async () => ({ changed: [] }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200000, tokens: 1000, percent: 1, breakdown: { categories: [], totalTokens: 1000 } }, rateLimits: [], cost: { usd: 0 } } }))
+  on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
+  on('tool.call', async () => ({ result: 'ok' }))
+  on('turn.complete', async () => ({ text: '' }))
+  on('command.run', async () => ({ text: '' }))
+  on('prompt.submit', async (_: unknown, e: any) => ({ text: e.text }))
+  on('process.run', async (_: unknown, e: any) => {
+    const cmd = (e.argv as string[]).join(' ')
+    ran.push(`${cmd}${e.init?.env?.GIT_INDEX_FILE ? ' [temp index]' : ''}${e.init?.cwd ? ` @${e.init.cwd}` : ''}`)
+    const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: exitCode ? 'fatal: not a git repository' : '', isStdoutTruncated: false, isStderrTruncated: false } })
+    if (opt.repo === false && cmd.startsWith('git')) return out('', 128)
+    if (cmd.startsWith('git status')) return out('## main\0')
+    if (cmd === 'git rev-parse --show-toplevel') return out('/repo\n')
+    if (cmd === 'git rev-parse --git-path cockpit-index') return out('.git/cockpit-index\n')
+    if (cmd.startsWith('git rev-parse --verify -q refs/cockpit')) return out('', 1)
+    if (cmd === 'git rev-parse --verify -q HEAD') return out('head1\n')
+    if (cmd === 'git write-tree') return out('tree1\n')
+    if (cmd.startsWith('git commit-tree')) return out(`snap${ran.length}\n`)
+    if (cmd.startsWith('git for-each-ref')) return out(opt.refs ?? '')
+    return out('')
+  })
+  return ran
+}
+// A prompt, and the turn the engine starts for it
+const prompt = async ($: any, text: string) => {
+  await $.prompt.submit({ text, command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  // Cockpit's hook runs first; the engine's own turn, which the kit does not stand in for, is not needed
+  await $.turn.start({ text, turnId: `t-${text}` } as never).catch(() => null)
+}
+const done = ($: any, turnId: string) => $.turn.complete({ answer: 'ok', reason: 'answer', turnId, isAborted: false, durationMs: 1000 } as never)
+
+test('every turn is snapshot before Claude starts and after it ends, on the temporary index from the top folder', async ($, on) => {
+  const ran = session(on)
+  await prompt($, 'fix the login')
+  const beforeAt = ran.findIndex(r => /update-ref refs\/cockpit\/turns\/f\d+\/before/.test(r))
+  expect(beforeAt).toBeGreaterThan(-1)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
+  await done($, 't1')
+  const refs = ran.filter(r => r.includes('update-ref refs/cockpit/turns/'))
+  const flow = refs[0]!.match(/turns\/(f\d+)\//)![1]
+  expect(refs.map(r => r.replace(/ snap\d+/, '').replace(/ @\/repo/, ''))).toEqual([`git update-ref refs/cockpit/turns/${flow}/before`, `git update-ref refs/cockpit/turns/${flow}/after`])
+  // Every index step on the temporary index, every step from the top folder
+  for (const r of ran.filter(x => /git (read-tree|add -A$|add -A @|write-tree)/.test(x))) expect(r).toContain('[temp index]')
+  for (const r of ran.filter(x => x.includes('refs/cockpit'))) expect(r).toContain('@/repo')
+  // A second prompt is a new turn with its own pair
+  await prompt($, 'now the signup')
+  await done($, 't2')
+  expect(new Set(ran.filter(r => r.includes('update-ref refs/cockpit/turns/')).map(r => r.match(/turns\/(f\d+)\//)![1])).size).toBe(2)
+})
+
+test('only the newest 50 turns keep their snapshots, and no branch is touched', async ($, on) => {
+  // 52 turns' refs, newest first: the two oldest go, both their refs, and no branch is touched
+  const refs = Array.from({ length: 52 }, (_, i) => `refs/cockpit/turns/f${100 - i}/after\nrefs/cockpit/turns/f${100 - i}/before`).join('\n') + '\n'
+  const ran = session(on, { refs })
+  await prompt($, 'fix it')
+  await done($, 't1')
+  expect(ran.filter(r => r.startsWith('git update-ref -d')).map(r => r.replace(/ @\/repo/, ''))).toEqual([
+    'git update-ref -d refs/cockpit/turns/f50/after',
+    'git update-ref -d refs/cockpit/turns/f50/before',
+    'git update-ref -d refs/cockpit/turns/f49/after',
+    'git update-ref -d refs/cockpit/turns/f49/before',
+  ])
+  expect(ran.some(r => /update-ref -d refs\/heads/.test(r))).toBe(false)
+})
+
+test('outside a git repository no snapshot is taken', async ($, on) => {
+  const ran = session(on, { repo: false })
+  await prompt($, 'fix it')
+  await done($, 't1')
+  expect(ran.some(r => r.includes('refs/cockpit') || r.includes('commit-tree'))).toBe(false)
 })

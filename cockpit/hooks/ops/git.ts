@@ -6,6 +6,8 @@ import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
 import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
+import { snapshot, turnRef } from '../turns'
+import type { Run } from '../turns'
 import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { claim, git, moveSaved, note, release, repoRoot, set, toast } from './core'
@@ -477,4 +479,39 @@ export async function applyAccount($: $) {
   const m = n.exitCode === 0 ? await git($, ['config', 'user.email', a.email]) : n
   if (m.exitCode !== 0) return toast($, `Could not set the identity: ${firstLine(m)}`)
   await toast($, `This repo now commits as ${a.name} <${a.email}>`)
+}
+
+// Turn snapshots (see turns.ts): the working tree before and after each turn, as Cockpit's own refs, so a turn can be
+// undone whatever made its changes. A turn carried on in the same flow keeps its first before; a failure is quiet,
+// since no turn may wait on or fail for it
+const TURNS_KEPT = 50
+async function turnRun($: $): Promise<Run> {
+  const cwd = (await repoRoot($)) || '.'
+  return (argv, env, stdin) => $.process.run(argv, { cwd, env, ...(stdin !== undefined ? { stdin } : {}) })
+}
+// One snapshot at a time: they share the one temporary index
+let snapping: Promise<unknown> = Promise.resolve()
+export async function snapTurn($: $, flowId: string | undefined, which: 'before' | 'after') {
+  const mine = snapping.then(() => snapTurnNow($, flowId, which))
+  snapping = mine.catch(() => null)
+  return mine
+}
+async function snapTurnNow($: $, flowId: string | undefined, which: 'before' | 'after') {
+  if (!flowId || !(await read($, S)).repo.isRepo) return
+  const run = await turnRun($)
+  const ref = turnRef(flowId, which)
+  if (which === 'before' && (await run(['git', 'rev-parse', '--verify', '-q', ref], {})).exitCode === 0) return
+  const r = await snapshot(ref, run)
+  if (!r.commit) return
+  await set($, st => ({ flows: st.flows.map(f => (f.id === flowId ? { ...f, snap: { ...f.snap, [which]: true } } : f)) }))
+  if (which === 'after') await pruneTurns(run)
+}
+// Only the newest turns' refs are kept; older ones go (Cockpit's own refs under refs/cockpit/turns, never a branch)
+export async function pruneTurns(run: Run, keep = TURNS_KEPT) {
+  const list = await run(['git', 'for-each-ref', '--sort=-creatordate', '--format=%(refname)', 'refs/cockpit/turns/'], {})
+  if (list.exitCode !== 0) return
+  const refs = list.stdout.split('\n').filter(r => r.startsWith('refs/cockpit/turns/'))
+  const flows = [...new Set(refs.map(r => r.split('/')[3]))]
+  const old = new Set(flows.slice(keep))
+  for (const r of refs) if (old.has(r.split('/')[3])) await run(['git', 'update-ref', '-d', r], {})
 }

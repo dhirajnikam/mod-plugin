@@ -35,27 +35,46 @@ def snapshot(repo, ref):
             v[st['out']] = r.stdout.strip() if r.returncode == 0 else ''
     return v['commit']
 
+def git_in(repo, argv, env, stdin):
+    r = subprocess.run(argv, cwd=repo, capture_output=True, text=True, input=stdin, env={**os.environ, **env})
+    if r.returncode:
+        sys.exit(f'check_turn_undo: {" ".join(argv)} failed: {r.stderr.strip()}')
+    return r
+
 def undo(repo, before, after):
-    # undoPlan of cockpit/hooks/turns.ts, then the restore and the deletes
+    # undoTurn of cockpit/hooks/turns.ts, in its order: read the changes, keep now, refuse if stale, delete what the turn
+    # created and the folders that leaves empty, then restore the rest
     fill = lambda argv, v: [re.sub(r'\{(\w+)\}', lambda m: v[m.group(1)], a) for a in argv]
     parts = [p for p in git(repo, fill(UNDO['changed'], {'before': before, 'after': after})).stdout.split('\0') if p]
     restore, remove = [], []
     for code, path in zip(parts[0::2], parts[1::2]):
         (remove if code.startswith('A') else restore).append(path)
+    if not restore and not remove:
+        return []
     now = snapshot(repo, 'refs/cockpit/turns/t/undone')
-    stale = [p for p in git(repo, fill(UNDO['since'], {'after': after, 'now': now}) + restore + remove, LITERAL).stdout.split('\0') if p]
+    mine = set(restore + remove)
+    stale = [p for p in git(repo, fill(UNDO['since'], {'after': after, 'now': now})).stdout.split('\0') if p and p in mine]
     if stale:
         return stale
-    if restore:
-        git(repo, fill(UNDO['restore'], {'before': before}) + restore, LITERAL)
     for p in remove:
         os.remove(os.path.join(repo, p))
+    dirs = sorted({'/'.join(p.split('/')[:i + 1]) for p in remove for i in range(len(p.split('/')) - 1)}, key=len, reverse=True)
+    for d in dirs:
+        try:
+            os.rmdir(os.path.join(repo, d))
+        except OSError:
+            pass
+    if restore:
+        git_in(repo, fill(UNDO['restore'], {'before': before}), LITERAL, '\0'.join(restore))
     return []
 
 def files(repo):
+    # Every file with its bytes, and every folder (so one left empty shows)
     out = {}
     for root, dirs, names in os.walk(repo):
         dirs[:] = [d for d in dirs if d != '.git']
+        for d in dirs:
+            out[os.path.relpath(os.path.join(root, d), repo) + '/'] = b''
         for n in names:
             p = os.path.join(root, n)
             out[os.path.relpath(p, repo)] = open(p, 'rb').read()
@@ -104,6 +123,17 @@ with tempfile.TemporaryDirectory() as repo:
     files_late = files(repo)
     check('a stale undo is refused, naming the file', undo(repo, before2, after2) == ['a.txt'])
     check('a refused undo changes nothing', files(repo) == files_late)
+
+with tempfile.TemporaryDirectory() as repo:
+    # A file that becomes a folder, and a folder that becomes a file
+    git(repo, ['git', 'init', '-q'])
+    write(repo, 'x', 'a file\n'); write(repo, 'd/inner.txt', 'in a folder\n')
+    files0 = files(repo)
+    before = snapshot(repo, 'refs/cockpit/turns/s/before')
+    os.remove(os.path.join(repo, 'x')); write(repo, 'x/now-a-folder.txt', 'folder\n')
+    os.remove(os.path.join(repo, 'd/inner.txt')); os.rmdir(os.path.join(repo, 'd')); write(repo, 'd', 'now a file\n')
+    after = snapshot(repo, 'refs/cockpit/turns/s/after')
+    check('a file that became a folder, and a folder a file, come back', undo(repo, before, after) == [] and files(repo) == files0)
 
 with tempfile.TemporaryDirectory() as repo:
     # A repository with no commit yet

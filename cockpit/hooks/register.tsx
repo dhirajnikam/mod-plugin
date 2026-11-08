@@ -41,6 +41,7 @@ import {
   openPane,
   pickFlow,
   refreshRepo,
+  snapTurn,
   refreshGit,
   registerExperts,
   set,
@@ -287,6 +288,8 @@ export const register: Register = on => {
         changesAtStart = atStartOf(await resumeFlow($, now))
       }
     }
+    // The working tree as it is before Claude's first tool call, to undo this turn by
+    await snapTurn($, (await read($, S)).flows.at(-1)?.id, 'before').catch(() => null)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -496,6 +499,8 @@ export const register: Register = on => {
       }
     })
     await refreshRepo($)
+    // And as the turn left it, before any auto-commit
+    await snapTurn($, flowId, 'after').catch(() => null)
     await measure($)
     await syncAgents($)
     const s = await read($, S)
