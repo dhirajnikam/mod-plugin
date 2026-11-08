@@ -7,10 +7,13 @@ import type { SessionSpend } from '../types'
 
 export type { SessionSpend }
 
-// One record per session, by its start: a session's later figures replace its earlier ones in place; the newest 200
+// One record per session, by its start: a session's later figures replace its earlier ones in place, its dollars and
+// turns never going down (clearing the finished flows, or a resume that counts afresh, loses none); the newest 200
 export function upsertSession(list: SessionSpend[], s: SessionSpend, keep = 200): SessionSpend[] {
+  const was = list.find(x => x.id === s.id)
   const rest = list.filter(x => x.id !== s.id)
-  return [...rest, s].sort((a, b) => a.startedAt - b.startedAt).slice(-keep)
+  const next = was ? { ...s, usd: Math.max(s.usd, was.usd), turns: Math.max(s.turns, was.turns), endedAt: Math.max(s.endedAt, was.endedAt) } : s
+  return [...rest, next].sort((a, b) => a.startedAt - b.startedAt).slice(-keep)
 }
 
 // A day as people read it: the date where you are

@@ -133,6 +133,7 @@ export function Overview($: $, v: V) {
   const sessions: SessionSpend[] = s.sessionAt ? upsertSession(s.pastSessions ?? [], { id: `s${s.sessionAt}`, startedAt: s.sessionAt, endedAt: v.now, usd: s.cost, tokens: s.ctx.used, turns: s.flows.length }) : (s.pastSessions ?? [])
   const days = spendByDay(sessions, v.now, 14)
   const peak = Math.max(0.01, ...days.map(d => d.usd))
+  const spent = days.reduce((a, d) => a + d.usd, 0)
   const totals = s.flows.reduce((a, f) => ({ ms: a.ms + ((f.endedAt ?? v.now) - f.startedAt), add: a.add + f.add, del: a.del + f.del, commits: a.commits + (f.commit ? 1 : 0) }), { ms: 0, add: 0, del: 0, commits: 0 })
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
@@ -446,11 +447,11 @@ export function Overview($: $, v: V) {
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
             <Fold k="past" label="Earlier sessions" n={s.past.length} />
-            {sessions.length > 0 && <Text color={t.faint} size="footnote">{`≈ $${days.reduce((a, d) => a + d.usd, 0).toFixed(2)} in 14 days`}</Text>}
+            {spent > 0 && <Text color={t.faint} size="footnote">{`≈ $${spent.toFixed(2)} in 14 days`}</Text>}
           </Box>
           {isOpen('past') && sessions.length > 0 && (
             <Box flexDirection="column">
-              <Text color={t.dim} size="footnote" wrap="wrap">{`Spend, last 14 days ≈ $${days.reduce((a, d) => a + d.usd, 0).toFixed(2)} (Claude Code's estimates)`}</Text>
+              <Text color={t.dim} size="footnote" wrap="wrap">{spent > 0 ? `Spend, last 14 days ≈ $${spent.toFixed(2)} (Claude Code's estimates)` : 'Nothing spent in the last 14 days'}</Text>
               {days.map(d => (
                 <Box key={`spend-${d.day}`} columnGap={sp(v, 1)}>
                   <Text color={t.faint} size="footnote" mono>{d.day.slice(5)}</Text>

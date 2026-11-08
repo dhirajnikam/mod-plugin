@@ -9,6 +9,9 @@ test("a session's spend is kept in place under its start, a new session beside i
   let list = upsertSession([], ss('s1', noon(2026, 11, 1), 0.1))
   list = upsertSession(list, { ...ss('s1', noon(2026, 11, 1), 0.4, 3) })
   expect(list).toEqual([ss('s1', noon(2026, 11, 1), 0.4, 3)])
+  // Dollars and turns never go down within a session (finished flows cleared, or a resume counting afresh)
+  list = upsertSession(list, { ...ss('s1', noon(2026, 11, 1), 0.1, 1) })
+  expect(list[0]).toMatchObject({ usd: 0.4, turns: 3 })
   list = upsertSession(list, ss('s2', noon(2026, 11, 2), 1.2))
   expect(list.map(x => x.id)).toEqual(['s1', 's2'])
   const many = Array.from({ length: 205 }, (_, i) => ss(`m${i}`, noon(2026, 1, 1) + i * 1000, 0.01))
@@ -87,32 +90,52 @@ test("each session's spend is saved in history at every turn's end, kept in plac
   let usd = 0.3
   const started = noon(2026, 11, 8, 14)
   const disk: Record<string, string> = {
-    '/repo/.cockpit/history.json': JSON.stringify({ version: 1, flows: [], agents: [], commits: [], sessions: [ss('s-earlier', noon(2026, 11, 6), 3.1, 12), ss('s-other', noon(2026, 11, 2), 0.9, 4), { id: 'junk', usd: 'lots' }] }),
+    '/repo/.cockpit/history.json': JSON.stringify({ version: 1, flows: [], agents: [], commits: [], sessions: [ss('s-earlier', noon(2026, 11, 6), 3.1, 12), ss('s-other', noon(2026, 11, 2), 0.9, 4), { id: 'junk', usd: 'lots' }, { ...ss('neg', noon(2026, 11, 5), 1), usd: -4 }, { ...ss('inf', noon(2026, 11, 5), 1), usd: 1e400 }, { ...ss('noturns', noon(2026, 11, 5), 1), turns: undefined }] }),
   }
   stand(on, { cost: () => usd, startedAt: started, disk })
   await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   await prompt($, 'fix the login')
   await turnDone($, 'fix the login')
+  // Meanwhile another session in this repository saves its own record to the same file
+  const other = JSON.parse(disk['/repo/.cockpit/history.json']!)
+  other.sessions.push(ss('s-parallel', noon(2026, 11, 8, 13), 0.4, 2))
+  disk['/repo/.cockpit/history.json'] = JSON.stringify(other)
   usd = 0.75
   await prompt($, 'and the tests')
   await turnDone($, 'and the tests')
   const saved = JSON.parse(disk['/repo/.cockpit/history.json']!).sessions as ReturnType<typeof ss>[]
-  // The earlier sessions kept (the unreadable one dropped), this one recorded once, with its latest figures
-  expect(saved.map(x => x.id)).toEqual(['s-other', 's-earlier', `s${started}`])
+  // The earlier sessions kept (the unreadable and negative ones dropped), the other session's record written meanwhile
+  // kept, and this one recorded once, with its latest figures
+  expect(saved.map(x => x.id)).toEqual(['s-other', 's-earlier', 's-parallel', `s${started}`])
   const mine = saved.find(x => x.id === `s${started}`)!
   expect(mine).toMatchObject({ startedAt: started, usd: 0.75, tokens: 34000, turns: 2 })
   expect(mine.endedAt).toBe(noon(2026, 11, 8, 16))
   // The Overview's Earlier sessions: spend by day and the costliest, labelled as estimates
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
-  expect(JSON.stringify(await ui.drawn())).toContain('≈ $4.75 in 14 days')
+  expect(JSON.stringify(await ui.drawn())).toContain('≈ $5.15 in 14 days')
   await ui.press({ key: 'fold-past' })
   const d = JSON.stringify(await ui.drawn())
-  expect(d).toContain("Spend, last 14 days ≈ $4.75 (Claude Code's estimates)")
+  expect(d).toContain("Spend, last 14 days ≈ $5.15 (Claude Code's estimates)")
   expect(d).toContain('Costliest sessions')
   expect(d).toContain('11-06 · 10:00 · 12 turns')
   expect(d).toContain('$3.10')
   expect(d).toContain('$0.75')
+  await ui.unmount()
+})
+
+test('sessions all older than 14 days show no spend heading, and say nothing was spent when opened', { timeoutMs: 20_000 }, async ($, on) => {
+  const disk: Record<string, string> = { '/repo/.cockpit/history.json': JSON.stringify({ version: 1, flows: [], agents: [], commits: [], sessions: [ss('s-old', noon(2026, 9, 1), 4)] }) }
+  stand(on, { cost: () => 0, startedAt: 0, disk })
+  await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never).catch(() => null)
+  await new Promise(res => (globalThis as any).setTimeout(res, 50))
+  await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
+  const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('in 14 days')
+  await ui.press({ key: 'fold-past' })
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('Nothing spent in the last 14 days')
+  expect(d).toContain('$4.00')
   await ui.unmount()
 })
