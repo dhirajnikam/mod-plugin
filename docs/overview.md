@@ -76,8 +76,13 @@ place and keeps your edits) and a box, "Ask Claude to change the guide…", whos
   only your prompts, Claude's replies, the activity line and each turn's closing line; tool cards are hidden (errors
   still show), the band shrinks to one line, and the pane opens only when you ask with `/cockpit`. Switch it with **◉ Focus**
   on the band or `/cockpit focus [on|off]`.
-- **Colours**: the **Auto** theme (the default) uses Claude Code's own theme colours, so it follows your light or dark
-  theme, with a gold accent; the status colours (green, red, amber) are the theme's too. Paper, White, Black, Solarized and Nord can be picked by hand (the theme menu in the
+- **Colours**: the **Auto** theme (the default) follows your terminal's background: Black on a dark one, White on a
+  light one. Cockpit reads it at the start and every 15 s: `COLORFGBG` where the terminal sets it (iTerm and others),
+  else your Mac's appearance right now, which a profile like Terminal's Basic follows. So when macOS switches to dark
+  in the evening, the pane and the band switch with the terminal, though Claude Code's own `auto` theme keeps the
+  colours it started with (set Claude Code's theme in `/config` to match, if its own text is hard to read). A Terminal
+  profile with a fixed background of its own is not read; pick Black or White there. Where neither can be read, Auto
+  uses Claude Code's own theme colours with a gold accent. Paper, White, Black, Solarized and Nord can be picked by hand (the theme menu in the
   pane's header, or its mark in a terminal, which steps to the next; or `/cockpit theme <name>`).
 - **Live figures**: timers, bars and the context window redraw every second while work runs. While the pane is shown,
   the repository and usage are read again every 15 seconds, so a commit made in a terminal shows up without a turn.

@@ -36,6 +36,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Everything else is behind one **More** fold per tab, folded by default; no button was removed.
 
 ### Fixed
+- The Auto theme follows the terminal: it draws Black on a dark terminal and White on a light one, read from
+  `COLORFGBG` or the Mac's appearance every 15 s, instead of Claude Code's theme colours, whose `auto` keeps the
+  appearance the session started with and so turned wrong when macOS switched light and dark on its schedule.
 - Cockpit's auto-commit never commits Claude Code's agent worktrees (`.claude/worktrees/` is ignored).
 - A spend figure Claude Code reports as not a number counts as 0, so it never drops a session from the history.
 - A saved setting is used only if it is of its kind, so a hand-edited store cannot, say, turn the judges off.
