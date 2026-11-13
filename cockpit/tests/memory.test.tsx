@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { openMore, ok, posix } from './more'
-import { parseImports, resolveImport, impactOf, features, memoryText, parseFeatures, factsOf, filesSig, memoryKey, isTestFeature } from '../hooks/memory/memory'
+import { parseImports, resolveImport, impactOf, features, memoryText, parseFeatures, factsOf, filesSig, memoryKey, isTestFeature, adoptFiles, featureSlugs, memoryMarkdown } from '../hooks/memory/memory'
 import { featureLayers, featureMapSvg, featureMapText } from '../hooks/memory/memory-map'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
@@ -28,6 +28,27 @@ test('imports resolve to repository files across languages, and a change reaches
   expect(factsOf('src/x.ts', '// Keeps the cart in sync with the server\nexport function addItem() {}\nexport const Cart = 1')).toEqual({ exports: ['addItem', 'Cart'], note: 'Keeps the cart in sync with the server' })
   expect(filesSig({ a: [], b: [] })).toBe(filesSig({ b: [], a: [] }))
   expect(memoryText(files, 120).endsWith('- …')).toBe(true)
+})
+
+test('the named features keep up with files that come and go, and page names stay inside the memory folder', async () => {
+  const files = { 'src/a.ts': [], 'src/new.ts': ['lib/c.ts'], 'lib/c.ts': [], 'lone/x.ts': ['lib/c.ts'], 'far/y.ts': [] }
+  const named = [
+    { name: 'Pages', what: 'The pages.', files: ['src/a.ts', 'src/gone.ts'] },
+    { name: 'Counter', what: 'Counts.', files: ['lib/c.ts'] },
+    { name: 'Empty', what: 'All gone.', files: ['old/z.ts'] },
+  ]
+  const kept = adoptFiles(named, files)
+  // Its folder wins over its imports; with no folder to go by, its imports decide; with neither it stays out
+  expect(kept.find(f => f.name === 'Pages')?.files).toEqual(['src/a.ts', 'src/new.ts'])
+  expect(kept.find(f => f.name === 'Counter')?.files).toEqual(['lib/c.ts', 'lone/x.ts'])
+  expect(kept.some(f => f.files.includes('far/y.ts'))).toBe(false)
+  // A feature whose files are all gone goes too
+  expect(kept.map(f => f.name)).toEqual(['Pages', 'Counter'])
+  // A model's name never leaves the folder, and two names that cut to the same page are numbered
+  expect(featureSlugs(['../../etc/passwd', 'A b', 'a-b', '!!!'])).toEqual(['etc-passwd', 'a-b', 'a-b-2', 'feature'])
+  const pages = memoryMarkdown(files, 'now', [{ name: 'A | b', what: 'x', files: ['src/a.ts'] }])
+  expect(Object.keys(pages).every(p => p === 'MEMORY.md' || /^memory\/[a-z0-9-]+\.md$/.test(p))).toBe(true)
+  expect(pages['MEMORY.md']).toContain('| [A \\| b](memory/a-b.md) | x | 1 |')
 })
 
 test('ESM .js specs, bare Dart and CSS imports, imports that leave the repository, and the longest memory key', async () => {
@@ -128,11 +149,13 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
     named++
     return { value: { isAnswered: true, text: '[{"name": "Pages", "what": "The site\'s pages.", "files": ["src/a.ts", "src/b.ts"]}, {"name": "Counter", "what": "Counts things.", "files": ["lib/c.ts"]}]', usage: { inputTokens: 1, outputTokens: 1 } } } as never
   })
+  // What git lists, changed below as a shell command would
+  let listed = 'src/a.ts\0src/b.ts\0lib/c.ts\0'
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
     if (cmd === 'git rev-parse --show-toplevel') return ok('/repo\n')
     if (cmd.startsWith('git status')) return ok('## master\0')
-    if (cmd.startsWith('git ls-files')) return ok('src/a.ts\0src/b.ts\0lib/c.ts\0')
+    if (cmd.startsWith('git ls-files')) return ok(listed)
     return ok('')
   })
   on('prompt.compose', async () => ({ sections: [{ id: 'intro', text: 'You are Claude.', scope: 'shared' }] }) as never)
@@ -146,8 +169,10 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   // The memory is written into the repository, kept out of git
   expect(disk['/repo/.cockpit/.gitignore']).toContain('*')
   expect(disk['/repo/.cockpit/memory.json']).toBeDefined()
-  expect(disk['/repo/.cockpit/MEMORY.md']).toContain('## Pages')
-  expect(disk['/repo/.cockpit/MEMORY.md']).toContain("The site's pages.")
+  // The index has a row per feature linking its page; the page has its files by folder
+  expect(disk['/repo/.cockpit/MEMORY.md']).toContain("| [Pages](memory/pages.md) | The site's pages. | 2 |")
+  expect(disk['/repo/.cockpit/memory/pages.md']).toContain('## `src`')
+  expect(disk['/repo/.cockpit/memory/pages.md']).toContain('- `a.ts`')
   expect(named).toBe(1)
   // Claude reads it in its system prompt, in a section of its own beside the engine's: both features, and which uses which
   const composed: any = await $.prompt.compose({ model: 'claude-x', promptModel: 'claude-x', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
@@ -183,8 +208,26 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   expect(JSON.parse(disk['/repo/.cockpit/memory.json'] ?? '{}').files['lib/c.ts'].uses).toEqual(['src/a.ts'])
   await ui.unmount()
 
+  // A new file joins the feature its folder is in by itself, its page says what it does, and no model names them again
+  disk['/repo/src/d.ts'] = "// Shows the price on each page\nimport { a } from './a'\nexport function price() {}\n"
+  await $.tool.call({ tool: 'Write', file_path: '/repo/src/d.ts', content: disk['/repo/src/d.ts'], tool_use_id: 'w1' } as never)
+  const mem = JSON.parse(disk['/repo/.cockpit/memory.json'] ?? '{}')
+  expect(mem.features.find((f: any) => f.name === 'Pages').files).toContain('src/d.ts')
+  expect(disk['/repo/.cockpit/memory/pages.md']).toContain('- `d.ts`: Shows the price on each page. Exports price. Imports `src/a.ts`.')
+  expect(named).toBe(1)
+
   // The turn ends: history is written, and the earlier session's flow shows in the Overview
+  // A shell command in the same turn makes a file in a new folder and deletes another: git status would name only the
+  // folder, yet at the turn's end the new file is mapped (into the feature it imports, its folder having none) and the
+  // gone one leaves its feature
+  disk['/repo/src/deep/e.ts'] = "import { a } from '../a'\nexport const e = 1\n"
+  delete disk['/repo/src/b.ts']
+  listed = 'src/a.ts\0src/d.ts\0lib/c.ts\0src/deep/e.ts\0'
   await $.turn.complete({ answer: 'done', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
+  const synced = JSON.parse(disk['/repo/.cockpit/memory.json'] ?? '{}')
+  expect(Object.keys(synced.files).sort()).toEqual(['lib/c.ts', 'src/a.ts', 'src/d.ts', 'src/deep/e.ts'])
+  expect(synced.features.find((f: any) => f.name === 'Pages').files.sort()).toEqual(['src/a.ts', 'src/d.ts', 'src/deep/e.ts'])
+  expect(named).toBe(1)
   const hist = JSON.parse(disk['/repo/.cockpit/history.json'] ?? '{}')
   expect(hist.flows.map((f: any) => f.task)).toEqual(['an older task', 'change c'])
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)

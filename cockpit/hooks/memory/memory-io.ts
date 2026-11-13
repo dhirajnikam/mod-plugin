@@ -1,6 +1,6 @@
 import type { $ } from '../core/core'
 import { repoRoot, cockpitDir, SKIP } from '../core/repos'
-import { isCode, parseImports, resolveImport, factsOf, filesSig, featurePrompt, parseFeatures, memoryKey, importers, memoryMarkdown } from './memory'
+import { isCode, parseImports, resolveImport, factsOf, filesSig, featurePrompt, parseFeatures, memoryKey, importers, memoryMarkdown, adoptFiles } from './memory'
 import { set, toast, look } from '../core/core'
 
 // Every path git knows under a folder (the session's when none is given): tracked and untracked, ignored left out
@@ -33,12 +33,14 @@ export async function loadProject($: $) {
 }
 
 // The codebase memory, built from every source file's imports at session start (in the background) and kept in
-// .cockpit/memory.json and .cockpit/MEMORY.md
+// .cockpit/memory.json, the index .cockpit/MEMORY.md and a page per feature in .cockpit/memory/
 // ponytail: 1500 files and 300 KB a file; a bigger repository is mapped in part, by git's order
 export async function buildMemory($: $, rename = false) {
   const root = await repoRoot($)
   const r = await lsFiles($, root)
   if (!root || r.exitCode !== 0) return
+  // Each build writes every page once, whatever an earlier load of the mod wrote
+  written.clear()
   const all = r.stdout.split('\0').filter(Boolean)
   const has = new Set(all)
   const src = all.filter(isCode).slice(0, 1500)
@@ -53,7 +55,8 @@ export async function buildMemory($: $, rename = false) {
       }),
     )
   }
-  // The features named last time stand while the same files are there; a new or removed file names them again
+  // The features named last time stand, kept up with the files that came or went; a model names them again only on
+  // Map again, the first time, or when over a quarter of the files are new to them
   const sig = filesSig(files)
   let saved: { sig?: string; features?: { name: string; what: string; files: string[] }[] } = {}
   try {
@@ -61,10 +64,13 @@ export async function buildMemory($: $, rename = false) {
   } catch {
     // A memory file that does not parse is written again below
   }
-  const kept = !rename && saved.sig === sig && saved.features?.length ? saved.features : undefined
-  await set($, { memory: { at: await $.clock.now(), files, ...(kept ? { features: kept, sig } : {}) } })
+  const known = new Set((saved.features ?? []).flatMap(f => f.files))
+  const fresh = Object.keys(files).filter(f => !known.has(f)).length
+  // ponytail: a quarter new is a guess at "the codebase changed shape"; Map again names them afresh any time
+  const kept = !rename && saved.features?.length && (saved.sig === sig || fresh <= Object.keys(files).length / 4) ? adoptFiles(saved.features, files) : undefined
+  await set($, { memory: { at: await $.clock.now(), files, facts, ...(kept?.length ? { features: kept, sig } : {}) } })
   await saveMemory($)
-  if (!kept && Object.keys(files).length) await nameFeatures($, files, facts, sig)
+  if (!kept?.length && Object.keys(files).length) await nameFeatures($, files, facts, sig)
 }
 
 // A model names the product's features from each file's exports, first comment and imports, in the background
@@ -89,22 +95,61 @@ export async function updateMemory($: $, path: string) {
   const text = await $.fs.read(`${root}/${rel}`).catch(() => null)
   const known = new Set(Object.keys(s.memory.files))
   const imports = text === null ? null : [...new Set(parseImports(rel, text).map(x => resolveImport(rel, x, f => known.has(f) || f === rel)).filter((x): x is string => !!x))]
+  const fact = text === null ? null : factsOf(rel, text.slice(0, 20_000))
   const at = await $.clock.now()
   await set($, st => {
     const files = { ...st.memory.files }
-    if (imports === null) delete files[rel]
-    else files[rel] = imports
-    return { memory: { ...st.memory, at, files } }
+    const facts = { ...st.memory.facts }
+    const came = imports !== null && !(rel in files)
+    if (imports === null) {
+      delete files[rel]
+      delete facts[rel]
+    } else {
+      files[rel] = imports
+      if (fact) facts[rel] = fact
+    }
+    // The named features take in a new file and let a gone one go now, and stand for the new file set, so neither this
+    // session nor the next has a model name them again for it; a file not placed before may be now its imports changed
+    const moved = came || imports === null
+    const features = st.memory.features ? adoptFiles(st.memory.features, files) : st.memory.features
+    return { memory: { ...st.memory, at, files, facts, features, ...(moved && st.memory.sig ? { sig: filesSig(files) } : {}) } }
   })
   await saveMemory($)
 }
 
-// The memory as it stands, written to both files; one that cannot be written goes unsaved, silently
+// The source files that came or went since the memory was read, whoever made them: a shell command, a script, a git
+// checkout. git status names a new folder, not its files, so the file list is git's own, as the session start reads it
+export async function syncMemory($: $) {
+  const root = await repoRoot($)
+  const s = await look($)
+  if (!root || !s.memory.at) return
+  const r = await lsFiles($, root)
+  if (r.exitCode !== 0) return
+  const now = new Set(r.stdout.split('\0').filter(Boolean).filter(isCode).slice(0, 1500))
+  const came = [...now].filter(f => !(f in s.memory.files))
+  const gone = Object.keys(s.memory.files).filter(f => !now.has(f))
+  for (const f of [...came, ...gone]) await updateMemory($, `${root}/${f}`)
+}
+
+// The pages as last written, so an edit that changes one file's page writes that page only
+const written = new Map<string, string>()
+
+// The memory as it stands: memory.json, the index and a page per feature; a page whose feature is gone is left saying
+// so (the engine cannot delete a file). One that cannot be written goes unsaved, silently
 async function saveMemory($: $) {
   const dir = await cockpitDir($)
   if (!dir) return
   const m = (await look($)).memory
   const by = importers(m.files)
-  await $.fs.write(`${dir}/memory.json`, JSON.stringify({ version: 2, builtAt: m.at, sig: m.sig ?? '', features: m.features ?? [], files: Object.fromEntries(Object.entries(m.files).map(([f, uses]) => [f, { uses, usedBy: by[f] ?? [] }])) }, null, 1)).catch(() => null)
-  await $.fs.write(`${dir}/MEMORY.md`, memoryMarkdown(m.files, new Date(m.at).toISOString().slice(0, 16).replace('T', ' '), m.features)).catch(() => null)
+  await $.fs.write(`${dir}/memory.json`, JSON.stringify({ version: 3, builtAt: m.at, sig: m.sig ?? '', features: m.features ?? [], files: Object.fromEntries(Object.entries(m.files).map(([f, uses]) => [f, { uses, usedBy: by[f] ?? [], ...m.facts?.[f] }])) }, null, 1)).catch(() => null)
+  const pages = memoryMarkdown(m.files, new Date(m.at).toISOString().slice(0, 16).replace('T', ' '), m.features, m.facts)
+  for (const en of await $.fs.list(`${dir}/memory`).catch(() => [])) {
+    const p = `memory/${en.name}`
+    if (en.kind === 'file' && en.name.endsWith('.md') && !(p in pages)) pages[p] = '# Gone\n\nThis feature is no longer in the codebase memory: see [the index](../MEMORY.md).\n'
+  }
+  for (const [p, text] of Object.entries(pages)) {
+    const path = `${dir}/${p}`
+    if (written.get(path) === text) continue
+    await $.fs.write(path, text).then(() => written.set(path, text)).catch(() => null)
+  }
 }

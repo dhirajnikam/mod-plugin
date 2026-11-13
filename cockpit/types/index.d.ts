@@ -254,6 +254,8 @@ export type Ph = {
     sig?: string
     // A model is naming them now
     naming?: boolean
+    // What each file shows of itself: the names it exports and its first comment, for the feature pages
+    facts?: Record<string, { exports: string[]; note: string }>
   }
   ops: FileOp[]
   // Every path of the project, relative to the root: the Activity tree's skeleton
