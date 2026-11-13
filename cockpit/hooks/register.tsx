@@ -20,8 +20,8 @@ import { snapTurn } from './git/turns-io'
 import { nextStep } from './judges/autopilot'
 import { personSpoke, judgeQuestions, personAnswered } from './judges/decisions'
 import { loadGuide } from './memory/explain'
-import { memoryText } from './memory/memory'
-import { buildMemory, loadProject } from './memory/memory-io'
+import { memoryText, recall, memoryKey } from './memory/memory'
+import { buildMemory, loadProject, syncMemory } from './memory/memory-io'
 import { fullPane } from './pane/full-pane'
 
 // The hooks module: every hook Cockpit registers, in the order the engine runs them for one event. Each hook keeps
@@ -141,7 +141,12 @@ export const register: Register = on => {
     queued.clear()
     const was = await look($)
     const flow = await beginTurn(openFlow($, e.text, now))
-    const r = await next(e)
+    // Files changed since the last turn (an editor, a checkout) join the memory, in the background so the prompt is not held
+    void syncMemory($).catch(() => null)
+    // What the prompt brings to mind goes beside it, so Claude checks those features first
+    const m = was.memory
+    const cue = Object.keys(m.files).length ? recall(m.files, m.features ?? [], m.facts ?? {}, e.text, was.ops.slice(-30).map(o => memoryKey(m.files, o.path)).filter(Boolean)) : ''
+    const r = await next(cue ? { ...e, context: [...(e.context ?? []), cue] } : e)
     // Refused beneath (a settings hook's block, the engine's limit): no turn runs, so no flow either
     if ('drop' in r && r.drop) {
       changesAtStart = null

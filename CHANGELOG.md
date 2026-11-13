@@ -5,6 +5,19 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-13
+
+### Added
+- **Recall per prompt**: each prompt you send carries the features of the codebase memory its words name, or that were
+  worked on lately, with their pages and files, so Claude checks them first. Files changed between turns join the
+  memory when you next send a prompt.
+
+### Changed
+- **Every feature on a line of its own**: Claude's prompt lists every feature of the codebase memory with its page,
+  where a long map cut all but a few (3 of 22 in this repository); the detail is on the pages.
+
+## [0.8.1] - 2026-11-13
+
 ### Changed
 - **Codebase memory in pages**: `.cockpit/MEMORY.md` is now an index (the codebase in short, one row per feature, the
   folders), and each feature has its own page in `.cockpit/memory/`: its files by folder, each with what it does, what
