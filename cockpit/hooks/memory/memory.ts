@@ -182,7 +182,7 @@ export function parseFeatures(text: string, files: Files): Named[] {
 export function memoryText(files: Files, max = 2600, named: Named[] = []) {
   const fs = features(files, named)
   const lines = [
-    `Cockpit's map of this repository (features, and links from imports): ${Object.keys(files).length} source files in ${fs.length} features. Before changing a file, check what imports it; a change reaches those files too.`,
+    `Cockpit's map of this repository (features, and links from imports): ${Object.keys(files).length} source files in ${fs.length} features. Before changing a file, check what imports it; a change reaches those files too. To find the file to change without reading the code, open the feature's page in .cockpit/memory/ (index: .cockpit/MEMORY.md): each file there says what it does, what it exports and imports, and what imports it.`,
     ...fs.map(f => `- ${f.name}${f.what ? `: ${f.what}` : ''} (${f.files.map(x => x.split('/').pop()).slice(0, 8).join(', ')}${f.files.length > 8 ? ', …' : ''})${f.uses.length ? `; uses ${f.uses.join(', ')}` : ''}${f.usedBy.length ? `; used by ${f.usedBy.join(', ')}` : ''}`),
   ]
   let out = ''
@@ -193,23 +193,102 @@ export function memoryText(files: Files, max = 2600, named: Named[] = []) {
   return out.trimEnd()
 }
 
-// The memory as a page for people: .cockpit/MEMORY.md
-export function memoryMarkdown(files: Files, when: string, named: Named[] = []) {
+// The named features kept up with the files as they are now, so a file that comes or goes needs no model to name them
+// again: a gone file leaves its feature, and a new one joins the feature most of its folder is in, else the one most
+// of the files it imports or is imported by are in. A file with neither stays out (its folder stands in for it)
+export function adoptFiles(named: Named[], files: Files): Named[] {
+  const out = named.map(n => ({ ...n, files: n.files.filter(f => f in files) }))
+  const owner = new Map<string, Named>()
+  for (const n of out) for (const f of n.files) if (!owner.has(f)) owner.set(f, n)
+  const by = importers(files)
+  const best = (near: string[]) => {
+    const votes = new Map<Named, number>()
+    for (const g of near) {
+      const n = owner.get(g)
+      if (n) votes.set(n, (votes.get(n) ?? 0) + 1)
+    }
+    return [...votes].sort((a, b) => b[1] - a[1])[0]?.[0]
+  }
+  for (const f of Object.keys(files).sort()) {
+    if (owner.has(f)) continue
+    const n = best([...owner.keys()].filter(g => dirOf(g) === dirOf(f))) ?? best([...(files[f] ?? []), ...(by[f] ?? [])])
+    if (!n) continue
+    n.files.push(f)
+    owner.set(f, n)
+  }
+  return out.filter(n => n.files.length)
+}
+
+// Each feature's page name under .cockpit/memory/: the name a model gave it cut to [a-z0-9-], so no name can leave the
+// folder, and numbered when two names cut to the same one
+export function featureSlugs(names: string[]) {
+  const seen = new Set<string>()
+  return names.map(n => {
+    const base = n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'feature'
+    let slug = base
+    for (let i = 2; seen.has(slug); i++) slug = `${base}-${i}`
+    seen.add(slug)
+    return slug
+  })
+}
+
+// Markdown table cells: a pipe or a line break would end the cell early
+const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ')
+
+type Facts = Record<string, { exports: string[]; note: string }>
+
+// The memory as pages, keyed by their path under .cockpit/: the index (MEMORY.md: the codebase in short, one row per
+// feature, the folders) and a page per feature (memory/<slug>.md: its files by folder, each with what it does, what it
+// exports and imports, and what imports it), so Claude opens one page to find the file to change
+export function memoryMarkdown(files: Files, when: string, named: Named[] = [], facts: Facts = {}): Record<string, string> {
   const by = importers(files)
   const fs = features(files, named)
-  const out = [`# Codebase memory`, ``, `Written by Cockpit, ${when}: ${Object.keys(files).length} source files in ${fs.length} features${named.length ? ' (named by a model from what each file exports)' : ' (by folder)'}, and how they connect through their imports. Rebuilt at each session start, updated after each edit.`, ``]
-  for (const f of fs) {
-    out.push(`## ${f.name}`, ``)
+  const slugs = featureSlugs(fs.map(f => f.name))
+  const folders: Record<string, number> = {}
+  for (const f of Object.keys(files)) folders[dirOf(f) || '(root)'] = (folders[dirOf(f) || '(root)'] ?? 0) + 1
+  const index = [
+    `# Codebase memory`,
+    ``,
+    `Written by Cockpit, ${when}: ${Object.keys(files).length} source files in ${fs.length} features${named.length ? ' (named by a model from what each file exports)' : ' (by folder)'}, and how they connect through their imports. Rebuilt at each session start, updated after each edit. Each feature's page lists its files: what each does, exports and imports, and what imports it.`,
+    ``,
+    `## Features`,
+    ``,
+    `| Feature | What it does | Files | Uses | Used by |`,
+    `|---|---|---|---|---|`,
+    ...fs.map((f, i) => `| [${cell(f.name)}](memory/${slugs[i]}.md) | ${cell(f.what)} | ${f.files.length} | ${cell(f.uses.join(', '))} | ${cell(f.usedBy.join(', '))} |`),
+    ``,
+    `## Folders`,
+    ``,
+    ...Object.entries(folders)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([d, n]) => `- \`${d}\`: ${n} ${n === 1 ? 'file' : 'files'}`),
+    ``,
+  ]
+  const pages: Record<string, string> = { 'MEMORY.md': index.join('\n') }
+  fs.forEach((f, i) => {
+    const out = [`# ${f.name}`, ``, `[← Codebase memory](../MEMORY.md)`, ``]
     if (f.what) out.push(f.what, ``)
     if (f.uses.length) out.push(`Uses: ${f.uses.join(', ')}  `)
     if (f.usedBy.length) out.push(`Used by: ${f.usedBy.join(', ')}  `)
     out.push(``)
-    for (const file of f.files.sort()) {
-      const uses = (files[file] ?? []).map(x => `\`${x}\``).join(', ')
-      const usedBy = (by[file] ?? []).map(x => `\`${x}\``).join(', ')
-      out.push(`- \`${file}\`${uses ? `, imports ${uses}` : ''}${usedBy ? `; imported by ${usedBy}` : ''}`)
+    // Its files under a heading for each folder they sit in
+    const byDir: Record<string, string[]> = {}
+    for (const file of f.files) (byDir[dirOf(file) || '(root)'] ??= []).push(file)
+    for (const d of Object.keys(byDir).sort()) {
+      out.push(`## \`${d}\``, ``)
+      for (const file of byDir[d]!.sort()) {
+        const fact = facts[file]
+        const parts = [
+          fact?.note ? fact.note.replace(/\.?$/, '.') : '',
+          fact?.exports.length ? `Exports ${fact.exports.join(', ')}.` : '',
+          files[file]?.length ? `Imports ${files[file]!.map(x => `\`${x}\``).join(', ')}.` : '',
+          by[file]?.length ? `Imported by ${by[file]!.map(x => `\`${x}\``).join(', ')}.` : '',
+        ].filter(Boolean)
+        out.push(`- \`${file.split('/').pop()}\`${parts.length ? `: ${parts.join(' ')}` : ''}`)
+      }
+      out.push(``)
     }
-    out.push(``)
-  }
-  return out.join('\n')
+    pages[`memory/${slugs[i]}.md`] = out.join('\n')
+  })
+  return pages
 }
