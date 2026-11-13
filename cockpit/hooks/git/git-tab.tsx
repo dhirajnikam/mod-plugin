@@ -1,0 +1,463 @@
+
+import type { GitForm, Ph, PrStatus } from '../../types'
+import type { $ } from '../core/core'
+import { pickRepo, gitInit, refreshGit, planCommit, pullNow, pushNow, commit, suggestCommit, showCommit, setGit, confirmPending, skipPending } from './git'
+import { inBackground, set, setUi } from '../core/core'
+import { COMMIT_MODES, AUTO_WHENS, TYPES, BRANCH_PRESETS, branchName, MSG_PRESETS, commitMsg, GIT_OPTS } from './git-form'
+import { graphRows, graphSvg, graphText, graphWidth } from './graph'
+import { loadAccounts, useAccount, applyAccount, removeAccount, ghLoginToken, ghLoginWeb } from './accounts'
+import { fixChecks } from './pr'
+import type { V, UI } from '../ui/shared'
+import { sp, Seg, kindColor, Rule, Check, grow, More } from '../ui/shared'
+import { plural } from '../core/text'
+
+// Commit and Skip for the commit that waits for a yes, wherever it is asked: a tab, or the band above the prompt
+export function CommitSkip($: $, ui: Pick<UI, 'Box' | 'Button'>, id: string, gap: number | 'sm' | 'md' | 'lg') {
+  const { Box, Button } = ui
+  return (
+    <Box gap={gap}>
+      <Button key={`${id}-commit`} label="Commit" variant="primary" onPress={() => inBackground($, 'commit', 'Committing', () => confirmPending($))} />
+      <Button key={`${id}-skip`} label="Skip" onPress={() => skipPending($)} />
+    </Box>
+  )
+}
+
+// A text field of the commit form: typing saves it, and so does Enter. A branch pattern typed by hand turns the pattern on
+function GitField($: $, v: V, field: 'branch' | 'branchPattern' | 'msgPattern' | 'ticket' | 'user' | 'body', id: string, label: string, more: { placeholder?: string; rows?: number } = {}) {
+  const save = (val: string) => setGit($, field === 'branchPattern' ? { branchPattern: val, branchAuto: true } : { [field]: val })
+  return <v.ui.Input key={`git-${id}`} label={label} value={v.s.git[field]} onInput={val => save(val)} onSubmit={val => save(val)} {...more} />
+}
+
+// With several repos under the session folder, a picker above the tab
+export function Git($: $, v: V) {
+  const { Box, Select } = v.ui
+  const { repos, repoDir } = v.s
+  if (repos.length < 2) return GitBody($, v)
+  const label = (r: Ph['repos'][number]) => `${r.name}${r.branch ? `  ⎇ ${r.branch}` : ''}${r.changed ? `  ·  ${r.changed} changed` : ''}`
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Select key="git-repo" label="Repo" value={repoDir} options={repos.map(r => ({ value: r.dir, label: label(r) }))} onSelect={val => pickRepo($, val)} />
+      {GitBody($, v)}
+    </Box>
+  )
+}
+
+function GitBody($: $, v: V) {
+  const { Box, Button, Text } = v.ui
+  const { s, t } = v
+  const g = s.git
+  if (!s.repo.isRepo) {
+    return (
+      <Box flexDirection="column" gap={sp(v, 1)}>
+        <Text color={t.dim}>This folder is not a git repository.</Text>
+        <Box gap={sp(v, 1)}>
+          <Button key="git-init" label="git init" variant="primary" onPress={() => gitInit($)} />
+          <Button key="git-refresh" label="Refresh" onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
+        </Box>
+      </Box>
+    )
+  }
+  if (!g.setupDone) return Setup($, v)
+  const plan = planCommit(s)
+  const staged = plan.files.length
+  const allOn = staged === s.repo.changed.length
+  const acct = s.accounts.find(a => a.id === s.accountId)
+  const mode = COMMIT_MODES.find(m => m[0] === g.commitMode)?.[1] ?? 'Ask me'
+  const when = g.commitMode === 'manual' ? '' : `  ·  ${AUTO_WHENS.find(a => a.v === g.autoWhen)?.label ?? AUTO_WHENS[0]?.label}`
+  const newBranch = plan.branch !== s.repo.current
+  const pr = s.repo.pr
+  const state = [
+    `On ${s.repo.current || '(no branch)'}`,
+    s.repo.changed.length ? `${plural(s.repo.changed.length, 'file')} changed` : 'working tree clean',
+    s.repo.ahead > 0 ? `${s.repo.ahead} to push` : '',
+    s.repo.behind > 0 ? `${s.repo.behind} to pull` : '',
+    pr ? prWords(pr).line : '',
+  ].filter(Boolean).join(' · ')
+  const moreOpen = !!s.ui.collapsed['git-more']
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Text color={t.text} bold wrap="truncate-end">{state}</Text>
+      {(s.repo.behind > 0 || s.repo.ahead > 0) && (
+        <Box gap={sp(v, 1)} flexWrap="wrap">
+          {s.repo.behind > 0 && <Button key="git-pull" label="↓ Pull" plain onPress={() => inBackground($, 'pull', 'Pulling', () => pullNow($))} />}
+          {s.repo.ahead > 0 && <Button key="git-push" label="↑ Push" plain onPress={() => inBackground($, 'push', 'Pushing', () => pushNow($))} />}
+        </Box>
+      )}
+      {s.repo.pr && PrStatusRow($, v, s.repo.pr)}
+      {s.pending && (
+        <Box flexDirection="column" borderStyle="round" borderColor={t.busy} paddingX={1}>
+          <Text color={t.busy} bold>Commit this?</Text>
+          <Text color={t.hi} mono wrap="truncate-end">{s.pending.msg}</Text>
+          <Text color={t.dim} size="footnote" wrap="truncate-end">{`→ ${s.pending.branch} · ${s.pending.files.length} files`}</Text>
+          {CommitSkip($, v.ui, 'pend', sp(v, 1))}
+        </Box>
+      )}
+      {s.repo.changed.length === 0 && (
+        <Text>
+          <Text color={t.ok}>{'✓ '}</Text>
+          <Text color={t.text}>Working tree clean</Text>
+          <Text color={t.dim}>{s.repo.ahead ? `  ·  ${s.repo.ahead} to push` : s.repo.unpushed.length || s.repo.log.length ? '  ·  nothing to commit or push' : '  ·  nothing to commit'}</Text>
+        </Text>
+      )}
+      {s.repo.changed.length > 0 && (
+      <Box flexDirection="column" borderStyle="round" borderColor={t.lo} paddingX={1}>
+        <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+          <Text color={t.text} weight="semibold">Next commit</Text>
+          <Text>
+            <Text color={t.deep} backgroundColor={t.wash || undefined} bold>{` ${plan.type} `}</Text>
+            <Text color={t.dim} size="footnote">{g.commitMode === 'manual' ? '  your pick' : s.suggest?.busy ? '  writing from the diff…' : '  from the changes'}</Text>
+          </Text>
+        </Box>
+        {g.commitMode === 'manual' && <Seg v={v} id="ctype" value={g.type} items={TYPES.map(x => [x, x] as [string, string])} onPick={k => setGit($, { type: k })} />}
+        <Text color={plan.msg ? t.hi : t.dim} mono wrap="truncate-end">{plan.msg || 'Send a prompt, or change a file'}</Text>
+        <Text size="footnote" wrap="truncate-end">
+          <Text color={newBranch ? t.ok : t.dim}>{newBranch ? `⎇ new ${plan.branch}` : `⎇ ${plan.branch}`}</Text>
+          <Text color={t.dim}>{`  ·  ${staged} of ${s.repo.changed.length} files${g.push ? '  ·  push' : ''}${g.pr ? `  ·  ${g.draft ? 'draft PR' : 'PR'} → ${g.base || 'no base picked'}` : ''}`}</Text>
+        </Text>
+        <Box justifyContent="flex-end">
+          {staged > 0 ? <Button key="git-commit" label={g.push ? 'Commit & push' : 'Commit'} variant="primary" onPress={() => inBackground($, 'commit', g.push ? 'Committing and pushing' : 'Committing', () => commit($, false))} /> : <Text color={t.dim} size="footnote">Tick a file to commit it</Text>}
+        </Box>
+      </Box>
+      )}
+      {s.repo.changed.length > 0 && (
+      <Box flexDirection="column">
+        <Box justifyContent="space-between" flexWrap="wrap">
+          <Text color={t.text} weight="semibold">{`Changes (${s.repo.changed.length})`}</Text>
+          {s.repo.changed.length > 1 && (
+            <Button key="stage-all" plain onPress={() => set($, { staged: allOn ? Object.fromEntries(s.repo.changed.map(c => [c.path, false])) : {} }).then(() => suggestCommit($))}>
+              <Text color={t.dim}>{allOn ? 'Untick all' : 'Tick all'}</Text>
+            </Button>
+          )}
+        </Box>
+        {s.repo.changed.map(c => (
+          <Box key={`ch-${c.path}`} columnGap={sp(v, 1)}>
+            <Text color={s.staged[c.path] !== false ? t.accent : t.faint}>{s.staged[c.path] !== false ? '▣' : '□'}</Text>
+            <Box flexGrow={1} flexShrink={1}>
+              <Button key={`stage-${c.path}`} plain onPress={() => set($, st => ({ staged: { ...st.staged, [c.path]: st.staged[c.path] === false } })).then(() => suggestCommit($))}>
+                {/* Cut from its start, so the file's name stays in view */}
+                <Text color={s.staged[c.path] !== false ? t.text : t.dim} wrap="truncate-start">{c.path}</Text>
+              </Button>
+            </Box>
+            <Box flexShrink={0}>
+              <Text color={kindColor(t, c.meta)} size="footnote">{c.meta}</Text>
+            </Box>
+          </Box>
+        ))}
+      </Box>
+      )}
+      <More v={v} id="fold-more-git" open={moreOpen} onPress={() => setUi($, ui => ({ collapsed: { ...ui.collapsed, 'git-more': !ui.collapsed['git-more'] } }))} />
+      {moreOpen && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Box gap={sp(v, 1)} flexWrap="wrap">
+            <Button key="git-refresh" label="↻ Refresh" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
+            <Button key="git-setup" label="⚙ Setup" plain onPress={() => Promise.all([setGit($, { setupDone: false }), setUi($, { gitStep: 0 })])} />
+          </Box>
+          <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
+      {s.repo.log.length > 0 && History($, v)}
+      <Box justifyContent="space-between">
+        <Button key="git-more" plain onPress={() => setUi($, ui => ({ more: !ui.more }))}>
+          <Text color={t.dim}>Account, patterns & options</Text>
+        </Button>
+        <Text color={t.dim}>{s.ui.more ? '⌄' : '›'}</Text>
+      </Box>
+      {s.ui.more && Options($, v)}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// History: every branch, remote and tag as a graph, newest first. Each commit is a dot on its lane, lines carry the
+// lanes down, a merge opens a lane and a branch joins one; refs ride on the commit as chips (HEAD's branch filled,
+// local branches tinted, remotes and tags plain), unpushed commits are hollow, and a press opens the commit
+const NODE_GLYPH = { head: '◉', unpushed: '○', merge: '◆', plain: '●' } as const
+function History($: $, v: V) {
+  const { Box, Button, Svg, Text } = v.ui
+  const { s, t } = v
+  const log = s.repo.log
+  const rows = graphRows(log)
+  const width = Math.min(8, Math.max(1, ...rows.map(r => r.width)))
+  const wide = v.w >= 60
+  const pushed = s.repo.unpushed.length ? `${s.repo.unpushed.length} not pushed` : s.repo.ahead ? `${s.repo.ahead} not pushed` : 'all pushed'
+  const chip = (ref: string, key: string) => {
+    const head = ref.startsWith('HEAD')
+    const name = ref.replace(/^HEAD -> /, '').replace(/^tag: /, '')
+    const kind = head ? 'head' : ref.startsWith('tag: ') ? 'tag' : s.repo.branches.includes(name) ? 'branch' : 'remote'
+    const [fg, bg, mark] =
+      kind === 'head' ? [t.bg || 'inverseText', t.accent, '⎇ '] : kind === 'branch' ? [t.hi, t.wash || undefined, '⎇ '] : kind === 'tag' ? [t.ok, t.surface || undefined, '⌑ '] : [t.dim, t.surface || undefined, '☁ ']
+    return (
+      <Text key={key} color={fg} backgroundColor={bg} bold={kind === 'head'}>{` ${mark}${name} `}</Text>
+    )
+  }
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
+        <Text color={t.text} weight="semibold">History</Text>
+        <Text color={t.dim} size="footnote">{`${log.length} commits · ${s.repo.branches.length} branches · ${pushed}`}</Text>
+      </Box>
+      {log.map((c, i) => {
+        const r = rows[i]
+        if (!r) return null
+        const isHead = c.refs.some(x => x.startsWith('HEAD'))
+        const unpushed = s.repo.unpushed.includes(c.sha)
+        const node = isHead ? 'head' : unpushed ? 'unpushed' : c.parents.length > 1 ? 'merge' : 'plain'
+        const own = s.commits.find(x => x.sha === c.sha)
+        const open = s.ui.openCommit === c.sha
+        const lane = (
+          <Box flexShrink={0}>
+            {Svg ? (
+              <Svg source={graphSvg(r, width, node)} alt={`${c.sha} ${c.msg}`} width={graphWidth(width)} height={30} />
+            ) : (
+              <Text mono>
+                {graphText(r, width, NODE_GLYPH[node]).map((run, k) => (
+                  <Text key={`gr-${c.sha}-${k}`} color={run.fg}>{run.t}</Text>
+                ))}
+              </Text>
+            )}
+          </Box>
+        )
+        return (
+          <Box key={`lg-${c.sha}`} flexDirection="column">
+            <Box alignItems="center" columnGap={sp(v, 1)}>
+              {lane}
+              <Box flexGrow={1} flexShrink={1}>
+                <Button key={`cm-${c.sha}`} plain onPress={() => showCommit($, c.sha)}>
+                  <Text wrap="truncate-end">
+                    {c.refs.map((ref, k) => chip(ref, `ref-${c.sha}-${k}`))}
+                    {c.refs.length > 0 && <Text> </Text>}
+                    <Text color={unpushed ? t.busy : t.text} bold={isHead}>{c.msg}</Text>
+                    {own && <Text color={t.accent}>{own.auto ? '  ✦ auto' : '  ✦'}</Text>}
+                  </Text>
+                </Button>
+              </Box>
+              <Text color={t.faint} size="footnote" mono>{c.sha}</Text>
+              {wide && <Text color={t.faint} size="footnote">{c.when}</Text>}
+            </Box>
+            {open && (
+              <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1} marginLeft={2}>
+                <Text color={t.dim} size="footnote">{`${c.author} · ${c.when}${unpushed ? ' · not pushed' : ''}${own ? ` · ${own.auto ? 'auto-committed' : 'committed'} by Cockpit` : ''}`}</Text>
+                {(s.ui.commitInfo || 'Reading the commit…').split('\n').slice(0, 40).map((l, k) => (
+                  <Text key={`ci-${c.sha}-${k}`} color={/\|\s+\d+\s*[+-]*$/.test(l) || / changed, /.test(l) ? t.dim : t.text} size="footnote" mono={/\|/.test(l) || / changed, /.test(l)} wrap="truncate-end">{l || ' '}</Text>
+                ))}
+              </Box>
+            )}
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
+function AccountBox($: $, v: V) {
+  const { Box, Button, Input, Text } = v.ui
+  const { s, t } = v
+  const acct = s.accounts.find(a => a.id === s.accountId)
+  // A saved login shows as it is; Modify opens the choices and the ways to add one
+  const modify = s.ui.acctOpen || !acct
+  const toggle = () => setUi($, ui => ({ acctOpen: !ui.acctOpen }))
+  const addToken = (val = s.ui.ghToken) => inBackground($, 'gh-login', 'Logging in to GitHub', () => ghLoginToken($, val))
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={t.divider} paddingX={1}>
+      <Box justifyContent="space-between" flexWrap="wrap">
+        <Text color={t.text} weight="semibold">Account</Text>
+        <Box gap={sp(v, 1)}>
+          {modify && <Button key="acct-detect" label="↻ Detect" plain onPress={() => inBackground($, 'git-refresh', 'Reading the accounts', () => loadAccounts($))} />}
+          {acct && <Button key="acct-modify" label={s.ui.acctOpen ? 'Done' : 'Modify'} plain onPress={toggle} />}
+        </Box>
+      </Box>
+      {acct && (
+        <Text wrap="truncate-end">
+          <Text color={t.ok}>{'● '}</Text>
+          <Text color={t.text}>{acct.label}</Text>
+          <Text color={t.dim}>{`  ${acct.name} <${acct.email}>${acct.gh ? ` · gh ${acct.gh}` : ''}`}</Text>
+        </Text>
+      )}
+      {!acct && s.accounts.length === 0 && <Text color={t.dim}>No git identity or gh login found yet.</Text>}
+      {modify && s.accounts.length > 0 && <Seg v={v} id="acct" value={s.accountId} items={s.accounts.map(a => [a.id, a.label] as [string, string])} onPick={k => useAccount($, k)} />}
+      {modify && acct && s.ui.acctRemove !== acct.id && (
+        <Box gap={sp(v, 1)} flexWrap="wrap">
+          <Button key="acct-apply" label="Use for this repo" plain onPress={() => applyAccount($)} />
+          <Button key="acct-remove" label="Remove" plain onPress={() => setUi($, { acctRemove: acct.id })} />
+        </Box>
+      )}
+      {modify && acct && s.ui.acctRemove === acct.id && (
+        <Box flexDirection="column">
+          <Text color={t.busy} wrap="wrap">
+            {`Remove ${acct.label} from this machine? ${[acct.gh && `gh logs out ${acct.gh}`, acct.id === 'global' && `git's global user.name and user.email (${acct.name} <${acct.email}>) are unset`].filter(Boolean).join(', and ') || 'It leaves the saved accounts'}.`}
+          </Text>
+          <Box gap={sp(v, 1)}>
+            <Button key="acct-remove-yes" label="Remove" variant="primary" onPress={() => removeAccount($, acct.id)} />
+            <Button key="acct-remove-no" label="Cancel" onPress={() => setUi($, { acctRemove: '' })} />
+          </Box>
+        </Box>
+      )}
+      {modify && (
+        <Box flexDirection="column">
+          <Rule v={{ ...v, w: v.w - 4 }} />
+          <Text color={t.dim} size="footnote">Add a GitHub login to this machine's gh: paste a classic token (scopes repo, read:org), or log in with gh in your browser.</Text>
+          <Box columnGap={sp(v, 1)} flexWrap="wrap">
+            <Input key="gh-token" label="Token" placeholder="ghp_…" value={s.ui.ghToken} submitLabel="add" onInput={val => setUi($, { ghToken: val })} onSubmit={val => addToken(val)} />
+            <Button key="gh-token-go" label="Add token" onPress={() => addToken()} />
+            <Button key="gh-web" label="Log in with gh" onPress={() => ghLoginWeb($)} />
+          </Box>
+        </Box>
+      )}
+      {s.ui.ghNote !== '' && <Text color={t.busy} wrap="wrap">{s.ui.ghNote}</Text>}
+    </Box>
+  )
+}
+
+function Setup($: $, v: V) {
+  const { Box, Button, Text } = v.ui
+  const { s, t } = v
+  const g = s.git
+  const step = s.ui.gitStep
+  const go = (n: number) => setUi($, { gitStep: n })
+  const titles = ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']
+  const last = g.commitMode === 'manual' ? 3 : 4
+  const nav = (
+    <Box justifyContent="space-between" flexWrap="wrap">
+      {step > 0 ? <Button key="setup-back" label="‹ Back" onPress={() => go(step - 1)} /> : <Text />}
+      {step < last ? (
+        <Button key="setup-next" label="Next ›" variant="primary" onPress={() => go(step + 1)} />
+      ) : (
+        <Button key="setup-done" label="Done" variant="primary" onPress={() => Promise.all([setGit($, { setupDone: true }), go(0)])} />
+      )}
+    </Box>
+  )
+  const sample = { ...g, subject: 'add login page', type: 'feat', ticket: g.ticket || 'API-12' }
+  // A commit option's switch, worded as the Options list words it (GIT_OPTS)
+  const opt = (key: 'branchAuto' | 'push' | 'pr' | 'preTest') => <Check v={v} id={`opt-${key}`} on={g[key]} label={GIT_OPTS.find(o => o[0] === key)?.[1] ?? key} onPress={() => setGit($, { [key]: !g[key] })} />
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      <Box flexWrap="wrap" columnGap={sp(v, 1)}>
+        {titles.slice(0, last + 1).map((name, i) => (
+          <Text key={`st-${i}`} color={i === step ? t.accent : i < step ? t.ok : t.dim} bold={i === step}>{`${i < step ? '✓' : '○'} ${name}`}</Text>
+        ))}
+      </Box>
+      {step === 0 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">Which identity commits in this repository?</Text>
+          {AccountBox($, v)}
+        </Box>
+      )}
+      {step === 1 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">How are branches named? Cockpit cuts one off the base branch for each piece of work, kind written from the changes (feature, fix, docs, …).</Text>
+          <Seg v={v} id="bp" value={g.branchPattern} items={BRANCH_PRESETS.map(p => [p.v, p.label] as [string, string])} onPick={k => setGit($, { branchPattern: k, branchAuto: true })} />
+          {GitField($, v, 'branchPattern', 'bpat', 'Pattern')}
+          <Text color={t.dim} size="footnote">{`{kind} {type} {ticket} {slug} {user} · e.g. ${branchName({ ...sample, branchAuto: true }, g.base || 'main')}`}</Text>
+          <Box columnGap={sp(v, 2)} flexWrap="wrap">
+            {GitField($, v, 'ticket', 'ticket', 'Ticket', { placeholder: 'API-12' })}
+            {GitField($, v, 'user', 'user', 'User')}
+          </Box>
+          {opt('branchAuto')}
+        </Box>
+      )}
+      {step === 2 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">How are commit messages written? A quick model writes the type and the subject from the diff of the ticked files.</Text>
+          <Seg v={v} id="mp" value={g.msgPattern} items={MSG_PRESETS.map(p => [p.v, p.label] as [string, string])} onPick={k => setGit($, { msgPattern: k })} />
+          {GitField($, v, 'msgPattern', 'mpat', 'Pattern')}
+          <Text color={t.dim} size="footnote">{`{type} {subject} {Subject} {ticket} {branch} · e.g. ${commitMsg(sample, 'x')}`}</Text>
+        </Box>
+      )}
+      {step === 3 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">What happens to changes Claude makes?</Text>
+          {COMMIT_MODES.map(([id, label, desc]) => (
+            <Box key={`cm-${id}`} columnGap={sp(v, 1)}>
+              <Button key={`mode-${id}`} label={label} variant={g.commitMode === id ? 'primary' : 'secondary'} onPress={() => setGit($, { commitMode: id })} />
+              <Text color={t.dim} wrap="wrap">{desc}</Text>
+            </Box>
+          ))}
+        </Box>
+      )}
+      {step === 4 && (
+        <Box flexDirection="column" gap={sp(v, 1)}>
+          <Text color={t.text} wrap="wrap">{g.commitMode === 'auto' ? 'When does Cockpit commit?' : 'When does Cockpit propose a commit?'}</Text>
+          <Seg v={v} id="when" value={g.autoWhen} items={AUTO_WHENS.map(a => [a.v, a.label] as [string, string])} onPick={k => setGit($, { autoWhen: k as GitForm['autoWhen'] })} />
+          <Box flexWrap="wrap" columnGap={sp(v, 3)}>
+            {opt('push')}
+            {opt('pr')}
+            {opt('preTest')}
+          </Box>
+        </Box>
+      )}
+      {nav}
+    </Box>
+  )
+}
+
+function Options($: $, v: V) {
+  const { Box, Select } = v.ui
+  const { s } = v
+  const g = s.git
+  const bases = [...new Set([g.base || s.repo.current, ...s.repo.branches])].filter(Boolean)
+  return (
+    <Box flexDirection="column" gap={sp(v, 1)}>
+      {AccountBox($, v)}
+      <Box columnGap={sp(v, 2)} flexWrap="wrap">
+        <Select key="git-mode" label="Mode" value={g.commitMode} options={COMMIT_MODES.map(([id, label]) => ({ value: id, label }))} onSelect={val => setGit($, { commitMode: val as GitForm['commitMode'] })} />
+        {g.commitMode !== 'manual' && <Select key="git-when" label="When" value={g.autoWhen} options={AUTO_WHENS.map(a => ({ value: a.v, label: a.label }))} onSelect={val => setGit($, { autoWhen: val as GitForm['autoWhen'] })} />}
+        {bases.length > 0 && <Select key="git-base" label="Base" value={g.base || s.repo.current} options={bases.map(b => ({ value: b }))} onSelect={val => setGit($, { base: val })} />}
+      </Box>
+      {GitField($, v, 'branch', 'branch', 'Branch (blank: by the pattern)', { placeholder: s.repo.current })}
+      {GitField($, v, 'branchPattern', 'bpat', 'Branch pattern')}
+      {GitField($, v, 'msgPattern', 'mpat', 'Message pattern')}
+      <Box columnGap={sp(v, 2)} flexWrap="wrap">
+        {GitField($, v, 'ticket', 'ticket', 'Ticket')}
+        {GitField($, v, 'user', 'user', 'User')}
+      </Box>
+      {GitField($, v, 'body', 'body', 'Body', { rows: grow(v, g.body, 'Body', 2) })}
+      <Box flexWrap="wrap" columnGap={sp(v, 3)}>
+        {GIT_OPTS.map(([key, label]) => (
+          <Check key={`opt-${key}`} v={v} id={`opt-${key}`} on={!!g[key]} label={label} onPress={() => setGit($, { [key]: !g[key] } as Partial<GitForm>)} />
+        ))}
+      </Box>
+    </Box>
+  )
+}
+
+const REVIEW_WORDS = { approved: 'approved', changes: 'changes requested', required: 'review required', draft: 'draft', '': 'open' } as const
+// A pull request in words, the same on the Git tab and the Overview: its state (an open one by its review, in GitHub's
+// own terms), whether it has any checks, and both in one line with what the checks came to
+export function prWords(pr: PrStatus) {
+  const c = pr.checks
+  const status = pr.state === 'OPEN' ? REVIEW_WORDS[pr.review] : pr.state.toLowerCase()
+  const none = !c.unknown && c.pass + c.fail + c.pending + c.skip === 0
+  const checks = c.unknown || none ? '' : ` · checks ${c.fail ? `${c.fail} failing` : c.pending ? 'running' : 'passing'}`
+  return { status, none, line: `PR #${pr.number} ${status}${checks}` }
+}
+function PrStatusRow($: $, v: V, pr: PrStatus) {
+  const { Box, Button, Text } = v.ui
+  const { t } = v
+  const c = pr.checks
+  const { status, none } = prWords(pr)
+  const tone = pr.state === 'MERGED' || pr.review === 'approved' ? t.ok : pr.review === 'changes' ? t.bad : t.dim
+  return (
+    <Box flexDirection="column">
+      <Text wrap="truncate-end">
+        <Text color={t.accent} bold>{`⇄ #${pr.number}`}</Text>
+        <Text>{` ${pr.title}`}</Text>
+      </Text>
+      <Box flexWrap="wrap" columnGap={sp(v, 2)}>
+        <Text color={tone} size="footnote">{status}</Text>
+        {c.pass > 0 && <Text color={t.ok} size="footnote">{`✓ ${c.pass} passed`}</Text>}
+        {c.fail > 0 && <Text color={t.bad} size="footnote">{`✗ ${c.fail} failed`}</Text>}
+        {c.pending > 0 && <Text color={t.busy} size="footnote">{`◌ ${c.pending} running`}</Text>}
+        {none && <Text color={t.dim} size="footnote">no checks</Text>}
+        {c.unknown && <Text color={t.dim} size="footnote">checks unknown</Text>}
+      </Box>
+      {c.failing.slice(0, 3).map((f, i) => (
+        <Text key={`pr-fail-${i}`} color={t.bad} size="footnote" wrap="truncate-end">{`  ✗ ${f.name}`}</Text>
+      ))}
+      {c.failing.length > 3 && <Text color={t.dim} size="footnote">{`  +${c.failing.length - 3} more failed`}</Text>}
+      {c.failing.length > 0 && pr.state === 'OPEN' && (
+        <Box>
+          <Button key="pr-fix" label="Fix failing checks" plain onPress={() => inBackground($, 'pr-fix', 'Reading the failed logs', () => fixChecks($))} />
+        </Box>
+      )}
+    </Box>
+  )
+}

@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Turn undo, on real git: reads the snapshot plan and the undo commands out of cockpit/hooks/turns.ts (the same data
+"""Turn undo, on real git: reads the snapshot plan and the undo commands out of cockpit/hooks/git/turns.ts (the same data
 Cockpit runs), then in a temporary repository makes a turn's changes the way a shell command or subagent would,
 undoes the turn, and checks every file, the index, HEAD and the branches are as they were. The test kit cannot start
 processes, so this is where the git commands themselves are proven."""
 import json, os, re, subprocess, sys, tempfile
 
-SRC = open(os.path.join(os.path.dirname(__file__), '..', 'cockpit', 'hooks', 'turns.ts'), encoding='utf-8').read()
+SRC = open(os.path.join(os.path.dirname(__file__), '..', 'cockpit', 'hooks', 'git', 'turns.ts'), encoding='utf-8').read()
 def block(name, const):
     m = re.search(r'// %s:start\s*export const %s = (.*?)// %s:end' % (name, const, name), SRC, re.S)
     if not m:
         sys.exit(f'check_turn_undo: no {name} block in turns.ts')
     return json.loads(m.group(1))
 PLAN, UNDO = block('plan', 'SNAPSHOT_PLAN'), block('undo', 'UNDO_COMMANDS')
-AUTHOR = {'GIT_AUTHOR_NAME': 'Cockpit', 'GIT_AUTHOR_EMAIL': 'cockpit@localhost', 'GIT_COMMITTER_NAME': 'Cockpit', 'GIT_COMMITTER_EMAIL': 'cockpit@localhost'}
-LITERAL = {'GIT_LITERAL_PATHSPECS': '1'}
+AUTHOR, LITERAL = block('author', 'AUTHOR'), block('literal', 'LITERAL')
 
 def git(repo, argv, env=None, ok=False):
     r = subprocess.run(argv, cwd=repo, capture_output=True, text=True, env={**os.environ, **(env or {})})
@@ -22,7 +21,7 @@ def git(repo, argv, env=None, ok=False):
     return r
 
 def snapshot(repo, ref):
-    # The runner of cockpit/hooks/turns.ts, step for step
+    # The runner of cockpit/hooks/git/turns.ts, step for step
     v = {'ref': ref}
     fill = lambda x: re.sub(r'\{(\w+)\}', lambda m: v.get(m.group(1), ''), x)
     for st in PLAN:
@@ -42,7 +41,7 @@ def git_in(repo, argv, env, stdin):
     return r
 
 def undo(repo, before, after):
-    # undoTurn of cockpit/hooks/turns.ts, in its order: read the changes, keep now, refuse if stale, git clean what the
+    # undoTurn of cockpit/hooks/git/turns.ts, in its order: read the changes, keep now, refuse if stale, git clean what the
     # turn created that nothing tracks and the folders that leaves empty, then restore the rest with the tracked ones
     fill = lambda argv, v: [re.sub(r'\{(\w+)\}', lambda m: v[m.group(1)], a) for a in argv]
     parts = [p for p in git(repo, fill(UNDO['changed'], {'before': before, 'after': after})).stdout.split('\0') if p]

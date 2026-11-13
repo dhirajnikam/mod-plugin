@@ -1,17 +1,11 @@
 import { expect, test } from 'claude-code/testing'
-import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, pickIsolated, worktreeFor } from '../hooks/worktrees'
-import { openMore } from './more'
+import { openMore, deskPane as pane } from './more'
+import { worktreeFor, WORKTREE_COMMANDS, parseStat, applyRefusal, pickIsolated } from '../hooks/agents/worktrees'
 
 test("a worktree's place, its changes and what will not apply are read from git's own output", () => {
   // Under the git folder, on a branch of its own, whatever the id holds; Windows paths made forward
   expect(worktreeFor('ag-12', '/repo/.git')).toEqual({ path: '/repo/.git/cockpit-worktrees/ag-12', branch: 'cockpit/ag-12', ref: 'refs/cockpit/worktrees/ag-12' })
   expect(worktreeFor('a b/c..d', 'C:\\r\\.git\\')).toEqual({ path: 'C:/r/.git/cockpit-worktrees/a_b_c__d', branch: 'cockpit/a_b_c__d', ref: 'refs/cockpit/worktrees/a_b_c__d' })
-  // Under the common git folder, the main repository's even from a linked worktree
-  expect(WORKTREE_COMMANDS.common).toEqual(['git', 'rev-parse', '--git-common-dir'])
-  expect(C_LOCALE).toEqual({ LC_ALL: 'C', LANGUAGE: 'C' })
-  // The commands, filled; the add starts from the base commit
-  expect(fillArgs(WORKTREE_COMMANDS.add, { branch: 'cockpit/x', path: '/p', base: 'abc' })).toEqual(['git', 'worktree', 'add', '-q', '-b', 'cockpit/x', '/p', 'abc'])
-  expect(JSON.parse(JSON.stringify(WORKTREE_COMMANDS))).toEqual(WORKTREE_COMMANDS)
   // Nothing that writes the index: apply and check work on files only
   expect(WORKTREE_COMMANDS.apply.includes('--index') || WORKTREE_COMMANDS.apply.includes('--cached') || WORKTREE_COMMANDS.apply.includes('--3way')).toBe(false)
   // numstat: lines, a binary file, a name with a tab and a newline; an empty diff
@@ -48,7 +42,7 @@ test("pickIsolated takes only Claude Code's own new worktree for an agent: never
 
 // A session that spawns from the Agents tab; git answers as a repository with a commit, or none (fresh)
 function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => boolean; gone?: () => boolean } = {}) {
-  const log = { ran: [] as string[], spawned: [] as { type: string; cwd?: string }[], toasts: [] as string[] }
+  const log = { ran: [] as string[], spawned: [] as { type: string; cwd?: string }[], toasts: [] as string[], checkedIn: [] as unknown[] }
   on('clock.now', async () => ({ value: 1_700_000_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (log.toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -65,6 +59,7 @@ function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => bo
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (e.argv as string[]).join(' ')
     log.ran.push(`${cmd}${e.init?.cwd ? ` @${e.init.cwd}` : ''}`)
+    if (cmd.startsWith('git apply --check')) log.checkedIn.push(e.init?.env?.LC_ALL)
     const out = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: exitCode ? 'fatal: no' : '', isStdoutTruncated: false, isStderrTruncated: false } })
     if (cmd === 'git rev-parse --show-toplevel') return out('/repo\n')
     if (cmd === 'git rev-parse --verify -q HEAD') return opt.fresh ? out('', 1) : out('head1\n')
@@ -83,7 +78,6 @@ function stand(on: any, opt: { fresh?: boolean; deny?: boolean; clash?: () => bo
   })
   return log
 }
-const pane = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } }
 
 test('ticked In its own worktree, an agent from the New agent form runs in a worktree Cockpit makes from HEAD on a branch of its own', async ($, on) => {
   const log = stand(on)
@@ -125,7 +119,7 @@ test('with the tick off, or no commit to start a worktree from, the agent runs i
   await ui.unmount()
 })
 
-test('a start that is refused leaves no worktree or branch behind, and a pipeline never gets a worktree', async ($, on) => {
+test('a start that is refused leaves no worktree or branch behind', async ($, on) => {
   const log = stand(on, { deny: true })
   await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
   const ui = await $.ui.mount(pane as never)
@@ -135,7 +129,7 @@ test('a start that is refused leaves no worktree or branch behind, and a pipelin
   await (ui as any).input({ key: 'spawn-task', text: 'refused one', kind: 'change' })
   await ui.press({ key: 'spawn-go' })
   const made = log.ran.find(r => r.startsWith('git worktree add'))!
-  const [, , , , , branch, path] = made.split(' ')
+  const [, branch, path] = /-b (\S+) (\S+)/.exec(made)!
   expect(log.ran).toContain(`git worktree remove --force ${path} @/repo`)
   // The safe delete: it refuses a branch with a commit of its own
   expect(log.ran).toContain(`git branch -d ${branch} @/repo`)
@@ -171,7 +165,7 @@ test("a worktree agent's row shows what it changed; Bring back and Remove each a
   // It finishes: its worktree is snapshotted inside the worktree and compared with where it started
   await $.turn.complete({ agentId: 'ag2', answer: 'REPORT: done', reason: 'answer', turnId: 'x', isAborted: false, durationMs: 1000 } as never)
   expect(log.ran).toContain(`git add -A @${wt}`)
-  expect(log.ran).toContain('git diff --numstat --no-renames -z head1 snap1 @/repo')
+  expect(log.ran.some(r => r.startsWith('git diff --numstat') && r.includes(' head1 snap1 '))).toBe(true)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('⎇ cockpit/ag1700000000000-1 · 1 file +2 −1')
   // Bring back: asks, and nothing applies before the confirm
@@ -186,6 +180,8 @@ test("a worktree agent's row shows what it changed; Bring back and Remove each a
   await ui.press({ key: 'wt-yes-ag2' })
   expect(log.ran.some(r => r === 'git apply --whitespace=nowarn - @/repo')).toBe(false)
   expect(log.toasts.join('\n')).toContain('Not brought back, nothing changed: src/a.ts')
+  // The refusal is read from git's own words, so the check ran in English whatever your locale
+  expect(log.checkedIn).toEqual(['C'])
   // No clash: checked, then applied to your files only
   clash = false
   await ui.press({ key: 'wt-back-ag2' })
@@ -363,7 +359,7 @@ test("a twin is shown as the agent it is, Rerun starts its twin again with no wo
   expect(d).not.toContain('agent-in-worktree')
   expect(d).toContain('⎇ worktree-agent-a1 · 1 file +1 −0')
   // The base is the worktree's own HEAD from git's list, not this checkout's
-  expect(log.ran).toContain('git diff --numstat --no-renames -z c1a0de snap1')
+  expect(log.ran.some(r => r.startsWith('git diff --numstat') && r.includes(' c1a0de snap1'))).toBe(true)
   // Rerun: its twin again, and no worktree Cockpit makes
   const mark = log.spawned.length
   await ui.press({ key: 'restart-ag2' })

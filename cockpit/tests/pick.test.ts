@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
+import { pickRun, pickLabel } from '../hooks/agents/pick'
 
-import { pickLabel, pickRun } from '../hooks/pick'
-
+// Pins the table docs/agents.md documents: a changed default is a product change, and belongs in both
 test('the kind sets the start: thinking work stronger, docs lighter', async () => {
   expect(pickRun('add a limiter', 'cockpit:builder')).toMatchObject({ model: 'sonnet', effort: 'medium', agents: 1, why: 'a usual task' })
   expect(pickRun('add a limiter', 'cockpit:planner')).toMatchObject({ model: 'opus', effort: 'high', why: 'planning needs depth' })

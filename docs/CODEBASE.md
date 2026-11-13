@@ -42,73 +42,55 @@ The user-facing description is the [project README](../README.md); each tab has 
 
 **There is no `plugins/` folder.** Cockpit was once split into `cockpit-core` plus one add-on per tab under
 `plugins/`; commit `7c0ccc2` removed the split and ships Cockpit as one plugin. Traces remain: the `cockpit.set`,
-`cockpit.act` and `cockpit.tab` events in `register.tsx`, `tabsAvailable` in the state, and `paneFrame()` in
-`pane.tsx` (now called by nothing) exist so another plugin can extend Cockpit.
+`cockpit.act` and `cockpit.tab` events in `register.tsx` and `tabsAvailable` in the state exist so another plugin
+can extend Cockpit.
 
 Not tracked: `.cockpit/` (Cockpit's own per-repository data, which writes its own `.gitignore`), `node_modules/`, and
 `cockpit/.claude-plugin/types/` (types Claude Code writes when it loads the mod).
 
 ### The modules in cockpit/hooks/
 
+Cockpit's code laid out by feature: one folder per feature, holding its logic, its engine I/O and its tab.
+
 **Entry and wiring**
 
 - [register.tsx](../cockpit/hooks/register.tsx): the hooks module. Registers every event hook (`session.start`,
-  `prompt.submit`, `turn.start`, `tool.call`, `turn.complete`, `agent.spawn`, …), the `/cockpit` command and its
-  sub-commands, the live-figure timers, and the extension events. It holds the per-turn bookkeeping (what changed
-  since the prompt, the running flow) in closure variables.
+  `prompt.submit`, `turn.start`, `tool.call`, `turn.complete`, `agent.spawn`, …), the `/cockpit` command, the
+  live-figure timers, and the extension events, in the order the engine runs them. It holds the per-turn bookkeeping
+  (what changed since the prompt, the running flow) in closure variables; the work around each hook lives with its
+  feature.
+- [commands.ts](../cockpit/hooks/commands.ts): the `/cockpit` command and its sub-commands (`runCockpitCommand()`).
 - [acts.ts](../cockpit/hooks/acts.ts): actions callable by name (`ACTS` and `act()`), for `cockpit.act`.
 
-**What Cockpit does: [ops/](../cockpit/hooks/ops), re-exported by [actions.ts](../cockpit/hooks/actions.ts)**
+**The features, one folder each**
 
-| File | Concern |
+| Folder | What it holds |
 |---|---|
-| [core.ts](../cockpit/hooks/ops/core.ts) | The state atom and `set()`, preferences, history, toasts and notes, `repoRoot()` (including picking a repo when the session folder holds several), `git()`, and `claim`/`release`/`inBackground` for slow work |
-| [git.ts](../cockpit/hooks/ops/git.ts) | Refreshing the repo, commit messages and commit modes, push, gh accounts, the pull request and its checks, turn snapshots and undo, agent worktrees |
-| [agents.ts](../cockpit/hooks/ops/agents.ts) | Registering the experts, starting agents and pipelines, hand-offs to Claude, tracking and finishing agents, the testers, measuring context |
-| [decisions.ts](../cockpit/hooks/ops/decisions.ts) | The judges (`judge()`, `judgeNext()`, the `RISKY`/`PERSONAL`/`OPEN` rules) and the autopilot (start, stop, resume, `autopilotTurnEnd()`) |
-| [memory-io.ts](../cockpit/hooks/ops/memory-io.ts) | Building and updating the codebase memory; asking a model for a flow's steps |
-| [rules-io.ts](../cockpit/hooks/ops/rules-io.ts) | Reading and writing settings, `CLAUDE.md`, skills and MCP servers for the Rules tab |
-| [notify.ts](../cockpit/hooks/ops/notify.ts) | One notice when a turn, agent or autopilot cycle finishes while you are not watching; the daily budget warning |
-| [explain.ts](../cockpit/hooks/ops/explain.ts) | `/cockpit explain`: the prompt that asks Claude to write this guide, and the guide's row state |
+| [core/](../cockpit/hooks/core) | [core.ts](../cockpit/hooks/core/core.ts): the state atom, `look()`, `set()` and `setUi()`, preferences, toasts and notes, and `claim`/`release`/`inBackground` for slow work. [state.ts](../cockpit/hooks/core/state.ts): `INITIAL`, the state's first value, and `PANE`, the pane's id. [repos.ts](../cockpit/hooks/core/repos.ts): `repoRoot()` (including picking a repo when the session folder holds several) and `git()`. [history.ts](../cockpit/hooks/core/history.ts), [spend.ts](../cockpit/hooks/core/spend.ts) (spend per session and per day, budget levels), [notify.ts](../cockpit/hooks/core/notify.ts) (one notice when a turn, agent or autopilot cycle finishes while you are not watching; the daily budget warning), [session.ts](../cockpit/hooks/core/session.ts) (measuring, compacting and clearing the context), [text.ts](../cockpit/hooks/core/text.ts) and [theme.ts](../cockpit/hooks/core/theme.ts) (the five palettes, reduced to the tokens a terminal draws with) |
+| [flows/](../cockpit/hooks/flows) | [flows.ts](../cockpit/hooks/flows/flows.ts): the flows, their steps and progress. [tools.ts](../cockpit/hooks/flows/tools.ts): a tool call as a file operation and as a step. [flows-io.ts](../cockpit/hooks/flows/flows-io.ts): asking a model for a flow's steps, Claude's task list as steps. [turn-io.ts](../cockpit/hooks/flows/turn-io.ts): opening a flow for a prompt and closing it at the turn's end |
+| [git/](../cockpit/hooks/git) | [git.ts](../cockpit/hooks/git/git.ts): refreshing the repo, commit messages and commit modes, push. [git-form.ts](../cockpit/hooks/git/git-form.ts): branch and commit patterns. [graph.ts](../cockpit/hooks/git/graph.ts): the commit graph. [accounts.ts](../cockpit/hooks/git/accounts.ts): gh accounts. [pr.ts](../cockpit/hooks/git/pr.ts): the pull request and its checks. [turns.ts](../cockpit/hooks/git/turns.ts) and [turns-io.ts](../cockpit/hooks/git/turns-io.ts): turn snapshots and undo, the git commands as JSON data and running them. [git-tab.tsx](../cockpit/hooks/git/git-tab.tsx): the Git tab |
+| [agents/](../cockpit/hooks/agents) | [agents.ts](../cockpit/hooks/agents/agents.ts): registering the experts, starting agents and pipelines, hand-offs to Claude, tracking and finishing agents, the testers. [experts.ts](../cockpit/hooks/agents/experts.ts): the experts table (one row per expert, with its icon and where its model choice starts) and the pipelines. [pick.ts](../cockpit/hooks/agents/pick.ts): `pickRun()`, an agent's model, effort and helper count from its kind and task words. [worktrees.ts](../cockpit/hooks/agents/worktrees.ts) and [worktrees-io.ts](../cockpit/hooks/agents/worktrees-io.ts): agent worktrees, the git commands as JSON data (with `fillArgs()`) and running them. [agents-view.ts](../cockpit/hooks/agents/agents-view.ts): the agents as a diagram. [agents-tab.tsx](../cockpit/hooks/agents/agents-tab.tsx): the Agents tab |
+| [judges/](../cockpit/hooks/judges) | [judges.ts](../cockpit/hooks/judges/judges.ts): how many judges sit and their tally. [decisions.ts](../cockpit/hooks/judges/decisions.ts): `judge()`, `judgeNext()` and the `RISKY`/`PERSONAL`/`OPEN` rules. [autopilot.ts](../cockpit/hooks/judges/autopilot.ts): the autopilot (start, stop, resume, `autopilotTurnEnd()`) |
+| [memory/](../cockpit/hooks/memory) | [memory.ts](../cockpit/hooks/memory/memory.ts): imports, features (folders), impact of a change, `memoryText()` for the prompt. [memory-map.ts](../cockpit/hooks/memory/memory-map.ts): the feature map. [memory-io.ts](../cockpit/hooks/memory/memory-io.ts): building and updating the codebase memory. [tree.ts](../cockpit/hooks/memory/tree.ts): the file tree. [explain.ts](../cockpit/hooks/memory/explain.ts): `/cockpit explain`, the prompt that asks Claude to write this guide, and the guide's row state. [activity-tab.tsx](../cockpit/hooks/memory/activity-tab.tsx): the Activity tab. [guide.tsx](../cockpit/hooks/memory/guide.tsx): the Overview's codebase-guide row |
+| [rules/](../cockpit/hooks/rules) | [rules.ts](../cockpit/hooks/rules/rules.ts): reading and changing settings and `CLAUDE.md` text while keeping the rest of the file. [rules-io.ts](../cockpit/hooks/rules/rules-io.ts): reading and writing settings, `CLAUDE.md`, skills and MCP servers. [rules-tab.tsx](../cockpit/hooks/rules/rules-tab.tsx): the Rules tab |
+| [pane/](../cockpit/hooks/pane) | [full-pane.tsx](../cockpit/hooks/pane/full-pane.tsx): the side pane (header, tabs, open tab) and what it draws with (`paneV()`: elements, state, theme, width). [header.tsx](../cockpit/hooks/pane/header.tsx): its header and tab row. [overview-tab.tsx](../cockpit/hooks/pane/overview-tab.tsx): the Overview tab. [tabs.ts](../cockpit/hooks/pane/tabs.ts): the one table of tabs (`TABS`, `isTab()`, `openTab()`) |
+| [ui/](../cockpit/hooks/ui) | [shared.tsx](../cockpit/hooks/ui/shared.tsx): the pieces the tabs share and `sp()` spacing. [svg.ts](../cockpit/hooks/ui/svg.ts): the SVG drawings (the ring, the agents view). It imports only `core/` |
+| [chat/](../cockpit/hooks/chat) | [drawings.tsx](../cockpit/hooks/chat/drawings.tsx): everything around the chat: the band above the prompt, the spinner's words, the line under the prompt, tool-use cards, and what Focus hides |
 
-**Pure logic, testable without the engine**
-
-| File | What it computes |
-|---|---|
-| [logic.ts](../cockpit/hooks/logic.ts) | Flows and their steps, progress, diffs, the file tree, the judges' tally, SVG drawings, `selfCheck()` |
-| [memory.ts](../cockpit/hooks/memory.ts) | Imports, features (folders), impact of a change, the feature map, `memoryText()` for the prompt |
-| [rules.ts](../cockpit/hooks/rules.ts) | Reading and changing settings and `CLAUDE.md` text while keeping the rest of the file |
-| [spend.ts](../cockpit/hooks/spend.ts) | Spend per session and per day, budget levels |
-| [turns.ts](../cockpit/hooks/turns.ts) | The git commands for turn snapshots and undo, as JSON data |
-| [worktrees.ts](../cockpit/hooks/worktrees.ts) | The git commands for agent worktrees, as JSON data, and `fillArgs()` |
-| [pick.ts](../cockpit/hooks/pick.ts) | `pickRun()`: an agent's model, effort and helper count from its kind and task words |
-| [theme.ts](../cockpit/hooks/theme.ts) | The five palettes, reduced to the tokens a terminal draws with |
-
-**Drawing**
-
-- [state.ts](../cockpit/hooks/state.ts): `INITIAL`, the state's first value, and `PANE`, the pane's id.
-- [drawings.tsx](../cockpit/hooks/drawings.tsx): everything around the chat: the band above the prompt, the
-  spinner's words, the line under the prompt, tool-use cards, and what Focus hides.
-- [full-pane.tsx](../cockpit/hooks/full-pane.tsx): the side pane (header, tabs, open tab); [pane.tsx](../cockpit/hooks/pane.tsx)
-  builds what the pane draws with (`paneV()`: elements, state, theme, width).
-- [tabs/](../cockpit/hooks/tabs), re-exported by [views.tsx](../cockpit/hooks/views.tsx): one file per tab
-  ([overview.tsx](../cockpit/hooks/tabs/overview.tsx), [activity.tsx](../cockpit/hooks/tabs/activity.tsx),
-  [agents.tsx](../cockpit/hooks/tabs/agents.tsx), [git.tsx](../cockpit/hooks/tabs/git.tsx),
-  [rules.tsx](../cockpit/hooks/tabs/rules.tsx)), plus [header.tsx](../cockpit/hooks/tabs/header.tsx),
-  [shared.tsx](../cockpit/hooks/tabs/shared.tsx) (shared pieces and `sp()` spacing) and
-  [guide.tsx](../cockpit/hooks/tabs/guide.tsx) (the Overview's codebase-guide row).
+Where a feature has the pair, `x.ts` is its pure logic (testable without the engine) and `x-io.ts` its engine I/O;
+`x-tab.tsx` is its tab in the pane.
 
 ## 3. How a request and the data flow through it
 
 ```
 Claude Code event ──▶ register.tsx hook ──▶ next(e) (Claude Code carries on)
                              │
-                             └──▶ ops/* action ──▶ git, gh, $.model, agents, files
+                             └──▶ a feature's action ──▶ git, gh, $.model, agents, files
                                         │
                                         ▼
-                                   set(): the state atom ──▶ ui.render hooks redraw (tabs/, drawings.tsx)
+                                   set(): the state atom ──▶ ui.render hooks redraw (the tabs, chat/drawings.tsx)
                                         ▲
-         press in the pane ─────────────┘   (Button onPress calls an action from ./actions)
+         press in the pane ─────────────┘   (Button onPress calls an action from its feature's folder)
 ```
 
 Every hook has the shape `($, e, next)`: `$` is the engine interface (files, processes, models, agents, clock,
@@ -116,25 +98,25 @@ store, UI), `e` the event, and `next(e)` runs what comes after Cockpit. Cockpit 
 records what happened; it rarely changes an event. Most hooks end in `.catch(($, e, next) => next(e))`, so a failure
 in Cockpit never blocks the session.
 
-**A prompt, end to end** (all in [register.tsx](../cockpit/hooks/register.tsx) unless named):
+**A prompt, end to end** (the hooks are in [register.tsx](../cockpit/hooks/register.tsx), the work where named):
 
-1. `prompt.submit`: skips Cockpit's own hand-offs and commands; otherwise `openFlow()` records a new flow and the
-   repository's changes at that moment, then `writeSteps()` ([memory-io.ts](../cockpit/hooks/ops/memory-io.ts)) asks
-   a model for the flow's steps in the background so the prompt is not held. A prompt refused further down removes
-   its flow again.
+1. `prompt.submit`: skips Cockpit's own hand-offs and commands; otherwise `openFlow()`
+   ([turn-io.ts](../cockpit/hooks/flows/turn-io.ts)) records a new flow and the repository's changes at that
+   moment, then `writeSteps()` ([flows-io.ts](../cockpit/hooks/flows/flows-io.ts)) asks a model for the flow's
+   steps in the background so the prompt is not held. A prompt refused further down removes its flow again.
 2. `turn.start`: a turn with no prompt of yours (a `/goal` continuation, a queued prompt) carries on the last flow
    or opens one. A snapshot of the working tree is taken before the turn (`snapTurn()` in
-   [git.ts](../cockpit/hooks/ops/git.ts)).
+   [turns-io.ts](../cockpit/hooks/git/turns-io.ts)).
 3. `prompt.compose`: adds the codebase memory (`memoryText()`) to Claude's system prompt.
 4. `tool.call`: each call is recorded as a file operation and moves the flow's steps; `TodoWrite`, `TaskCreate`
    and `TaskUpdate` make Claude's task list the flow's steps; `AskUserQuestion` goes to `judge()`
-   ([decisions.ts](../cockpit/hooks/ops/decisions.ts)).
-5. `turn.complete`: closes the flow, refreshes the repo, takes the after-snapshot, measures context, syncs agents,
-   lets the autopilot decide its next cycle, updates the memory for changed files, sends a notice, starts Verify
-   and/or `decideCommit()` depending on the Git settings, saves history and checks the daily budget.
+   ([decisions.ts](../cockpit/hooks/judges/decisions.ts)).
+5. `turn.complete`: `mainTurnEnd()` (`turn-io.ts`) closes the flow, refreshes the repo, takes the after-snapshot,
+   measures context, syncs agents, lets the autopilot decide its next cycle, updates the memory for changed files,
+   sends a notice, starts Verify and/or `decideCommit()` depending on the Git settings, saves history and checks the daily budget.
 
 **An agent** follows the same events with `e.agentId` set: started from the Agents tab (`runExpert`,
-`startPipeline`, `spawnAgent` in [agents.ts](../cockpit/hooks/ops/agents.ts)) or by Claude's `Agent` tool;
+`startPipeline`, `spawnAgent` in [agents.ts](../cockpit/hooks/agents/agents.ts)) or by Claude's `Agent` tool;
 `agent.spawn` records it; its `turn.complete` runs `finishAgent()` (reads its `CASE`, `REPORT` and `HANDOFF`
 lines), `advancePipeline()` and `testAgent()`. A timer calls `syncAgents()` to catch agents Cockpit's hooks missed.
 
@@ -151,25 +133,31 @@ store (`$.store`); history, memory, hand-offs and roadmaps in the repository's `
   the memory section, a `tool.check` on `Agent`). Failures fall through to `next(e)`. Trade-off: it sees what the
   engine reports and no more, so some things are reconstructed (agents from the engine's list, a turn's changes from
   `git status` before and after).
-- **One state atom, one writer.** All state is one value of type `Ph`; every change goes through `set()` in
-  [core.ts](../cockpit/hooks/ops/core.ts), which also saves the preferences (`PREFS`) that outlast a session. Drawings
-  only read it. The engine finds an atom by its literal plugin and key in the module that declares it, so each
-  module that reads state declares the same `atom({ plugin: 'cockpit', key: 's' }, INITIAL, { shape: 'ph-25' })`
-  instead of importing it. When `Ph` changes shape, bump `ph-25` everywhere it appears so an older stored value
-  reads as `INITIAL`; new fields are optional so an older saved session still loads.
-- **Shared locks live in the state, not in module variables.** `claim()`/`release()` keep a `busy` map in the atom,
-  because a module-level variable may be a separate copy per importing module. Slow work from a press runs through
-  `inBackground()` since Claude Code drops a press that waits past 10 s.
-- **Pure logic apart from engine I/O.** `logic.ts`, `memory.ts`, `rules.ts`, `spend.ts`, `pick.ts` and the command
-  data in `turns.ts`/`worktrees.ts` take values and return values, so tests exercise them directly.
+- **One state atom, declared once.** All state is one value of type `Ph`. The engine lets an atom be used only in the
+  file that declares it, so [core.ts](../cockpit/hooks/core/core.ts) is the one place: everything else reads
+  with `look($)` and writes with `set($, patch)` or `setUi($, uiPatch)`. `set()` also saves the preferences (`PREFS`)
+  that outlast a session. Drawings only read. When `Ph` changes shape, bump the `ph-26` tag in that file so an older
+  stored value reads as `INITIAL`; new fields are optional so an older saved session still loads.
+- **Module variables stay private to their file.** What a feature keeps between events (hand-offs on their way,
+  worktrees waiting for their agent, notices already sent) is a module-level variable of the file that owns it,
+  reached only through that file's functions. `claim()`/`release()` keep their `busy` map in the state instead,
+  because the pane's header draws what is running. Slow work from a press runs through `inBackground()` since Claude
+  Code drops a press that waits past 10 s.
+- **Pure logic apart from engine I/O.** `flows.ts`, `tools.ts`, `git-form.ts`, `graph.ts`, `experts.ts`, `pick.ts`,
+  `judges.ts`, `memory.ts`, `memory-map.ts`, `tree.ts`, `rules.ts`, `spend.ts`, `svg.ts` and the command data in
+  `turns.ts`/`worktrees.ts` take values and return values, so tests exercise them directly.
 - **Git commands as data, proven on real git.** The test kit cannot run processes, so the snapshot, undo and worktree
-  commands are JSON between markers in [turns.ts](../cockpit/hooks/turns.ts) and
-  [worktrees.ts](../cockpit/hooks/worktrees.ts); [check_turn_undo.py](../scripts/check_turn_undo.py) and
+  commands are JSON between markers in [turns.ts](../cockpit/hooks/git/turns.ts) and
+  [worktrees.ts](../cockpit/hooks/agents/worktrees.ts); [check_turn_undo.py](../scripts/check_turn_undo.py) and
   [check_worktrees.py](../scripts/check_worktrees.py) read those same lists and run them on a temporary repository,
   so the two cannot drift. Snapshots use a temporary index, so your index and branches are never touched.
-- **Barrel files keep imports stable.** The code was split by concern into `ops/` and `tabs/`; `actions.ts` and
-  `views.tsx` re-export them so everything else still imports from `./actions` and `./views`. Every `ops/` file
-  depends on `core.ts` (and `agents.ts` also on `git.ts`), with no import cycles.
+- **Laid out by feature.** Each feature's logic, I/O and tab sit in one folder, so a change to a feature stays there.
+  Where a feature has the pair, `x.ts` is pure and `x-io.ts` does its engine I/O (`flows`, `memory`, `rules`,
+  `turns`, `worktrees`); `x-tab.tsx` is its tab. There are no barrel files: a file imports what it uses from the file
+  that defines it. `core/` imports nothing outside itself, and no file imports in a cycle.
+  [tabs.ts](../cockpit/hooks/pane/tabs.ts) is the one table of tabs: every way of opening a tab (its button,
+  `/cockpit tab`, a link from another tab or from the chat) goes through `openTab()`, which reads again what the tab
+  shows (`showTab()` from the chat or a command, which opens the pane first).
 - **Draw for every surface.** The pane runs in a terminal and in the desktop app. Views use the surface's elements
   (`v.ui`), the theme's tokens and `sp(v, n)`; SVG is desktop-only and gets a text fallback. Tests render every tab
   at widths from 28 to 160 columns on both surfaces.
@@ -216,7 +204,8 @@ engine (clock, processes, models, agents, store, toasts) and logs what Cockpit a
 end to end (a prompt, tool calls, a press) and check what is drawn or written. The other files cover one area each
 (`git.test.tsx`, `turns.test.ts`, `worktrees.test.ts`, `rules.test.tsx`, `spend.test.tsx`, …);
 [renders.test.tsx](../cockpit/tests/renders.test.tsx) and [sizes.test.tsx](../cockpit/tests/sizes.test.tsx) draw
-every tab at every width. `selfCheck()` in `logic.ts` also runs at session start.
+every tab at every width. [logic.test.ts](../cockpit/tests/logic.test.ts) checks the pure helpers against a table of
+inputs and what each must give.
 
 **Releasing.** Bump the version in [plugin.json](../cockpit/.claude-plugin/plugin.json) and
 [marketplace.json](../.claude-plugin/marketplace.json) together, date the section in the changelog, then run
@@ -226,21 +215,21 @@ every tab at every width. `selfCheck()` in `logic.ts` also runs at session start
 
 | You want to… | Start here |
 |---|---|
-| Change what a tab shows | its file in [tabs/](../cockpit/hooks/tabs); shared pieces in [shared.tsx](../cockpit/hooks/tabs/shared.tsx). Then run the render and size tests, and `draw_previews.py` for Overview, Agents or Rules |
-| Change the band, spinner or chat cards | [drawings.tsx](../cockpit/hooks/drawings.tsx) |
-| Add a `/cockpit` sub-command | the `command.run` hook for `cockpit` in [register.tsx](../cockpit/hooks/register.tsx); update its `description`/`argumentHint` and the README's command table |
-| React to a new event or tool | add an `on(...)` in [register.tsx](../cockpit/hooks/register.tsx), keep calling `next(e)`, put the work in an `ops/` file |
-| Add an action a button runs | the right file in [ops/](../cockpit/hooks/ops) (it is re-exported by `actions.ts`); add it to [acts.ts](../cockpit/hooks/acts.ts) if other plugins should call it by name; wrap slow work in `inBackground()` |
-| Add a value to the state | declare it (optional) in [types/index.d.ts](../cockpit/types/index.d.ts), give a default in [state.ts](../cockpit/hooks/state.ts) if needed; add it to `PREFS` in [core.ts](../cockpit/hooks/ops/core.ts) if it should outlast a session |
-| Change commits, push, the PR or accounts | [ops/git.ts](../cockpit/hooks/ops/git.ts) and [tabs/git.tsx](../cockpit/hooks/tabs/git.tsx); see [git.md](git.md) |
-| Change turn undo or agent worktrees | the JSON in [turns.ts](../cockpit/hooks/turns.ts) or [worktrees.ts](../cockpit/hooks/worktrees.ts), then run its `check_*.py` |
-| Change how the judges or the autopilot decide | [ops/decisions.ts](../cockpit/hooks/ops/decisions.ts); see [judges.md](judges.md) and [autopilot.md](autopilot.md) |
-| Change an expert's behaviour or model | its file in [cockpit/agents/](../cockpit/agents); the model choice per task is [pick.ts](../cockpit/hooks/pick.ts) |
-| Change pipelines, testers or hand-offs | [ops/agents.ts](../cockpit/hooks/ops/agents.ts); see [agents.md](agents.md) |
-| Change flows and progress | `FLOWS`, `STEPS` and `progress()` in [logic.ts](../cockpit/hooks/logic.ts); see [flows.md](flows.md) |
-| Change the codebase memory | [memory.ts](../cockpit/hooks/memory.ts) (pure) and [ops/memory-io.ts](../cockpit/hooks/ops/memory-io.ts) (I/O) |
-| Change the Rules tab | [rules.ts](../cockpit/hooks/rules.ts), [ops/rules-io.ts](../cockpit/hooks/ops/rules-io.ts), [tabs/rules.tsx](../cockpit/hooks/tabs/rules.tsx) |
-| Add or change a theme | [theme.ts](../cockpit/hooks/theme.ts) and the `Palette` type; `contrast.test.ts` checks legibility |
+| Change what a tab shows | its file ([overview-tab.tsx](../cockpit/hooks/pane/overview-tab.tsx), [activity-tab.tsx](../cockpit/hooks/memory/activity-tab.tsx), [agents-tab.tsx](../cockpit/hooks/agents/agents-tab.tsx), [git-tab.tsx](../cockpit/hooks/git/git-tab.tsx), [rules-tab.tsx](../cockpit/hooks/rules/rules-tab.tsx)); shared pieces in [shared.tsx](../cockpit/hooks/ui/shared.tsx). Then run the render and size tests, and `draw_previews.py` for Overview, Agents or Rules |
+| Change the band, spinner or chat cards | [drawings.tsx](../cockpit/hooks/chat/drawings.tsx) |
+| Add a `/cockpit` sub-command | `runCockpitCommand()` in [commands.ts](../cockpit/hooks/commands.ts); update the command's `description`/`argumentHint` in [register.tsx](../cockpit/hooks/register.tsx) and the README's command table |
+| React to a new event or tool | add an `on(...)` in [register.tsx](../cockpit/hooks/register.tsx), keep calling `next(e)`, put the work in its feature's folder |
+| Add an action a button runs | its feature's folder (the `-io.ts` file where there is one); add it to `ACTS` and the switch in [acts.ts](../cockpit/hooks/acts.ts) if other plugins should call it by name; wrap slow work in `inBackground()` |
+| Add a value to the state | declare it (optional) in [types/index.d.ts](../cockpit/types/index.d.ts), give a default in [state.ts](../cockpit/hooks/core/state.ts) if needed; add it to `PREFS` in [core.ts](../cockpit/hooks/core/core.ts) if it should outlast a session |
+| Change commits, push, the PR or accounts | [git/git.ts](../cockpit/hooks/git/git.ts), [pr.ts](../cockpit/hooks/git/pr.ts), [accounts.ts](../cockpit/hooks/git/accounts.ts) and [git-tab.tsx](../cockpit/hooks/git/git-tab.tsx); see [git.md](git.md) |
+| Change turn undo or agent worktrees | the JSON in [turns.ts](../cockpit/hooks/git/turns.ts) or [worktrees.ts](../cockpit/hooks/agents/worktrees.ts), then run its `check_*.py` |
+| Change how the judges or the autopilot decide | [judges/decisions.ts](../cockpit/hooks/judges/decisions.ts) and [autopilot.ts](../cockpit/hooks/judges/autopilot.ts); see [judges.md](judges.md) and [autopilot.md](autopilot.md) |
+| Change an expert's behaviour or model | its file in [cockpit/agents/](../cockpit/agents); the model choice per task is [pick.ts](../cockpit/hooks/agents/pick.ts), from each expert's start in [experts.ts](../cockpit/hooks/agents/experts.ts) |
+| Change pipelines, testers or hand-offs | [agents/agents.ts](../cockpit/hooks/agents/agents.ts), with `PIPELINES` and `TESTERS` in [experts.ts](../cockpit/hooks/agents/experts.ts); see [agents.md](agents.md) |
+| Change flows and progress | `FLOWS`, `STEPS` and `progress()` in [flows.ts](../cockpit/hooks/flows/flows.ts); see [flows.md](flows.md) |
+| Change the codebase memory | [memory.ts](../cockpit/hooks/memory/memory.ts) (pure) and [memory-io.ts](../cockpit/hooks/memory/memory-io.ts) (I/O) |
+| Change the Rules tab | [rules.ts](../cockpit/hooks/rules/rules.ts), [rules-io.ts](../cockpit/hooks/rules/rules-io.ts), [rules-tab.tsx](../cockpit/hooks/rules/rules-tab.tsx) |
+| Add or change a theme | [theme.ts](../cockpit/hooks/core/theme.ts) and the `Palette` type; `contrast.test.ts` checks legibility |
 | Add a model call | add a `// privacy: <id>` comment above it and a row in [privacy.md](privacy.md); keep it off by default |
 
 Every change gets a test (a fix's test fails without the fix) and a line under `[Unreleased]` in

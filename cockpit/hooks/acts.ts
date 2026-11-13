@@ -1,13 +1,19 @@
-// What $.cockpit.act runs, by name: the actions the pane's views and the chat's drawings call. Add an action here
-// when you add one to actions.ts that should be callable by name
-import type { $ } from './ops/core'
-import { applyAccount, buildMemory, claim, clearFinished, clearNow, commit, compactNow, confirmPending, createAgent, discoverAgentTypes, ghLoginToken, ghLoginWeb, gitInit, loadAccounts, loadProject, openPane, pullNow, pushNow, refreshGit, refreshRepo, release, removeAccount, rerun, resumeAutopilot, runExpert, runMany, setGit, setTheme, showCommit, skipPending, spawnAgent, startAutopilot, startPipeline, stopAgent, stopAll, stopAutopilot, suggestCommit, testAgent, useAccount } from './actions'
+import type { $ } from './core/core'
+import { applyAccount, ghLoginToken, ghLoginWeb, loadAccounts, removeAccount, useAccount } from './git/accounts'
+import { buildMemory, loadProject } from './memory/memory-io'
+import { claim, openPane, release, setTheme } from './core/core'
+import { clearFinished, createAgent, discoverAgentTypes, rerun, runExpert, runMany, spawnAgent, startPipeline, stopAgent, stopAll, testAgent } from './agents/agents'
+import { clearNow, compactNow } from './core/session'
+import { commit, confirmPending, gitInit, pullNow, pushNow, refreshGit, refreshRepo, setGit, showCommit, skipPending, suggestCommit } from './git/git'
+import { resumeAutopilot, startAutopilot, stopAutopilot } from './judges/autopilot'
+
 
 export const ACTS = ["applyAccount", "buildMemory", "claim", "clearFinished", "clearNow", "commit", "compactNow", "confirmPending", "createAgent", "discoverAgentTypes", "ghLoginToken", "ghLoginWeb", "gitInit", "loadAccounts", "loadProject", "openPane", "pullNow", "pushNow", "refreshGit", "refreshRepo", "release", "removeAccount", "rerun", "resumeAutopilot", "runExpert", "runMany", "setGit", "setTheme", "showCommit", "skipPending", "spawnAgent", "startAutopilot", "startPipeline", "stopAgent", "stopAll", "stopAutopilot", "suggestCommit", "testAgent", "useAccount"] as const
 
 export async function act($: $, name: string, args: unknown[]): Promise<unknown> {
   const [a, b, c, d] = args as [never, never, never, never]
-  switch (name) {
+  const known = name as (typeof ACTS)[number]
+  switch (known) {
     case 'applyAccount':
       return applyAccount($)
     case 'buildMemory':
@@ -86,6 +92,8 @@ export async function act($: $, name: string, args: unknown[]): Promise<unknown>
       return testAgent($, a, b)
     case 'useAccount':
       return useAccount($, a)
+    default:
+      known satisfies never
   }
   return undefined
 }

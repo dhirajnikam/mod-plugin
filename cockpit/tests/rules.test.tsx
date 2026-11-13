@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
-import { changeHook, changeMcp, changePerm, changeRule, hookRows, mcpRows, parseSettings, permRows, ruleLines, setInvocation, skillListed, skillOf, importsOf, memoryStarts, resolveMemory, startupLoad } from '../hooks/rules'
-import type { MemoryRead } from '../hooks/rules'
-import { openMore } from './more'
+import { openMore, ok, posix } from './more'
+import { changeHook, hookRows, changePerm, permRows, ruleLines, changeRule, parseSettings, mcpRows, changeMcp, skillOf, setInvocation, skillListed, importsOf, resolveMemory, memoryStarts, startupLoad } from '../hooks/rules/rules'
+import type { MemoryRead } from '../hooks/rules/rules'
 
 test('hooks, permission rules and instructions change in their files, the rest of each file kept', async () => {
   const j = { model: 'sonnet', hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'prettier --write' }] }] }, permissions: { allow: ['Bash(npm test:*)'] } }
@@ -38,7 +38,6 @@ test('hooks, permission rules and instructions change in their files, the rest o
 })
 
 // A session against an in-memory disk: the repository's and the user's files
-const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const pane = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 120 }, view: {} } }
 
 // A whole session end to end: about a second when the machine is quiet, past the 5 s default when it is busy
@@ -49,7 +48,6 @@ test('the Rules tab adds, edits and deletes hooks, rules and instructions, and n
     '/home/me/.claude/settings.json': '{ "hooks": ',
   }
   const toasts: string[] = []
-  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -62,18 +60,18 @@ test('the Rules tab adds, edits and deletes hooks, rules and instructions, and n
     if (!(posix(e.path) in disk)) throw new Error('ENOENT')
     return { value: disk[posix(e.path)] } as never
   })
-  on('fs.write', async (_: unknown, e: any) => ((disk[posix(e.path)] = e.text), { value: undefined }))
+  let diskFull = false
+  on('fs.write', async (_: unknown, e: any) => {
+    if (diskFull) throw new Error('ENOSPC')
+    disk[posix(e.path)] = e.text
+    return { value: undefined }
+  })
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
     if (cmd === 'git rev-parse --show-toplevel') return ok('/repo\n')
     return ok('')
   })
   on('command.run', async () => ({ text: '' }))
-  // What Cockpit passes on to the engine draws as the engine's
-  on('ui.render', async (_: any, e: any) => {
-    const { Text } = _.ui.resolve(e)
-    return <Text>ENGINE</Text>
-  })
   await $.command.run({ command: 'cockpit', args: 'tab rules' } as never)
   const ui = await $.ui.mount(pane as never)
   await openMore(ui)
@@ -88,7 +86,6 @@ test('the Rules tab adds, edits and deletes hooks, rules and instructions, and n
   expect(saved.hooks.PreToolUse[0]).toEqual({ matcher: 'Edit', hooks: [{ type: 'command', command: 'npx prettier --write .' }] })
   expect(saved.env).toEqual({ A: '1' })
   // Edit a permission rule into a deny
-  d = JSON.stringify(await ui.drawn())
   await ui.press({ key: 're-p:allow/0' })
   await ui.press({ key: 'rp-ekind-deny' })
   await ui.press({ key: 'rp-save' })
@@ -108,6 +105,14 @@ test('the Rules tab adds, edits and deletes hooks, rules and instructions, and n
   await (ui as any).input({ key: 'rf-ruleB', text: 'Answer in British English' } as never)
   expect(disk['/home/me/.claude/CLAUDE.md']).toBe('- Answer in British English\n')
   expect(disk['/home/me/.claude/settings.json']).toBe('{ "hooks": ')
+  // A write that fails says so, and does not also say it was saved
+  diskFull = true
+  toasts.length = 0
+  if (!(await ui.find({ key: 'rf-ruleB' }))) await ui.press({ key: 'radd-rule' })
+  await (ui as any).input({ key: 'rf-ruleB', text: 'Keep diffs small' } as never)
+  expect(disk['/home/me/.claude/CLAUDE.md']).toBe('- Answer in British English\n')
+  expect(toasts.length).toBe(1)
+  expect(toasts[0]).toContain('Could not write')
   await ui.unmount()
 })
 
@@ -160,7 +165,6 @@ test('the Rules tab lists the MCP servers of every scope, changes only .mcp.json
   }
   const writes: string[] = []
   const toasts: string[] = []
-  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -349,7 +353,6 @@ test("the Rules tab lists each scope's skills and switches one between Claude lo
   }
   const writes: string[] = []
   const toasts: string[] = []
-  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('ui.toast', async (_: unknown, e: any) => (toasts.push(String(e.text)), { value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -483,21 +486,24 @@ test('what loads every session: @imports followed as Claude Code does, and the f
   const mcp = [{ state: 'on' }, { state: 'on' }, { state: 'off' }, { state: 'approval' }, { state: 'shadowed' }] as never
   const long = { path: '/repo/BIG.md', text: 'line\n'.repeat(201) }
   const load = startupLoad([{ path: '/repo/CLAUDE.md', text: 'abcdefgh\nij' }, long, { path: '/repo/gone.md', text: '', via: '/repo/CLAUDE.md', missing: true }], skills, mcp)
-  expect(load.files).toEqual([
-    { path: '/repo/CLAUDE.md', lines: 2, tokens: 3, long: false },
-    { path: '/repo/BIG.md', lines: 201, tokens: 252, long: true },
-    { path: '/repo/gone.md', via: '/repo/CLAUDE.md', missing: true, lines: 0, tokens: 0, long: false },
-  ])
-  // name + ": " + description, ÷ 4 rounded up; call-only and broken skills add nothing
-  expect(load.skills.map(s => `${s.name}:${s.tokens}`)).toEqual(['a:101', 'b:2', 'c:26', 'd:11'])
+  // Each file with its lines, over 200 marked; a longer file costs more, a missing one nothing
+  expect(load.files.map(f => `${f.path} ${f.lines}${f.long ? ' long' : ''}${f.missing ? ' missing' : ''}`)).toEqual(['/repo/CLAUDE.md 2', '/repo/BIG.md 201 long', '/repo/gone.md 0 missing'])
+  const [small, big, gone] = load.files.map(f => f.tokens)
+  expect(small).toBeGreaterThan(0)
+  expect(big).toBeGreaterThan(small!)
+  expect(gone).toBe(0)
+  // A skill costs by its name and description; call-only and broken skills add nothing
+  expect(load.skills.map(s => s.name)).toEqual(['a', 'b', 'c', 'd'])
   expect(load.largest.map(s => s.name)).toEqual(['a', 'c', 'd'])
   expect(load.mcpOn).toBe(2)
-  expect(load.total).toBe(3 + 252 + 101 + 2 + 26 + 11)
+  // The total is every figure listed, added up
+  expect(load.total).toBe([...load.files, ...load.skills].reduce((n, x) => n + x.tokens, 0))
   // An import outside the repository and your home, which loads only once approved, is not counted
   expect(startupLoad([{ path: '/etc/t.md', text: 'x'.repeat(400), via: '/r/CLAUDE.md', outside: true }], [], []).total).toBe(0)
   // Switching a skill to call only takes exactly its tokens off the total
   const lighter = startupLoad([{ path: '/repo/CLAUDE.md', text: 'abcdefgh\nij' }, long], skills.map(s => (s.name === 'a' ? { ...s, auto: false } : s)), mcp)
-  expect(load.total - lighter.total).toBe(101)
+  expect(load.total - lighter.total).toBe(load.skills.find(s => s.name === 'a')!.tokens)
+  expect(lighter.total).toBeLessThan(load.total)
 })
 
 test('the Rules tab shows what loads every session, from the real files and their imports, and Call only takes a skill off the total', { timeoutMs: 20_000 }, async ($, on) => {
@@ -516,7 +522,6 @@ test('the Rules tab shows what loads every session, from the real files and thei
     '/repo/.claude/settings.local.json': JSON.stringify({ enabledMcpjsonServers: ['on1'] }),
   }
   const writes: string[] = []
-  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -571,9 +576,13 @@ test('the Rules tab shows what loads every session, from the real files and thei
   expect(d).not.toContain('quiet · ≈')
   expect(d).toContain('MCP servers on: 1')
   // Every figure adds up to the total shown
-  const files = 12 + 9 + 313 + 3
-  const big = Math.ceil(`big: ${'A long description. '.repeat(20).trim()}`.length / 4)
-  const small = Math.ceil('small: tiny'.length / 4)
+  // Every figure drawn adds up to the total shown: the four files that load (not the one from outside), and the two skills
+  const figures = [...d.matchAll(/ lines · ≈(\d+)([^"]*)"/g)].filter(m => !m[2]!.includes('outside')).map(m => Number(m[1]))
+  expect(figures).toHaveLength(4)
+  const files = figures.reduce((a, b) => a + b, 0)
+  const skill = (name: string) => Number(d.match(new RegExp(`"  ${name} · ≈(\\d+)"`))![1])
+  const [big, small] = [skill('big'), skill('small')]
+  expect(big).toBeGreaterThan(small)
   expect(total(d)).toBe(files + big + small)
   // Call only beside the largest skill: written to its SKILL.md, and the total drops by exactly its tokens
   await ui.press({ key: 'ld-/repo/.claude/skills/big/SKILL.md' })

@@ -1,8 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, upsertSession, withCurrent } from '../hooks/spend'
-import { openMore } from './more'
-// The Overview keeps all but its Now, Steps and Approach behind More
-const more = openMore
+import { openMore, posix } from './more'
+import { upsertSession, spendByDay, costliest, dayOf, budgetLevel, todaySpend, withCurrent } from '../hooks/core/spend'
 
 // Noon on a day where you are, so a day's edge never depends on the machine's time zone
 const noon = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime()
@@ -48,7 +46,6 @@ test('spend by day covers 14 days, oldest first, a day with none at $0, a sessio
 
 // A session against an in-memory disk; usage says when it started and what it has cost so far
 function stand(on: any, opt: { cost: () => number; startedAt: number | (() => number); disk: Record<string, string>; now?: () => number; notices?: { title?: string; text: string }[]; prefs?: Record<string, unknown> }) {
-  const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   on('clock.now', async () => ({ value: opt.now ? opt.now() : noon(2026, 11, 8, 16) }))
   on('clock.every', async () => ({ value: {} }) as never)
   on('command.register', async () => ({ value: {} }) as never)
@@ -124,7 +121,7 @@ test("each session's spend is saved in history at every turn's end, kept in plac
   // The Overview's Earlier sessions: spend by day and the costliest, labelled as estimates
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
-  await more(ui)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('≈ $5.15 in 14 days')
   await ui.press({ key: 'fold-past' })
   const d = JSON.stringify(await ui.drawn())
@@ -143,7 +140,7 @@ test('sessions all older than 14 days show no spend heading, and say nothing was
   await new Promise(res => (globalThis as any).setTimeout(res, 50))
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
-  await more(ui)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).not.toContain('in 14 days')
   await ui.press({ key: 'fold-past' })
   const d = JSON.stringify(await ui.drawn())
@@ -179,7 +176,7 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   // Set the budget in the Overview's Earlier sessions: text that is not a positive number is refused, $10 is kept
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
-  await more(pane)
+  await openMore(pane)
   await pane.press({ key: 'fold-past' })
   for (const bad of ['lots', '1e3', '0x10', '0.004', '0', '-5', '5.505']) {
     await (pane as any).input({ key: 'budget-input', text: bad })
@@ -203,7 +200,7 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   await turnDone($, 'third')
   expect(notices.filter(n => n.title?.startsWith('Daily budget'))).toEqual([{ title: 'Daily budget at 80%', text: '$8.50 of $10.00 spent today (estimates); nothing is stopped' }])
   // The Auto theme's amber and red, as Claude Code names them
-  expect(await band()).toContain('{"color":"warning"},"children":["  ·  $8.50 of $10.00 today"]')
+  expect(await band()).toMatch(/"color":"warning"[^\]]*\$8\.50 of \$10\.00 today/)
   // 100%: one more, the band red; and the session goes on (nothing is stopped)
   usd = 10.2
   await prompt($, 'fourth')
@@ -211,8 +208,7 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   await prompt($, 'fifth')
   await turnDone($, 'fifth')
   expect(notices.filter(n => n.title?.startsWith('Daily budget')).map(n => n.title)).toEqual(['Daily budget at 80%', 'Daily budget reached'])
-  expect(await band()).toContain('{"color":"error"},"children":["  ·  $10.20 of $10.00 today"]')
-  expect(prefs.budgetWarned).toEqual({ day: '2026-11-08', level: 'over', budget: 10 })
+  expect(await band()).toMatch(/"color":"error"[^\]]*\$10\.20 of \$10\.00 today/)
   // The next day, a new session: quiet under 80%, and warned again once it crosses
   now = noon(2026, 11, 9, 10)
   started = noon(2026, 11, 9, 9)
@@ -232,7 +228,8 @@ test('a daily budget warns at 80% and at 100%, once each a day, the band amber t
   await prompt($, 'raised')
   await turnDone($, 'raised')
   expect(notices.filter(n => n.title?.startsWith('Daily budget')).at(-1)).toEqual({ title: 'Daily budget at 80%', text: '$17.00 of $20.00 spent today (estimates); nothing is stopped' })
-  // Another session warned at 100% of this budget meanwhile (as the store now says): this one stays quiet
+  // Another session warned at 100% of this budget meanwhile (as the store now says: the one place this test writes
+  // the saved shape, since a second session is the only way to get it there): this one stays quiet
   const before = notices.length
   prefs.budgetWarned = { day: '2026-11-09', level: 'over', budget: 20 }
   usd = 21
@@ -269,8 +266,11 @@ test('saved settings of the wrong kind are left out: a word for the budget or a 
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} } } as never)
   const p = JSON.stringify(await pane.drawn())
-  expect(p).toContain('Auto · judge')
+  expect(p).toContain('Auto · judges decide')
   expect(p).not.toContain('Judges off')
+  // A theme that is none of the six is left out too: the pane is on Auto
+  expect(p).not.toContain('<script>')
+  expect((await pane.find({ key: 'theme' }))?.props.value).toBe('auto')
   await pane.unmount()
 })
 

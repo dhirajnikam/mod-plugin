@@ -1,6 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-
-import { ringRuns } from '../hooks/logic'
+import { ringRuns } from '../hooks/ui/svg'
 
 // The ring is 14 cells wide on every row, shows its percentage in the middle row, and fills with the accent as it grows
 test('the progress ring is well-formed text', async () => {

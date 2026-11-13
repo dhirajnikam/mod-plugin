@@ -1,11 +1,9 @@
 import { expect, test } from 'claude-code/testing'
+import { TABS } from '../hooks/pane/tabs'
 import { openMore } from './more'
-// The Overview keeps all but its Now, Steps and Approach behind More
-const more = openMore
 
 // Every computed run of text fits the width it is drawn in, from a narrow pane to a wide terminal
 const WIDTHS = [28, 40, 60, 100, 160]
-const TABS = ['overview', 'files', 'agents', 'git'] as const
 const scroll = { offset: 0, bodyRows: 30 }
 
 // Each row's text as drawn: a column Box starts new rows, anything else joins its row
@@ -37,7 +35,11 @@ test('the band, the pane and the chat cards fit every width', { timeoutMs: 20_00
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('tool.call', async () => ({ result: 'ok' }) as never)
-  on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('process.run', async (_, e) => {
+    const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
+    return { value: { exitCode: 0, stdout: cmd.startsWith('git status') ? '## feature/a-rather-long-branch-name-for-a-narrow-pane\0 M src/features/authentication/login-form.tsx\0' : cmd === 'git rev-parse --show-toplevel' ? '/repo\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   await $.tool.call({ tool: 'Edit', file_path: '/Users/someone/projects/app/src/features/authentication/login-form.tsx', old_string: 'a', new_string: 'b' } as never).catch(() => null)
   await $.tool.call({ tool: 'Read', file_path: '/Users/someone/projects/app/README.md' } as never).catch(() => null)
   const bad: string[] = []
@@ -48,10 +50,18 @@ test('the band, the pane and the chat cards fit every width', { timeoutMs: 20_00
         const band = await $.ui.mount({ plugin: 'cockpit', surface, component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: true, maxRows: 12, bodyColumns: w, scroll, view: {} } } as never)
         for (const n of wide(await band.drawn(), w)) bad.push(`${surface} band focus ${focus} @${w}: ${n}`)
         await band.unmount()
-        for (const tab of TABS) {
+        for (const { id: tab } of TABS) {
           await $.command.run({ command: 'cockpit', args: `tab ${tab}` } as never)
           const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll, view: {} } } as never)
           for (const n of wide(await pane.drawn(), w)) bad.push(`${surface} ${tab} @${w}: ${n}`)
+          // The same tab with its More open, then folded again for the next width
+          const fold = await openMore(pane)
+          // The Git tab is on its setup here, which has no More; the test below measures the tab once set up
+          if (!fold && tab !== 'git') bad.push(`${surface} ${tab} @${w}: no More to open`)
+          if (fold) {
+            for (const n of wide(await pane.drawn(), w)) bad.push(`${surface} ${tab} More @${w}: ${n}`)
+            await pane.press({ key: fold })
+          }
           await pane.unmount()
         }
       }
@@ -72,7 +82,7 @@ test("the Git tab's pull request fits every width, and draws pending and passing
   on('process.run', async (_, e) => {
     const cmd = (e as unknown as { argv: string[] }).argv.join(' ')
     const out = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-    if (cmd.startsWith('git status')) return out('## feature/a-rather-long-branch-name-for-a-narrow-pane\0')
+    if (cmd.startsWith('git status')) return out('## feature/a-rather-long-branch-name-for-a-narrow-pane\0 M src/features/authentication/login-form.tsx\0')
     if (cmd.startsWith('git branch')) return out('main\n')
     if (cmd.startsWith('gh pr view')) return out('{"number":1234,"title":"Make the authentication flow survive an expired refresh token on every platform","url":"u","state":"OPEN","isDraft":false,"reviewDecision":"CHANGES_REQUESTED"}')
     if (cmd.startsWith('gh pr checks')) return out(checks)
@@ -80,7 +90,6 @@ test("the Git tab's pull request fits every width, and draws pending and passing
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
   const setup = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } } as never)
-  await openMore(setup)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await setup.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
   await setup.unmount()
   const bad: string[] = []
@@ -91,6 +100,13 @@ test("the Git tab's pull request fits every width, and draws pending and passing
       const text = JSON.stringify(drawn)
       for (const want of ['#1234', 'changes requested', '✓ 1 passed', '✗ 4 failed', '◌ 1 running', '+1 more failed']) if (!text.includes(want)) bad.push(`${surface} @${w}: no ${want}`)
       for (const n of wide(drawn, w)) bad.push(`${surface} git @${w}: ${n}`)
+      // And with its More open, then folded again for the next width
+      const fold = await openMore(pane)
+      if (!fold) bad.push(`${surface} git @${w}: no More to open`)
+      else {
+        for (const n of wide(await pane.drawn(), w)) bad.push(`${surface} git More @${w}: ${n}`)
+        await pane.press({ key: fold })
+      }
       await pane.unmount()
       // The band above the prompt names the branch too
       const band = await $.ui.mount({ plugin: 'cockpit', surface, component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: true, maxRows: 12, bodyColumns: w, scroll, view: {} } } as never)
@@ -265,7 +281,7 @@ test("the Overview's spend by day and costliest sessions fit every width", { tim
     for (const w of WIDTHS) {
       const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 400 }, view: {} } } as never)
       if (!opened) {
-        await more(pane)
+        await openMore(pane)
         await pane.press({ key: 'fold-past' })
         opened = true
       }

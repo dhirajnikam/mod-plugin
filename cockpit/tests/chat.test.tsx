@@ -1,9 +1,9 @@
 import { expect, test } from 'claude-code/testing'
+import { ok } from './more'
 
 // The chat around the prompt, driven the way a session does: what a turn came to, an agent's card, the band's live
 // words and Compact, the spinner's step, and a card's press opening the pane
 const scroll = { offset: 0, bodyRows: 60 }
-const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const site = (component: string, requestId: string, props: object, surface = 'terminal') => ({ plugin: 'cockpit', surface, component, requestId, props })
 const band = (surface = 'terminal') => site('AbovePrompt', 'band', { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} }, surface)
 const drawn = async (m: { drawn: () => Promise<unknown> }) => JSON.stringify(await m.drawn())

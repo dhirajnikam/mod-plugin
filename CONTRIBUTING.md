@@ -49,14 +49,13 @@ through the code.
 
 | Path | What it holds |
 |---|---|
-| `cockpit/hooks/register.tsx` | the event hooks: prompts, tool calls, turns, agents, the judges |
-| `cockpit/hooks/drawings.tsx` | every drawing around the chat: the band, the spinner, the chat's cards and rows |
-| `cockpit/hooks/pane.tsx`, `full-pane.tsx` | the side pane: what it draws with, its header and tabs, and the whole pane with the open tab |
-| `cockpit/hooks/tabs/` | the pane: one file per tab, `header.tsx` for its header and tabs, `shared.tsx` for the pieces they share |
-| `cockpit/hooks/ops/` | what the views and hooks do: `core.ts` (state, history), `git.ts`, `agents.ts`, `decisions.ts` (judges and autopilot), `memory-io.ts`, `rules-io.ts` |
-| `cockpit/hooks/logic.ts` | pure helpers: flows and progress, diffs, the file tree, SVG drawings |
-| `cockpit/hooks/memory.ts` | the codebase memory: imports, features, impact, the feature map |
-| `cockpit/hooks/rules.ts` | the Rules tab's reading and changing of settings and `CLAUDE.md` |
+| `cockpit/hooks/register.tsx` | the event hooks, in order: prompts, tool calls, turns, agents, the judges |
+| `cockpit/hooks/commands.ts`, `acts.ts` | the `/cockpit` command; the actions another plugin can call by name |
+| `cockpit/hooks/core/` | the state (`core.ts`, the one file that declares it; the rest read it with `look()` and change it with `set()`), repos, history, spend, notices, text helpers, themes |
+| `cockpit/hooks/flows/`, `git/`, `agents/`, `judges/`, `memory/`, `rules/` | one folder per feature; where a feature has the pair, `x.ts` is its pure logic and `x-io.ts` its engine I/O; `x-tab.tsx` is its tab in the pane |
+| `cockpit/hooks/pane/` | the side pane: the whole pane with the open tab (`full-pane.tsx`), its header and tab row, the Overview tab, and `tabs.ts`, the one table of tabs |
+| `cockpit/hooks/ui/` | `shared.tsx` for the pieces the tabs share, `svg.ts` for the SVG drawings |
+| `cockpit/hooks/chat/drawings.tsx` | every drawing around the chat: the band, the spinner, the chat's cards and rows |
 | `cockpit/types/index.d.ts` | the state contract: every value Cockpit keeps |
 | `cockpit/agents/*.md` | the six experts' definitions |
 | `cockpit/tests/` | the tests |

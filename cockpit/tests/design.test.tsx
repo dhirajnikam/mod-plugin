@@ -1,11 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-// The Overview keeps all but its Now, Steps and Approach behind More
-const more = openMore
-import { neuralSvg } from '../hooks/logic'
-import { openMore } from './more'
+import { openMore, ok } from './more'
+import { neuralSvg } from '../hooks/ui/svg'
 
 // The layout's promises, each checked by drawing a tab with a pipeline, agents and a changed file
-const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 test('Activity tells one story: agents\' events fill the feed, so the tab never says it has nothing, and the count matches the rows; empty lists all say None yet, and an agent\'s result shows once', { timeoutMs: 20_000 }, async ($, on) => {
   let clock = 1_000_000
   let spawns = 0
@@ -103,7 +100,7 @@ test('Checks read plainly: passes are counted in words, and a tester still at wo
   await $.tool.call({ tool: 'TodoWrite', agentId: 'ag3', tool_use_id: 'p3', todos: [{ content: 'Read the login diff', status: 'in_progress', activeForm: 'x' }, { content: 'Check the error paths', status: 'pending', activeForm: 'x' }, { content: 'List the findings', status: 'pending', activeForm: 'x' }] } as never)
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 160 }, view: {} } } as never)
-  await more(ui)
+  await openMore(ui)
   const d = JSON.stringify(await ui.drawn())
   await ui.unmount()
   // The Prover passed three; the Breaker is still at work
@@ -141,7 +138,10 @@ test('the neural view\'s lines stay clear of every label, and end at the circles
     // The core's own words are inside its circle, where no line reaches
     const labels = boxes.filter(b => !'fix the empty password bug in login'.includes(b.t.replace('…', '')))
     expect(labels.length).toBe(ns.length * 2)
-    for (const m of svg.matchAll(/<path d="M([\d.-]+) ([\d.-]+) Q([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)"/g)) {
+    // A line from the core to each neuron at least: with none found, the loop below would check nothing
+    const lines = [...svg.matchAll(/<path d="M([\d.-]+) ([\d.-]+) Q([\d.-]+) ([\d.-]+) ([\d.-]+) ([\d.-]+)"/g)]
+    expect(lines.length).toBeGreaterThanOrEqual(ns.length)
+    for (const m of lines) {
       const [x0 = 0, y0 = 0, qx = 0, qy = 0, x1 = 0, y1 = 0] = m.slice(1).map(Number)
       for (let i = 0; i <= 40; i++) {
         const k = i / 40

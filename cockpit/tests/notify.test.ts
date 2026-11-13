@@ -1,25 +1,20 @@
 import { expect, test } from 'claude-code/testing'
-import { doneText } from '../hooks/ops/notify'
-import { openMore } from './more'
+import { openMore, deskPane as pane } from './more'
+import { doneText } from '../hooks/core/notify'
 
+// The cases no session below drives: a turn with files and tests, a tester's count, a failure, a worktree to bring
+// back, how an autopilot run ended, and a long task
 test("each kind of finish says what finished and how it went", () => {
   expect(doneText({ kind: 'turn', task: 'fix the login', files: 3, add: 40, del: 12, tests: { pass: 3, total: 3 } })).toEqual({ title: 'Claude is done', text: 'fix the login · 3 files +40 −12 · tests 3/3' })
-  expect(doneText({ kind: 'turn', task: 'what does this do?', files: 0, add: 0, del: 0 }).text).toBe('what does this do? · no files changed')
-  const agent = { name: 'Reviewer', status: 'done' as const, report: 'REPORT: Two findings, none blocking\nHANDOFF: nothing', cases: [], worktree: undefined }
-  expect(doneText({ kind: 'agent', agent })).toEqual({ title: 'Reviewer finished', text: 'Two findings, none blocking' })
+  const agent = { name: 'Reviewer', status: 'done' as const, found: 'Two findings, none blocking', cases: [], worktree: undefined }
   expect(doneText({ kind: 'agent', agent: { ...agent, name: 'Prover', cases: [{ n: 'a', st: 'pass' }, { n: 'b', st: 'fail' }] as never } }).text).toBe('1/2 passed')
-  expect(doneText({ kind: 'agent', agent: { ...agent, status: 'failed' as const, report: '' } })).toEqual({ title: 'Reviewer failed', text: 'failed' })
+  expect(doneText({ kind: 'agent', agent: { ...agent, status: 'failed' as const, found: '' } })).toEqual({ title: 'Reviewer failed', text: 'failed' })
   // A worktree agent with work to bring back says so; once brought back, it does not
   const wt = { path: '/w', branch: 'cockpit/x', base: 'b', files: ['a.ts', 'b.ts'], add: 9, del: 2 }
-  expect(doneText({ kind: 'agent', agent: { ...agent, report: 'Refactored', worktree: wt } }).text).toBe('Refactored · Bring back ready: 2 files +9 −2')
-  expect(doneText({ kind: 'agent', agent: { ...agent, report: 'Refactored', worktree: { ...wt, back: true } } }).text).toBe('Refactored')
-  expect(doneText({ kind: 'pipeline', label: 'Verify', passed: true })).toEqual({ title: 'Verify finished', text: 'All checks passed' })
-  expect(doneText({ kind: 'pipeline', label: 'Verify', passed: false, failing: 'empty password' }).text).toBe('Failed: empty password')
-  expect(doneText({ kind: 'cycle', cycle: 4, ticked: 3, total: 5, spent: 1.234 })).toEqual({ title: 'Autopilot cycle 4 done', text: '3 of 5 milestones ticked · $1.23 spent' })
+  expect(doneText({ kind: 'agent', agent: { ...agent, found: 'Refactored', worktree: wt } }).text).toBe('Refactored · Bring back ready: 2 files +9 −2')
+  expect(doneText({ kind: 'agent', agent: { ...agent, found: 'Refactored', worktree: { ...wt, back: true } } }).text).toBe('Refactored')
   expect(doneText({ kind: 'cycle', cycle: 6, ticked: 5, total: 5, spent: 2, ended: 'done' }).title).toBe('Autopilot done after cycle 6')
   expect(doneText({ kind: 'cycle', cycle: 3, ticked: 1, total: 5, spent: 2, ended: 'paused' }).title).toBe('Autopilot paused after cycle 3')
-  // Agents that ran together, in one notice
-  expect(doneText({ kind: 'agents', agents: [agent, { ...agent, name: 'Scribe', report: 'REPORT: docs updated' }] })).toEqual({ title: '2 agents finished', text: 'Reviewer: Two findings, none blocking · Scribe: docs updated' })
   // A long task is cut to one line
   expect(doneText({ kind: 'turn', task: 'x'.repeat(300), files: 0, add: 0, del: 0 }).text.length).toBe(120)
 })
@@ -65,7 +60,6 @@ const prompt = async ($: any, text: string) => {
 }
 const turnDone = ($: any, turnId: string) => $.turn.complete({ answer: 'ok', reason: 'answer', turnId, isAborted: false, durationMs: 1000 } as never)
 const agentDone = ($: any, agentId: string, answer: string) => $.turn.complete({ agentId, answer, reason: 'answer', turnId: agentId, isAborted: false, durationMs: 1000 } as never)
-const pane = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } }
 
 test('a turn, a background agent and a pipeline each tell you once when they finish, and nothing while you watch', { timeoutMs: 20_000 }, async ($, on) => {
   let watching = false

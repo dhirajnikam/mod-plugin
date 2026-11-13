@@ -1,6 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-
-import { PIPELINES, EXPERTS, parseReport, verifyState } from '../hooks/logic'
+import { parseReport, verifyState, PIPELINES, EXPERTS } from '../hooks/agents/experts'
 
 test('parseReport keeps REPORT and HANDOFF, defaults a missing HANDOFF, falls back to the last lines', async () => {
   expect(parseReport('blah\nREPORT: did x\nHANDOFF: run y\n')).toBe('REPORT: did x\nHANDOFF: run y')
@@ -18,8 +17,11 @@ test('verifyState counts pass and fail across the latest Prover and Breaker', as
   expect(verifyState([]).passed).toBe(false)
 })
 
-test('the Build pipeline names all six registered experts in order', async () => {
-  const build = PIPELINES.find(p => p.name === 'build')!
-  expect(build.steps).toEqual(['planner', 'builder', 'reviewer', 'prover', 'breaker', 'scribe'].map(x => `cockpit:${x}`))
-  expect(build.steps.every(s => EXPERTS.some(e => e.type === s))).toBe(true)
+// The order a pipeline runs in is driven end to end in breaker.test.tsx
+test("every pipeline's steps are registered experts", async () => {
+  expect(PIPELINES.length).toBeGreaterThan(0)
+  for (const p of PIPELINES) {
+    expect(p.steps.length).toBeGreaterThan(0)
+    for (const s of p.steps) expect(EXPERTS.map(e => e.type)).toContain(s)
+  }
 })

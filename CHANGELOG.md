@@ -5,15 +5,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/ops/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
-  a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
-  (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
-  folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
-- **The same for Activity, Agents, Git and Rules**: each tab opens on one plain sentence of its own state (`12 edits in 4 files this session`, `2 agents running · Reviewer found 1 issue`,
-  `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
-  (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
-  Everything else is behind one **More** fold per tab, folded by default; no button was removed.
+## [0.8.0] - 2026-11-13
 
 ### Added
 - **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
@@ -32,6 +24,70 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
   Overview's Earlier sessions shows what the last 14 days cost, a bar for each day, and the five costliest sessions,
   marked as Claude Code's estimates.
+
+### Changed
+- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/git/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
+  a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
+  (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
+  folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
+- **What you see first**, the same for Activity, Agents, Git and Rules: each tab opens on one plain sentence of its own state (`12 edits in 4 files this session`, `2 agents running · Reviewer found 1 issue`,
+  `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
+  (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
+  Everything else is behind one **More** fold per tab, folded by default; no button was removed.
+- **Code laid out by feature**: `cockpit/hooks/` has one folder per feature (`core`, `flows`, `git`, `agents`, `judges`, `memory`, `rules`,
+  `pane`, `ui`, `chat`) in place of `ops/` and `tabs/`, and the state is declared in one file, `core/core.ts`, which the rest read through.
+  See [docs/CODEBASE.md](docs/CODEBASE.md).
+- **One table of tabs**: every way of opening a tab (its button, `/cockpit tab`, a link from another tab or the chat) goes through one
+  function, so a tab's button now also reads the codebase guide again for Overview and syncs the agents for Agents, as `/cockpit tab` always did.
+
+### Fixed
+- The Auto theme follows the terminal: it draws Black on a dark terminal and White on a light one, read from
+  `COLORFGBG` or the Mac's appearance every 15 s, instead of Claude Code's theme colours, whose `auto` keeps the
+  appearance the session started with and so turned wrong when macOS switched light and dark on its schedule.
+- Cockpit's auto-commit never commits Claude Code's agent worktrees (`.claude/worktrees/` is ignored).
+- A spend figure Claude Code reports as not a number counts as 0, so it never drops a session from the history.
+- A saved setting is used only if it is of its kind, so a hand-edited store cannot, say, turn the judges off.
+- The daily budget's warnings are shared by every session, and a raised budget warns afresh.
+- The Rules tab no longer says a change was saved when the file could not be written; it says why it was not.
+- Edits made with NotebookEdit or MultiEdit count like any other edit: they show as
+  activity, move the flow to Implement, update the codebase memory and start auto-verify and auto-commit.
+- When a prompt is sent as a turn ends, or the next turn starts before the last one is done, the finished
+  turn's flow is the one marked done and counted, not the next one.
+- A prompt refused before it runs no longer marks the flow before it as stopped.
+- `/cockpit tab` with a word that is no tab answers with the list of tabs instead of "Cockpit pane opened."
+- A failure inside Cockpit no longer fails `/cockpit`, the permission check for an agent started
+  from the pane, the session's measurement or another plugin's call to Cockpit; one failed reading no longer skips the
+  rest of the 15-second refresh.
+- A change is typed "test" only when every file is a test file (a tests folder or a `.test.`/`.spec.`
+  name), not when a path merely holds the letters, as `src/inspector.ts` does.
+- A repository whose base branch is `trunk` is recognised as such, like main, master and develop.
+- `gh` can no longer stop to ask a question when a commit opens its pull request.
+- Each finished run of a pull request is told once, and answers that a newer read has overtaken no
+  longer make Cockpit stop watching a pending run early.
+- The Activity tab's file list is read when that tab is open and when a turn ends, not on
+  every git refresh.
+- An agent is named the same however Cockpit learned of it, so an expert started from New agent shows
+  as "Planner", not `cockpit:planner`; the agents map says who started an agent and who provides it in the same
+  words as the Agents tab, and a subagent's notebook edits name their file.
+- An expert's REPORT and HANDOFF lines are read one way everywhere: the run's row, its notice and
+  the agents' recall.
+- A hand-off the engine drops is tried once more for agents and autopilot cycles too, as it
+  was for the codebase guide.
+- A worktree git still lists is not called removed, however git spells its path.
+- Each judge's seat and point of view come from one table, so a panel can never seat more judges than
+  there are seats.
+- Which daily-budget warning stands, when another session warned today too, is decided by one rule.
+- The autopilot's pause message gives the number of cycles that passed without a milestone, not a word for it.
+- A memory file that is there but cannot be read is listed as unreadable, not as missing.
+- The decision mode reads "Auto · judges decide", "Ask me · judges advise" or "Judges off" in
+  the header, the line under the prompt, the Overview and `/cockpit mode`; a pull request says "review required" on
+  the Overview as on the Git tab, shows a closed or merged one by its state, and no longer says "checks passing" when
+  it has no checks; the context figure turns red at 80 % in the band as on the Overview; the band counts a skipped step
+  as the Overview does; the band names the autopilot as the Overview does; a test case counts as passed when it passed
+  or was fixed, wherever cases are counted; section headings are drawn one way on every tab.
+
+### Removed
+- The self-check that ran at every session start; its table of cases is a test now (`cockpit/tests/logic.test.ts`).
 
 ## [0.7.0] - 2026-11-08
 
@@ -274,7 +330,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.8.0...main
+[0.8.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.4.0...v0.4.1

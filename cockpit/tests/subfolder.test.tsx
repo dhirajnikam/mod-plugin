@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
+import { ok } from './more'
 
 // A session working in a subfolder of its repository, with auto-commit and push on: the setup that failed with
 // "git add failed: could not open directory 'cockpit/cockpit/'" and never auto-committed a turn's shell edits
-const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 
 // A whole session end to end: about a second when the machine is quiet, past the 5 s default when it is busy
 test('from a subfolder, a turn that changed files by any means is committed and pushed at the repository root', { timeoutMs: 20_000 }, async ($, on) => {
@@ -42,8 +42,8 @@ test('from a subfolder, a turn that changed files by any means is committed and 
   on('command.run', async () => ({ text: '' }))
   await $.session.start({ source: 'startup', cwd: '/repo/cockpit', surface: 'terminal', isInteractive: true } as never)
   await new Promise(res => (globalThis as any).setTimeout(res, 300))
-  // The settings saved under the subfolder moved to the repository
-  expect((store['git:/repo'] as any)?.commitMode).toBe('auto')
+  // The settings saved under the subfolder moved to the repository (the auto-commit below runs on them), and are no
+  // longer kept under the subfolder
   expect(store['git:/repo/cockpit']).toBeNull()
   await $.prompt.submit({ text: 'fix the limiter', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
   edited = true

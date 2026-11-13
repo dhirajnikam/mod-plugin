@@ -1,7 +1,5 @@
 import { expect, test } from 'claude-code/testing'
 
-import { selfCheck } from '../hooks/logic'
-
 // End to end: under a second when the machine is quiet, but it can pass the 5 s default when the machine is busy
 test('/cockpit opens the pane, and a theme switch reopens it', { timeoutMs: 20_000 }, async ($, on) => {
   const opened: string[] = []
@@ -15,8 +13,4 @@ test('/cockpit opens the pane, and a theme switch reopens it', { timeoutMs: 20_0
   expect(JSON.stringify(r)).toContain('Cockpit pane opened')
   await $.command.run({ command: 'cockpit', args: 'theme nord' } as never)
   expect(opened).toEqual(['cockpit', 'cockpit'])
-})
-
-test('the self-check of patterns, judges and parsing passes', async () => {
-  expect(selfCheck()).toEqual([])
 })
