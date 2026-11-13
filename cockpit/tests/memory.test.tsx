@@ -149,11 +149,13 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
     named++
     return { value: { isAnswered: true, text: '[{"name": "Pages", "what": "The site\'s pages.", "files": ["src/a.ts", "src/b.ts"]}, {"name": "Counter", "what": "Counts things.", "files": ["lib/c.ts"]}]', usage: { inputTokens: 1, outputTokens: 1 } } } as never
   })
+  // What git lists, changed below as a shell command would
+  let listed = 'src/a.ts\0src/b.ts\0lib/c.ts\0'
   on('process.run', async (_: unknown, e: any) => {
     const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
     if (cmd === 'git rev-parse --show-toplevel') return ok('/repo\n')
     if (cmd.startsWith('git status')) return ok('## master\0')
-    if (cmd.startsWith('git ls-files')) return ok('src/a.ts\0src/b.ts\0lib/c.ts\0')
+    if (cmd.startsWith('git ls-files')) return ok(listed)
     return ok('')
   })
   on('prompt.compose', async () => ({ sections: [{ id: 'intro', text: 'You are Claude.', scope: 'shared' }] }) as never)
@@ -215,7 +217,17 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   expect(named).toBe(1)
 
   // The turn ends: history is written, and the earlier session's flow shows in the Overview
+  // A shell command in the same turn makes a file in a new folder and deletes another: git status would name only the
+  // folder, yet at the turn's end the new file is mapped (into the feature it imports, its folder having none) and the
+  // gone one leaves its feature
+  disk['/repo/src/deep/e.ts'] = "import { a } from '../a'\nexport const e = 1\n"
+  delete disk['/repo/src/b.ts']
+  listed = 'src/a.ts\0src/d.ts\0lib/c.ts\0src/deep/e.ts\0'
   await $.turn.complete({ answer: 'done', reason: 'answer', turnId: 't', isAborted: false, durationMs: 1000 } as never)
+  const synced = JSON.parse(disk['/repo/.cockpit/memory.json'] ?? '{}')
+  expect(Object.keys(synced.files).sort()).toEqual(['lib/c.ts', 'src/a.ts', 'src/d.ts', 'src/deep/e.ts'])
+  expect(synced.features.find((f: any) => f.name === 'Pages').files.sort()).toEqual(['src/a.ts', 'src/d.ts', 'src/deep/e.ts'])
+  expect(named).toBe(1)
   const hist = JSON.parse(disk['/repo/.cockpit/history.json'] ?? '{}')
   expect(hist.flows.map((f: any) => f.task)).toEqual(['an older task', 'change c'])
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)

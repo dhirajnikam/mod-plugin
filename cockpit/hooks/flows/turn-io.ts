@@ -11,7 +11,7 @@ import { verifyState } from '../agents/experts'
 import { refreshRepo, followEdit, decideCommit } from '../git/git'
 import { snapTurn } from '../git/turns-io'
 import { stopAutopilot, autopilotTurnEnd } from '../judges/autopilot'
-import { updateMemory, loadProject } from '../memory/memory-io'
+import { updateMemory, loadProject, syncMemory } from '../memory/memory-io'
 import { flowOf } from './flows'
 import { stepOf, activityOf, isEditTool } from './tools'
 
@@ -132,6 +132,8 @@ export async function mainTurnEnd($: $, e: { isAborted?: boolean | undefined; du
     const root = await repoRoot($)
     for (const c of s.repo.changed.slice(0, 40)) await updateMemory($, `${root}/${c.path}`)
   }
+  // And the files that came or went that status does not name one by one (a new folder's, a rename's old path)
+  if (didChange) await syncMemory($).catch(() => null)
   // The flow's +/− counts what changed in the repository this turn, a shell command's edits too: the lines each file
   // gained since the turn started, or the edits' own count where that is more
   // ponytail: git's numstat leaves untracked files out, so a new file a shell command wrote counts no lines

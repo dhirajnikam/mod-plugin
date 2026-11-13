@@ -108,13 +108,27 @@ export async function updateMemory($: $, path: string) {
       files[rel] = imports
       if (fact) facts[rel] = fact
     }
-    // A file came or went: the named features take it in or let it go now, and stand for the new file set, so
-    // neither this session nor the next has a model name them again for it
+    // The named features take in a new file and let a gone one go now, and stand for the new file set, so neither this
+    // session nor the next has a model name them again for it; a file not placed before may be now its imports changed
     const moved = came || imports === null
-    const features = moved && st.memory.features ? adoptFiles(st.memory.features, files) : st.memory.features
+    const features = st.memory.features ? adoptFiles(st.memory.features, files) : st.memory.features
     return { memory: { ...st.memory, at, files, facts, features, ...(moved && st.memory.sig ? { sig: filesSig(files) } : {}) } }
   })
   await saveMemory($)
+}
+
+// The source files that came or went since the memory was read, whoever made them: a shell command, a script, a git
+// checkout. git status names a new folder, not its files, so the file list is git's own, as the session start reads it
+export async function syncMemory($: $) {
+  const root = await repoRoot($)
+  const s = await look($)
+  if (!root || !s.memory.at) return
+  const r = await lsFiles($, root)
+  if (r.exitCode !== 0) return
+  const now = new Set(r.stdout.split('\0').filter(Boolean).filter(isCode).slice(0, 1500))
+  const came = [...now].filter(f => !(f in s.memory.files))
+  const gone = Object.keys(s.memory.files).filter(f => !now.has(f))
+  for (const f of [...came, ...gone]) await updateMemory($, `${root}/${f}`)
 }
 
 // The pages as last written, so an edit that changes one file's page writes that page only
