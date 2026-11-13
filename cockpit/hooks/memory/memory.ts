@@ -178,19 +178,50 @@ export function parseFeatures(text: string, files: Files): Named[] {
   }
 }
 
-// The memory as Claude reads it each turn: the features, what each is for, their files and how they connect
+// The memory as Claude reads it each session: every feature on one short line with its page, so none is cut, and the
+// detail left to the pages. It changes only when the features do, so the prompt's cache holds from turn to turn
 export function memoryText(files: Files, max = 2600, named: Named[] = []) {
   const fs = features(files, named)
-  const lines = [
-    `Cockpit's map of this repository (features, and links from imports): ${Object.keys(files).length} source files in ${fs.length} features. Before changing a file, check what imports it; a change reaches those files too. To find the file to change without reading the code, open the feature's page in .cockpit/memory/ (index: .cockpit/MEMORY.md): each file there says what it does, what it exports and imports, and what imports it.`,
-    ...fs.map(f => `- ${f.name}${f.what ? `: ${f.what}` : ''} (${f.files.map(x => x.split('/').pop()).slice(0, 8).join(', ')}${f.files.length > 8 ? ', …' : ''})${f.uses.length ? `; uses ${f.uses.join(', ')}` : ''}${f.usedBy.length ? `; used by ${f.usedBy.join(', ')}` : ''}`),
-  ]
+  const slugs = featureSlugs(fs.map(f => f.name))
+  const head = `Cockpit's map of this repository: ${Object.keys(files).length} source files in ${fs.length} features. Check it first, before searching or reading code: pick the feature, open its page in .cockpit/memory/ (index: .cockpit/MEMORY.md), which says for each file what it does, exports and imports and what imports it, then open the file. A change reaches the files that import it.`
+  const line = (f: Feature, i: number, what: boolean) => `- ${f.name} (memory/${slugs[i]}.md)${what && f.what ? `: ${f.what.length > 100 ? `${f.what.slice(0, 99)}…` : f.what}` : ''}`
+  let lines = [head, ...fs.map((f, i) => line(f, i, true))]
+  // Too long with what each does: every feature by name and page still beats a few in full
+  if (lines.join('\n').length > max) lines = [head, ...fs.map((f, i) => line(f, i, false))]
   let out = ''
   for (const l of lines) {
     if (out.length + l.length + 1 > max) return `${out}- …`
     out += `${l}\n`
   }
   return out.trimEnd()
+}
+
+const STOP = new Set('the and for with this that from into what when then than have has are was were you your can could should would will not but all any its our out use add fix make code file files change please also just like need want them they there here how why does did done'.split(' '))
+const wordsOf = (s: string) => s.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().match(/[a-z][a-z0-9]{2,}/g) ?? []
+
+// Recall, as a person does from a cue: the features this prompt's words name (in a feature's name, what it does, its
+// file names or exports) and the ones worked on lately, the strongest first, each with its page and its files' paths.
+// Empty when nothing comes to mind. recent: paths of the files read or changed lately
+// ponytail: word overlap, not meaning; a feature named in other words is not recalled, the map in the prompt still is
+export function recall(files: Files, named: Named[], facts: Record<string, { exports: string[] }>, prompt: string, recent: string[] = [], n = 3) {
+  const cue = new Set(wordsOf(prompt).filter(w => !STOP.has(w)))
+  const fs = features(files, named)
+  const slugs = featureSlugs(fs.map(f => f.name))
+  const hot = new Set(recent)
+  const scored = fs
+    .map((f, i) => {
+      const known = new Set(wordsOf([f.name, f.what, ...f.files.map(p => p.split('/').pop()!.replace(/\.[^.]+$/, '')), ...f.files.flatMap(p => facts[p]?.exports ?? [])].join(' ')))
+      const hits = [...cue].filter(w => known.has(w)).length
+      return { f, slug: slugs[i]!, score: hits * 2 + (f.files.some(p => hot.has(p)) ? 1 : 0) }
+    })
+    .filter(x => x.score > 0 && !isTestFeature(x.f))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+  if (!scored.length) return ''
+  return [
+    `Cockpit's memory recalls these parts of the codebase for this prompt. Check them first: open the page, then the files it names.`,
+    ...scored.map(({ f, slug }) => `- ${f.name} (.cockpit/memory/${slug}.md): ${f.files.slice(0, 6).join(', ')}${f.files.length > 6 ? ', …' : ''}${f.usedBy.length ? `; used by ${f.usedBy.slice(0, 4).join(', ')}` : ''}`),
+  ].join('\n')
 }
 
 // The named features kept up with the files as they are now, so a file that comes or goes needs no model to name them

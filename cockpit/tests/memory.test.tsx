@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { openMore, ok, posix } from './more'
-import { parseImports, resolveImport, impactOf, features, memoryText, parseFeatures, factsOf, filesSig, memoryKey, isTestFeature, adoptFiles, featureSlugs, memoryMarkdown } from '../hooks/memory/memory'
+import { parseImports, resolveImport, impactOf, features, memoryText, parseFeatures, factsOf, filesSig, memoryKey, isTestFeature, adoptFiles, featureSlugs, memoryMarkdown, recall } from '../hooks/memory/memory'
 import { featureLayers, featureMapSvg, featureMapText } from '../hooks/memory/memory-map'
 
 test('imports resolve to repository files across languages, and a change reaches what depends on it', async () => {
@@ -16,7 +16,7 @@ test('imports resolve to repository files across languages, and a change reaches
   expect(im.features).toEqual(['src'])
   expect(impactOf(files, 'src/b.tsx').affected).toEqual(['src/a.ts'])
   expect(features(files).find(f => f.name === 'src')?.uses).toEqual(['types'])
-  expect(memoryText(files)).toContain('- src (a.ts, b.tsx); uses types')
+  expect(memoryText(files)).toContain('- src (memory/src.md)')
   // Features as a model names them: a description each, links from the imports between their files, a file in one only
   const named = parseFeatures('Here: [{"name": "Login page", "what": "Signs people in.", "files": ["src/a.ts", "nope.ts"]}, {"name": "Shared types", "what": "Types every part uses.", "files": ["types/index.d.ts", "src/a.ts"]}]', files)
   expect(named).toEqual([{ name: 'Login page', what: 'Signs people in.', files: ['src/a.ts'] }, { name: 'Shared types', what: 'Types every part uses.', files: ['types/index.d.ts'] }])
@@ -24,7 +24,7 @@ test('imports resolve to repository files across languages, and a change reaches
   expect(fs.find(f => f.name === 'Login page')?.uses).toEqual(['src', 'Shared types'])
   expect(fs.find(f => f.name === 'Shared types')?.usedBy.sort()).toEqual(['Login page', 'src'])
   expect(impactOf(files, 'types/index.d.ts', 3, named).feature).toBe('Shared types')
-  expect(memoryText(files, 2600, named)).toContain('- Login page: Signs people in. (a.ts)')
+  expect(memoryText(files, 2600, named)).toContain('- Login page (memory/login-page.md): Signs people in.')
   expect(factsOf('src/x.ts', '// Keeps the cart in sync with the server\nexport function addItem() {}\nexport const Cart = 1')).toEqual({ exports: ['addItem', 'Cart'], note: 'Keeps the cart in sync with the server' })
   expect(filesSig({ a: [], b: [] })).toBe(filesSig({ b: [], a: [] }))
   expect(memoryText(files, 120).endsWith('- …')).toBe(true)
@@ -49,6 +49,31 @@ test('the named features keep up with files that come and go, and page names sta
   const pages = memoryMarkdown(files, 'now', [{ name: 'A | b', what: 'x', files: ['src/a.ts'] }])
   expect(Object.keys(pages).every(p => p === 'MEMORY.md' || /^memory\/[a-z0-9-]+\.md$/.test(p))).toBe(true)
   expect(pages['MEMORY.md']).toContain('| [A \\| b](memory/a-b.md) | x | 1 |')
+})
+
+test('every feature fits the prompt on a line of its own, and a prompt recalls the features its words name', async () => {
+  // 30 features with long descriptions: the old map cut all but a few, this one keeps every one
+  const files: Record<string, string[]> = {}
+  const named = Array.from({ length: 30 }, (_, i) => {
+    files[`f${i}/x${i}.ts`] = []
+    return { name: `Feature ${i}`, what: 'Does a great many things for the person using it, in more words than fit a line of the map at all.', files: [`f${i}/x${i}.ts`] }
+  })
+  const map = memoryText(files, 2600, named)
+  expect(map).not.toContain('- …')
+  expect(named.every(n => map.includes(`- ${n.name} (memory/`))).toBe(true)
+  // Recall: the words of the prompt in a feature's name, files or exports; then the ones worked on lately
+  const app = { 'src/cart.ts': ['src/price.ts'], 'src/price.ts': [], 'auth/login.ts': [], 'tests/cart.test.ts': ['src/cart.ts'] }
+  const feats = [
+    { name: 'Shopping cart', what: 'Holds what the person buys.', files: ['src/cart.ts', 'src/price.ts'] },
+    { name: 'Sign in', what: 'Signs people in.', files: ['auth/login.ts'] },
+    { name: 'Tests', what: 'Checks the cart.', files: ['tests/cart.test.ts'] },
+  ]
+  const r = recall(app, feats, { 'auth/login.ts': { exports: ['verifyPassword'] } }, 'Fix the cart total')
+  expect(r).toContain('- Shopping cart (.cockpit/memory/shopping-cart.md): src/cart.ts, src/price.ts')
+  expect(r).not.toContain('- Tests')
+  expect(recall(app, feats, { 'auth/login.ts': { exports: ['verifyPassword'] } }, 'the password check is wrong')).toContain('Sign in')
+  expect(recall(app, feats, {}, 'something else entirely')).toBe('')
+  expect(recall(app, feats, {}, 'something else entirely', ['auth/login.ts'])).toContain('Sign in')
 })
 
 test('ESM .js specs, bare Dart and CSS imports, imports that leave the repository, and the longest memory key', async () => {
@@ -160,7 +185,8 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   })
   on('prompt.compose', async () => ({ sections: [{ id: 'intro', text: 'You are Claude.', scope: 'shared' }] }) as never)
   on('tool.call', async () => ({ result: 'ok' }))
-  on('prompt.submit', async (_: unknown, e: any) => ({ text: e.text }))
+  let submitted: any = null
+  on('prompt.submit', async (_: unknown, e: any) => ((submitted = e), { text: e.text }))
   on('turn.complete', async () => ({ text: '' }))
   on('command.run', async () => ({ text: '' }))
   await $.session.start({ source: 'startup', cwd: '/repo', surface: 'terminal', isInteractive: true } as never)
@@ -177,9 +203,9 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
   // Claude reads it in its system prompt, in a section of its own beside the engine's: both features, and which uses which
   const composed: any = await $.prompt.compose({ model: 'claude-x', promptModel: 'claude-x', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
   expect(composed.sections.map((x: any) => x.text)).toContain('You are Claude.')
-  const told = composed.sections.filter((x: any) => x.text.includes('- Pages: The site\'s pages. (a.ts, b.ts); uses Counter'))
+  const told = composed.sections.filter((x: any) => x.text.includes("- Pages (memory/pages.md): The site's pages."))
   expect(told).toHaveLength(1)
-  expect(told[0].text).toContain('- Counter: Counts things.')
+  expect(told[0].text).toContain('- Counter (memory/counter.md): Counts things.')
 
   // Focus off was kept from an earlier session: the status row is the full one
   const hint = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'PromptHint', requestId: 'hint', props: { isDraft: false, isWorking: false, hint: '' } } as never)
@@ -188,6 +214,8 @@ test('each session maps the codebase into .cockpit, shows an edit\'s impact, tel
 
   // An edit to lib/c.ts: Activity shows what it reaches
   await $.prompt.submit({ text: 'change c', command: null, isMeta: false, origin: { kind: 'composer' } } as never)
+  // The prompt names no feature: nothing is recalled beside it
+  expect(submitted.context ?? []).toEqual([])
   disk['/repo/lib/c.ts'] = "import { a } from '../src/a'\nexport default 2\n"
   await $.tool.call({ tool: 'Edit', file_path: '/repo/lib/c.ts', old_string: '1', new_string: '2', tool_use_id: 'e1' } as never)
   await $.command.run({ command: 'cockpit', args: 'tab files' } as never)

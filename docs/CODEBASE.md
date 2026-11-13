@@ -103,11 +103,14 @@ in Cockpit never blocks the session.
 1. `prompt.submit`: skips Cockpit's own hand-offs and commands; otherwise `openFlow()`
    ([turn-io.ts](../cockpit/hooks/flows/turn-io.ts)) records a new flow and the repository's changes at that
    moment, then `writeSteps()` ([flows-io.ts](../cockpit/hooks/flows/flows-io.ts)) asks a model for the flow's
-   steps in the background so the prompt is not held. A prompt refused further down removes its flow again.
+   steps in the background so the prompt is not held. `recall()` ([memory.ts](../cockpit/hooks/memory/memory.ts))
+   attaches the features the prompt's words name, or that were worked on lately, beside the prompt, and
+   `syncMemory()` catches files changed between turns. A prompt refused further down removes its flow again.
 2. `turn.start`: a turn with no prompt of yours (a `/goal` continuation, a queued prompt) carries on the last flow
    or opens one. A snapshot of the working tree is taken before the turn (`snapTurn()` in
    [turns-io.ts](../cockpit/hooks/git/turns-io.ts)).
-3. `prompt.compose`: adds the codebase memory (`memoryText()`) to Claude's system prompt.
+3. `prompt.compose`: adds the codebase memory (`memoryText()`, every feature on one line with its page) to
+   Claude's system prompt.
 4. `tool.call`: each call is recorded as a file operation and moves the flow's steps; `TodoWrite`, `TaskCreate`
    and `TaskUpdate` make Claude's task list the flow's steps; `AskUserQuestion` goes to `judge()`
    ([decisions.ts](../cockpit/hooks/judges/decisions.ts)).

@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Claude's prompt lists every feature of the codebase memory on a line of its own with its page, where a long map cut all but a few; each prompt you send carries the features its words name, with their pages and files, so Claude checks them first; and files changed between turns join the memory when you next send a prompt.
+
 ## [0.8.1] - 2026-11-13
 
 ### Changed
