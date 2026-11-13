@@ -71,7 +71,7 @@ Cockpit's code laid out by feature: one folder per feature, holding its logic, i
 | [git/](../cockpit/hooks/git) | [git.ts](../cockpit/hooks/git/git.ts): refreshing the repo, commit messages and commit modes, push. [git-form.ts](../cockpit/hooks/git/git-form.ts): branch and commit patterns. [graph.ts](../cockpit/hooks/git/graph.ts): the commit graph. [accounts.ts](../cockpit/hooks/git/accounts.ts): gh accounts. [pr.ts](../cockpit/hooks/git/pr.ts): the pull request and its checks. [turns.ts](../cockpit/hooks/git/turns.ts) and [turns-io.ts](../cockpit/hooks/git/turns-io.ts): turn snapshots and undo, the git commands as JSON data and running them. [git-tab.tsx](../cockpit/hooks/git/git-tab.tsx): the Git tab |
 | [agents/](../cockpit/hooks/agents) | [agents.ts](../cockpit/hooks/agents/agents.ts): registering the experts, starting agents and pipelines, hand-offs to Claude, tracking and finishing agents, the testers. [experts.ts](../cockpit/hooks/agents/experts.ts): the experts table (one row per expert, with its icon and where its model choice starts) and the pipelines. [pick.ts](../cockpit/hooks/agents/pick.ts): `pickRun()`, an agent's model, effort and helper count from its kind and task words. [worktrees.ts](../cockpit/hooks/agents/worktrees.ts) and [worktrees-io.ts](../cockpit/hooks/agents/worktrees-io.ts): agent worktrees, the git commands as JSON data (with `fillArgs()`) and running them. [agents-view.ts](../cockpit/hooks/agents/agents-view.ts): the agents as a diagram. [agents-tab.tsx](../cockpit/hooks/agents/agents-tab.tsx): the Agents tab |
 | [judges/](../cockpit/hooks/judges) | [judges.ts](../cockpit/hooks/judges/judges.ts): how many judges sit and their tally. [decisions.ts](../cockpit/hooks/judges/decisions.ts): `judge()`, `judgeNext()` and the `RISKY`/`PERSONAL`/`OPEN` rules. [autopilot.ts](../cockpit/hooks/judges/autopilot.ts): the autopilot (start, stop, resume, `autopilotTurnEnd()`) |
-| [memory/](../cockpit/hooks/memory) | [memory.ts](../cockpit/hooks/memory/memory.ts): imports, features (folders), impact of a change, `memoryText()` for the prompt. [memory-map.ts](../cockpit/hooks/memory/memory-map.ts): the feature map. [memory-io.ts](../cockpit/hooks/memory/memory-io.ts): building and updating the codebase memory. [tree.ts](../cockpit/hooks/memory/tree.ts): the file tree. [explain.ts](../cockpit/hooks/memory/explain.ts): `/cockpit explain`, the prompt that asks Claude to write this guide, and the guide's row state. [activity-tab.tsx](../cockpit/hooks/memory/activity-tab.tsx): the Activity tab. [guide.tsx](../cockpit/hooks/memory/guide.tsx): the Overview's codebase-guide row |
+| [memory/](../cockpit/hooks/memory) | [memory.ts](../cockpit/hooks/memory/memory.ts): imports, features (folders, or named by a model), impact of a change, `memoryText()` for the prompt, `adoptFiles()` (keeps the named features up with files that come or go, no model needed) and `memoryMarkdown()` (the index and a page per feature). [memory-map.ts](../cockpit/hooks/memory/memory-map.ts): the feature map. [memory-io.ts](../cockpit/hooks/memory/memory-io.ts): building the codebase memory (`buildMemory()`), updating it for one file (`updateMemory()`), checking it against git's file list (`syncMemory()`) and writing it to `.cockpit/`. [tree.ts](../cockpit/hooks/memory/tree.ts): the file tree. [explain.ts](../cockpit/hooks/memory/explain.ts): `/cockpit explain`, the prompt that asks Claude to write this guide, and the guide's row state. [activity-tab.tsx](../cockpit/hooks/memory/activity-tab.tsx): the Activity tab. [guide.tsx](../cockpit/hooks/memory/guide.tsx): the Overview's codebase-guide row |
 | [rules/](../cockpit/hooks/rules) | [rules.ts](../cockpit/hooks/rules/rules.ts): reading and changing settings and `CLAUDE.md` text while keeping the rest of the file. [rules-io.ts](../cockpit/hooks/rules/rules-io.ts): reading and writing settings, `CLAUDE.md`, skills and MCP servers. [rules-tab.tsx](../cockpit/hooks/rules/rules-tab.tsx): the Rules tab |
 | [pane/](../cockpit/hooks/pane) | [full-pane.tsx](../cockpit/hooks/pane/full-pane.tsx): the side pane (header, tabs, open tab) and what it draws with (`paneV()`: elements, state, theme, width). [header.tsx](../cockpit/hooks/pane/header.tsx): its header and tab row. [overview-tab.tsx](../cockpit/hooks/pane/overview-tab.tsx): the Overview tab. [tabs.ts](../cockpit/hooks/pane/tabs.ts): the one table of tabs (`TABS`, `isTab()`, `openTab()`) |
 | [ui/](../cockpit/hooks/ui) | [shared.tsx](../cockpit/hooks/ui/shared.tsx): the pieces the tabs share and `sp()` spacing. [svg.ts](../cockpit/hooks/ui/svg.ts): the SVG drawings (the ring, the agents view). It imports only `core/` |
@@ -112,8 +112,9 @@ in Cockpit never blocks the session.
    and `TaskUpdate` make Claude's task list the flow's steps; `AskUserQuestion` goes to `judge()`
    ([decisions.ts](../cockpit/hooks/judges/decisions.ts)).
 5. `turn.complete`: `mainTurnEnd()` (`turn-io.ts`) closes the flow, refreshes the repo, takes the after-snapshot,
-   measures context, syncs agents, lets the autopilot decide its next cycle, updates the memory for changed files,
-   sends a notice, starts Verify and/or `decideCommit()` depending on the Git settings, saves history and checks the daily budget.
+   measures context, syncs agents, lets the autopilot decide its next cycle, updates the memory for changed files
+   (and, when the turn changed any, `syncMemory()` adds or drops the files a shell command made or removed that
+   `git status` does not name one by one), sends a notice, starts Verify and/or `decideCommit()` depending on the Git settings, saves history and checks the daily budget.
 
 **An agent** follows the same events with `e.agentId` set: started from the Agents tab (`runExpert`,
 `startPipeline`, `spawnAgent` in [agents.ts](../cockpit/hooks/agents/agents.ts)) or by Claude's `Agent` tool;
@@ -124,7 +125,8 @@ lines), `advancePipeline()` and `testAgent()`. A timer calls `syncAgents()` to c
 PR, context and guide re-read every 15 s while the pane is shown.
 
 **Where data lives**: the session's state in the atom; preferences, Git settings and accounts in Claude Code's plugin
-store (`$.store`); history, memory, hand-offs and roadmaps in the repository's `.cockpit/`; turn snapshots under
+store (`$.store`); history, hand-offs, roadmaps and the memory (`memory.json`, the index `MEMORY.md`, a page per feature in `memory/`)
+in the repository's `.cockpit/`; turn snapshots under
 `refs/cockpit/turns/`. See [architecture.md](architecture.md#what-is-kept-where) and [privacy.md](privacy.md).
 
 ## 4. Design decisions and the approach
@@ -158,6 +160,12 @@ store (`$.store`); history, memory, hand-offs and roadmaps in the repository's `
   [tabs.ts](../cockpit/hooks/pane/tabs.ts) is the one table of tabs: every way of opening a tab (its button,
   `/cockpit tab`, a link from another tab or from the chat) goes through `openTab()`, which reads again what the tab
   shows (`showTab()` from the chat or a command, which opens the pane first).
+- **Memory a model names once, then keeps up by itself.** At session start `buildMemory()` reads every source file's
+  imports; a model names the features only the first time, on Map again, or when over a quarter of the files are new
+  to them. Otherwise `adoptFiles()` puts a new file in the feature most of its folder (else its imports) is in, and a
+  gone file leaves its feature. The memory is written as an index plus a page per feature so Claude opens one small
+  page to find a file; only pages whose text changed are written, and a page whose feature is gone is left saying so,
+  because the engine cannot delete a file. Limits are marked: 1500 files, 300 KB a file.
 - **Draw for every surface.** The pane runs in a terminal and in the desktop app. Views use the surface's elements
   (`v.ui`), the theme's tokens and `sp(v, n)`; SVG is desktop-only and gets a text fallback. Tests render every tab
   at widths from 28 to 160 columns on both surfaces.
@@ -227,7 +235,7 @@ inputs and what each must give.
 | Change an expert's behaviour or model | its file in [cockpit/agents/](../cockpit/agents); the model choice per task is [pick.ts](../cockpit/hooks/agents/pick.ts), from each expert's start in [experts.ts](../cockpit/hooks/agents/experts.ts) |
 | Change pipelines, testers or hand-offs | [agents/agents.ts](../cockpit/hooks/agents/agents.ts), with `PIPELINES` and `TESTERS` in [experts.ts](../cockpit/hooks/agents/experts.ts); see [agents.md](agents.md) |
 | Change flows and progress | `FLOWS`, `STEPS` and `progress()` in [flows.ts](../cockpit/hooks/flows/flows.ts); see [flows.md](flows.md) |
-| Change the codebase memory | [memory.ts](../cockpit/hooks/memory/memory.ts) (pure) and [memory-io.ts](../cockpit/hooks/memory/memory-io.ts) (I/O) |
+| Change the codebase memory | [memory.ts](../cockpit/hooks/memory/memory.ts) (pure: features, `adoptFiles()`, the pages from `memoryMarkdown()`) and [memory-io.ts](../cockpit/hooks/memory/memory-io.ts) (I/O: build, update, `syncMemory()`, saving); tests in [memory.test.tsx](../cockpit/tests/memory.test.tsx) |
 | Change the Rules tab | [rules.ts](../cockpit/hooks/rules/rules.ts), [rules-io.ts](../cockpit/hooks/rules/rules-io.ts), [rules-tab.tsx](../cockpit/hooks/rules/rules-tab.tsx) |
 | Add or change a theme | [theme.ts](../cockpit/hooks/core/theme.ts) and the `Palette` type; `contrast.test.ts` checks legibility |
 | Add a model call | add a `// privacy: <id>` comment above it and a row in [privacy.md](privacy.md); keep it off by default |
