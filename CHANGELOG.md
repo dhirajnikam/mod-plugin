@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-13
+
 ### Changed
 - **Codebase memory in pages**: `.cockpit/MEMORY.md` is now an index (the codebase in short, one row per feature, the
   folders), and each feature has its own page in `.cockpit/memory/`: its files by folder, each with what it does, what
