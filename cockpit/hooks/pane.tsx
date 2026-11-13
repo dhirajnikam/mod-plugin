@@ -1,17 +1,16 @@
-import { atom, read } from 'claude-code'
+import { look } from './ops/core'
 import type { Frozen, Register, RenderChildren, RenderInput } from 'claude-code'
-import { INITIAL, PANE } from './state'
+import { PANE } from './state'
 import { themeOf } from './theme'
 import { Header, Tabs } from './tabs/header'
 import type { $, UI, V } from './tabs/shared'
 
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 // What the side pane draws with: the surface's elements, the state and the theme; null on a surface with no fields
 export async function paneV($: $, e: Frozen<RenderInput<'Pane'>>, root: string): Promise<V | null> {
   const table = $.ui.resolve(e)
   if (!('Input' in table) || !('Select' in table)) return null
-  const s = await read($, S)
+  const s = await look($)
   const ui: UI = { Box: table.Box, Text: table.Text, Button: table.Button, Input: table.Input, Select: table.Select, ...('Svg' in table && e.surface !== 'terminal' ? { Svg: table.Svg } : {}) }
   return { ui, s, t: themeOf(s), w: Math.max(16, e.props.bodyColumns - 2), now: await $.clock.now(), root, desk: e.surface !== 'terminal' }
 }

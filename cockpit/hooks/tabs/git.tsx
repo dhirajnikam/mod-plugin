@@ -1,16 +1,10 @@
-import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, PrStatus, Tab, ThemeId } from '../../types'
+import type { GitForm, Ph, PrStatus } from '../../types'
 import {
   inBackground,
   applyAccount,
   commit,
   confirmPending,
-  createAgent,
-  buildMemory,
-  discoverAgentTypes,
-  loadProject,
-  runExpert,
   ghLoginToken,
   ghLoginWeb,
   planCommit,
@@ -24,68 +18,26 @@ import {
   loadAccounts,
   removeAccount,
   useAccount,
-  refreshRepo,
   refreshGit,
   fixChecks,
   set,
-  startPipeline,
-  setTheme,
-  spawnAgent,
-  stopAgent,
-  rerun,
-  compactNow,
-  clearNow,
-  runMany,
-  stopAll,
-  clearFinished,
-  testAgent,
-  TESTERS,
 } from '../actions'
 import {
-  AGENT_TYPES,
-  stepWords,
-  planProgress,
-  similarRuns,
-  recallOf,
-  neuralSvg,
   graphRows,
   graphSvg,
   graphText,
-  agentIconSvg,
   AUTO_WHENS,
   BRANCH_PRESETS,
   COMMIT_MODES,
-  EXPERTS,
-  PIPELINES,
-  FLOWS,
-  progressOf,
-  expertGlyph,
-  expertName,
-  verifyState,
   GIT_OPTS,
   MSG_PRESETS,
   TYPES,
   branchName,
   commitMsg,
-  fmt,
-  kTok,
-  progress,
-  ringRuns,
-  ringSvg,
-  tally,
-  thrOf,
-  tree,
 } from '../logic'
-import type { IconState, Neuron } from '../logic'
-import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
-import type { FeatureMark } from '../memory'
-import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeSettings } from '../actions'
-import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
-import type { PermKind } from '../rules'
-import { THEMES, THEME_IDS, ctxShades } from '../theme'
-import type { Theme } from '../theme'
-import type { $, UI, V } from './shared'
-import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
+import { setGit as setGitPref } from '../actions'
+import type { $, V } from './shared'
+import { sp, grow, Seg, Check, Rule, kindColor } from './shared'
 
 // With several repos under the session folder, a picker above the tab
 export function Git($: $, v: V) {

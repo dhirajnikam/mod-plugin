@@ -1,14 +1,13 @@
-import { atom, read } from 'claude-code'
+import { look } from './core'
 
 import type { Agent, SessionSpend } from '../../types'
 import { budgetLevel, dayOf, todaySpend } from '../spend'
 import { set, toast } from './core'
-import { INITIAL, PANE } from '../state'
+import { PANE } from '../state'
 import type { $ } from './core'
 
 // Telling you when work is done, while you are not watching: one notice per finish, through Claude Code's own
 // notification channel (ui.notify), in words made from what Cockpit already knows
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 export type Finish =
   | { kind: 'turn'; task: string; files: number; add: number; del: number; tests?: { pass: number; total: number } }
@@ -51,7 +50,7 @@ export function doneText(f: Finish): { title: string; text: string } {
 const told = new Set<string>()
 export async function tellDone($: $, key: string, f: Finish, opt: { always?: boolean } = {}): Promise<boolean> {
   // A warning (the budget's) is its own choice: sent with finish notices off, and whether or not you are watching
-  if ((!opt.always && (await read($, S)).notifyDone === false) || told.has(key)) return false
+  if ((!opt.always && (await look($)).notifyDone === false) || told.has(key)) return false
   told.add(key)
   const watching = !opt.always && (await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced && p.isShown)
   if (watching) return false
@@ -66,7 +65,7 @@ export async function tellDone($: $, key: string, f: Finish, opt: { always?: boo
 // sessions with the settings), through the notices, whatever the pane shows. A budget only warns; nothing is stopped
 const RANK = { none: 0, ok: 0, near: 1, over: 2 } as const
 export async function checkBudget($: $, sessions: SessionSpend[], now: number) {
-  const s = await read($, S)
+  const s = await look($)
   const spend = todaySpend(sessions, now)
   const level = budgetLevel(spend, s.dailyBudget)
   if (level !== 'near' && level !== 'over') return

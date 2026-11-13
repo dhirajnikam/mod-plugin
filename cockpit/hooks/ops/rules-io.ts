@@ -1,17 +1,11 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import { look } from './core'
 
 import type { MemoryRead } from '../rules'
-import type { Account, Agent, Autopilot, Changed, RuleFiles, SkillFile, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
+import type { RuleFiles, SkillFile } from '../../types'
 import { changeMcp, mcpRows, memoryStarts, parseSettings, resolveMemory, slashes, setInvocation, settingsText, skillListed, skillOf, startupLoad } from '../rules'
-import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
-import { INITIAL, PANE } from '../state'
-import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { repoRoot, set, toast } from './core'
 
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 // The Rules tab: the hooks, permission rules and instructions of the repository and of the user, read from their files
 // and written back with the rest of each file kept. Each change reads the file again first, and a settings file that is
@@ -80,7 +74,7 @@ export async function loadRules($: $) {
 // line changed, and a file whose frontmatter cannot be read never written
 export async function writeSkill($: $, path: string, auto: boolean) {
   // Only a SKILL.md the tab listed is ever written
-  if (!skillListed(path, (await read($, S)).rules?.skills)) return loadRules($)
+  if (!skillListed(path, (await look($)).rules?.skills)) return loadRules($)
   const text = await $.fs.read(path).then(String).catch(() => null)
   if (text === null) return Promise.all([loadRules($), toast($, `${path} is gone: the skills were read again`)])
   const next = setInvocation(text, auto)

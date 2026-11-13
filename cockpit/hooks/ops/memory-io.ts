@@ -1,18 +1,12 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import { look } from './core'
 
-import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { parseSettings, settingsText } from '../rules'
 import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
-import { INITIAL, PANE } from '../state'
-import { THEME_IDS } from '../theme'
+import { parseSteps } from '../logic'
 import type { $ } from './core'
-import { cockpitDir, git, note, repoRoot, set, toast } from './core'
+import { cockpitDir, git, repoRoot, set, toast } from './core'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 // The steps of this prompt's task, written by a quick model in the background; the template stands until they come
 export async function writeSteps($: $, flowId: string, task: string) {
@@ -77,7 +71,7 @@ export async function nameFeatures($: $, files: Record<string, string[]>, facts:
 
 // One file again after an edit: its imports now, the file's entry dropped when it is gone
 export async function updateMemory($: $, path: string) {
-  const s = await read($, S)
+  const s = await look($)
   const root = await repoRoot($)
   if (!root || !s.memory.at) return
   const abs = path.startsWith('/') || /^[A-Za-z]:/.test(path) ? path.replace(/\\/g, '/') : `${await $.session.cwd().catch(() => root)}/${path}`
@@ -99,7 +93,7 @@ export async function updateMemory($: $, path: string) {
 async function saveMemory($: $) {
   const dir = await cockpitDir($)
   if (!dir) return
-  const m = (await read($, S)).memory
+  const m = (await look($)).memory
   const by = importers(m.files)
   await $.fs.write(`${dir}/memory.json`, JSON.stringify({ version: 2, builtAt: m.at, sig: m.sig ?? '', features: m.features ?? [], files: Object.fromEntries(Object.entries(m.files).map(([f, uses]) => [f, { uses, usedBy: by[f] ?? [] }])) }, null, 1)).catch(() => null)
   await $.fs.write(`${dir}/MEMORY.md`, memoryMarkdown(m.files, new Date(m.at).toISOString().slice(0, 16).replace('T', ' '), m.features)).catch(() => null)

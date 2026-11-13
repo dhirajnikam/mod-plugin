@@ -1,87 +1,16 @@
-import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, McpRow, Ph, Tab, ThemeId } from '../../types'
+import type { McpRow, Ph } from '../../types'
 import {
-  applyAccount,
-  commit,
-  confirmPending,
-  createAgent,
-  buildMemory,
-  discoverAgentTypes,
-  loadProject,
-  runExpert,
-  ghLoginToken,
-  ghLoginWeb,
-  planCommit,
-  pushNow,
-  pullNow,
-  showCommit,
-  skipPending,
-  suggestCommit,
-  gitInit,
-  loadAccounts,
-  removeAccount,
-  useAccount,
-  refreshRepo,
   set,
-  startPipeline,
-  setTheme,
-  spawnAgent,
-  stopAgent,
-  rerun,
-  compactNow,
-  clearNow,
-  runMany,
-  stopAll,
-  clearFinished,
-  testAgent,
-  TESTERS,
 } from '../actions'
 import {
-  AGENT_TYPES,
-  stepWords,
-  planProgress,
-  similarRuns,
-  recallOf,
-  neuralSvg,
-  graphRows,
-  graphSvg,
-  graphText,
-  agentIconSvg,
-  AUTO_WHENS,
-  BRANCH_PRESETS,
-  COMMIT_MODES,
-  EXPERTS,
-  PIPELINES,
-  FLOWS,
-  progressOf,
-  expertGlyph,
-  expertName,
-  verifyState,
-  GIT_OPTS,
-  MSG_PRESETS,
-  TYPES,
-  branchName,
-  commitMsg,
-  fmt,
   kTok,
-  progress,
-  ringRuns,
-  ringSvg,
-  tally,
-  thrOf,
-  tree,
 } from '../logic'
-import type { IconState, Neuron } from '../logic'
-import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
-import type { FeatureMark } from '../memory'
-import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeMcp, writeSettings, writeSkill } from '../actions'
+import { loadRules, writeInstructions, writeMcp, writeSettings, writeSkill } from '../actions'
 import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
 import type { PermKind } from '../rules'
-import { THEMES, THEME_IDS, ctxShades } from '../theme'
-import type { Theme } from '../theme'
-import type { $, UI, V } from './shared'
-import { sp, grow, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
+import type { $, V } from './shared'
+import { sp, grow, Seg } from './shared'
 
 // Rules: the hooks, permission rules and instructions Claude Code follows, for this repository or for you everywhere.
 // Each is a row to edit in place or delete (after you confirm); each section has an add form. Every change is written

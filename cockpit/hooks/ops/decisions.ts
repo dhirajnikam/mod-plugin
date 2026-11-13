@@ -1,18 +1,12 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import { look } from './core'
 
-import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { parseSettings, settingsText } from '../rules'
-import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, slug, tally, verifyState } from '../logic'
-import { INITIAL, PANE } from '../state'
-import { THEME_IDS } from '../theme'
+import type { Autopilot, Decision, Flow, Ph } from '../../types'
+import { nJ, slug, tally } from '../logic'
 import type { $ } from './core'
 import { cockpitDir, git, note, set, toast } from './core'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 const PERSONAS = ['a pragmatic senior engineer', 'a security reviewer', 'a long-term maintainer', 'the end user', 'a sceptic who prefers the safest option', 'a performance engineer', 'a test engineer', 'a software architect', 'a minimalist who prefers less code']
 
@@ -37,7 +31,7 @@ export const OPEN = /^other\b|\b(tweak|something else|adjust|change (it|somethin
 // act false: the judges only advise (their pick is kept as advice, the decision stays the person's). evidence: what
 // the judges read in place of a summary of the conversation (the autopilot's roadmap, commits and diff)
 export async function judge($: $, id: string, q: string, opts: { label: string; description?: string }[], act = true, evidence = '') {
-  const s0 = await read($, S)
+  const s0 = await look($)
   // privacy: judge-complexity (docs/privacy.md lists what it sends)
   const scoreR = await $.model
     .complete({
@@ -80,7 +74,7 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
       await set($, s => ({ decisions: s.decisions.map(d => (d.id === id ? { ...d, votes: d.votes.map((v, i) => (i === seat ? vote : v)), reasons: (d.reasons ?? []).map((x, i) => (i === seat ? why : x)) } : d)) }))
     }),
   )
-  const d = (await read($, S)).decisions.find(x => x.id === id) as Decision
+  const d = (await look($)).decisions.find(x => x.id === id) as Decision
   const t = tally(d)
   const winner = d.opts[t.top] ?? ''
   if (!act) {
@@ -105,7 +99,7 @@ export async function personSpoke($: $, at: number) {
 // the buttons and the winner's reply is sent as the next prompt; they only advise where the decision is hard to undo,
 // where they split, where the winner is an app action they cannot press, after three in a row, and in Ask me mode
 export async function judgeNext($: $, input: Record<string, unknown>) {
-  const s = await read($, S)
+  const s = await look($)
   const ask = typeof input.ask === 'string' ? input.ask.trim() : ''
   const acts = (Array.isArray(input.actions) ? input.actions : []) as { action?: string; label?: string; message?: string }[]
   // Off, no question, one button, or a question only you can answer (what you saw, did or want): left to you
@@ -120,7 +114,7 @@ export async function judgeNext($: $, input: Record<string, unknown>) {
   const canAct = s.mode === 'auto' && !risky && (s.judgedRun < 3 || piloting)
   const win = await judge($, id, ask, opts, canAct)
   const choice = acts[opts.findIndex(o => o.label === win)]
-  const d = (await read($, S)).decisions.find(x => x.id === id)
+  const d = (await look($)).decisions.find(x => x.id === id)
   if (!canAct || !win || !choice || choice.action) {
     const why = risky ? ': it is hard to undo, so it is yours to decide' : s.judgedRun >= 3 && s.mode === 'auto' ? ': three were answered in a row, so this one is yours' : choice?.action ? ': it is a button only you can press' : ''
     const text = d?.advice ?? (win ? `Judges recommend "${win}"` : d?.result ?? '')
@@ -131,7 +125,7 @@ export async function judgeNext($: $, input: Record<string, unknown>) {
     return
   }
   // Late: you sent a prompt of your own, or Claude asked a newer question, while the judges voted. Not sent
-  const now = await read($, S)
+  const now = await look($)
   const mine = now.decisions.findIndex(x => x.id === id)
   if (now.personAt > at || now.decisions.some((x, i) => i > mine && x.kind === 'next')) {
     await set($, st => ({ decisions: st.decisions.map(x => (x.id === id ? { ...x, status: 'advised', advice: `Judges recommended "${choice.label}" (not sent: a newer question or your prompt came first)` } : x)) }))
@@ -244,7 +238,7 @@ async function freshRoadmap($: $, goal: string) {
 // (a command, a turn's end) the engine refuses it, so it goes again from a timer once that hook has returned, as a
 // hand-off does; a second refusal pauses the run
 async function sendCycle($: $) {
-  const s = await read($, S)
+  const s = await look($)
   const ap = s.autopilot
   if (!ap || ap.status !== 'running') return
   const text = ap.phase === 'scout' ? productPrompt(ap) : autopilotPrompt(ap, cycleMemory(s.flows, ap.goalAt ?? ap.at, ap.goal))
@@ -269,7 +263,7 @@ const goalStart = (goal: string, goalAt: number) => ({ goal, goalAt, cycle: 1, n
 
 // Task: role 'task' and the goal. Product owner: role 'product' and the vision; it starts by scouting the first goal
 export async function startAutopilot($: $, goal: string, budget = 0, hours = 0, role: 'task' | 'product' = 'task') {
-  const s = await read($, S)
+  const s = await look($)
   // The product owner's choices are the judges': in Ask me or Off they would be yours, which it never asks for. A
   // refusal is toasted and returned
   const no = s.autopilot?.status === 'running' ? 'The autopilot is already running: stop it first' : role === 'product' && s.mode !== 'auto' ? 'The product owner needs the judges to decide: switch to Auto with /cockpit mode auto' : ''
@@ -285,14 +279,14 @@ export async function startAutopilot($: $, goal: string, budget = 0, hours = 0, 
 }
 
 export async function stopAutopilot($: $, status: 'paused' | 'stopped' | 'done', why: string) {
-  const ap = (await read($, S)).autopilot
+  const ap = (await look($)).autopilot
   if (!ap || ap.status !== 'running') return
   await set($, { autopilot: { ...ap, status, why } })
   await note($, `${ap.role === 'product' ? '◈ Product owner' : '⟳ Autopilot'} ${status === 'done' ? 'done' : status}: ${why}`)
 }
 
 export async function resumeAutopilot($: $) {
-  const s = await read($, S)
+  const s = await look($)
   if (!s.autopilot || s.autopilot.status === 'running' || s.autopilot.status === 'done') return
   const ap = s.autopilot
   // A resume is your call to go on: the counts that paused it start again
@@ -302,7 +296,7 @@ export async function resumeAutopilot($: $) {
 
 // A goal reached: the task ends; the product owner records it and scouts the next one
 async function finishGoal($: $, why: string) {
-  const ap = (await read($, S)).autopilot
+  const ap = (await look($)).autopilot
   if (!ap) return
   if (ap.role !== 'product') return stopAutopilot($, 'done', why)
   await set($, { autopilot: { ...ap, ...goalStart('', await $.clock.now()), phase: 'scout', round: (ap.round ?? 1) + 1, asides: 0, shipped: [...(ap.shipped ?? []), ap.goal].slice(-20) } })
@@ -327,7 +321,7 @@ async function doneEvidence($: $, ap: Autopilot, roadmap: string, answer: string
 // A main turn ended while the autopilot runs: read its last lines, check the limits, then send the next cycle, put a
 // claim of done to the judges, or have the judges pick the product owner's next goal
 export async function autopilotTurnEnd($: $, answer: string, changed: boolean, aborted: boolean, turnAt: number) {
-  const s = await read($, S)
+  const s = await look($)
   const ap = s.autopilot
   if (!ap || ap.status !== 'running') return
   const now = await $.clock.now()
@@ -367,7 +361,7 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
     const evidence = await doneEvidence($, ap, roadmap, answer)
     const win = await judge($, id, q, [{ label: 'Done', description: 'every milestone is ticked and the evidence shows its criteria pass' }, { label: 'Not done yet', description: 'something in the goal or the roadmap is unfinished or unproven by the evidence' }], true, evidence)
     if (win === 'Done' && allTicked) return finishGoal($, `the judges agree: ${(claim[2] ?? '').trim() || 'the goal is reached'}`)
-    const d = (await read($, S)).decisions.find(x => x.id === id)
+    const d = (await look($)).decisions.find(x => x.id === id)
     const said = d ? reasonsFor(d, 1).slice(0, 5) : []
     // No roadmap is no proof: done is claimed against milestones a check can pass
     const gaps =
@@ -390,7 +384,7 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
 // The product owner's goal set aside: noted as such, and the next goal scouted. Three in a row set aside means the
 // trouble is not the goal: it pauses for you rather than scout and stall without end
 async function setAside($: $, why: string) {
-  const ap = (await read($, S)).autopilot
+  const ap = (await look($)).autopilot
   if (!ap) return
   const asides = (ap.asides ?? 0) + 1
   const shipped = [...(ap.shipped ?? []), `${ap.goal} (set aside: ${why})`].slice(-20)
@@ -417,7 +411,7 @@ async function scoutEnd($: $, ap: Autopilot, answer: string, now: number) {
   await set($, st => ({ decisions: [...st.decisions, { id, q, opts: opts.map(o => o.label), at: now, score: 0, signals: [], votes: [], status: 'scoring' as const, result: '' }].slice(-50) }))
   const evidence = [`Vision: ${ap.vision}`, `Built so far: ${ap.shipped?.join('; ') || 'nothing yet'}`, `The product owner's study:\n${answer.trim().slice(-4000)}`].join('\n\n')
   const win = await judge($, id, q, opts, true, evidence)
-  const d = (await read($, S)).decisions.find(x => x.id === id)
+  const d = (await look($)).decisions.find(x => x.id === id)
   // No judge gave a usable vote (the model failed or answered off the point): nobody chose, so nothing is built
   if (!win && (!d || tally(d).revealed === 0)) return stopAutopilot($, 'paused', 'no judge gave a usable vote on the next goal')
   const goal = win || opts[tally(d!).top]?.label || ''

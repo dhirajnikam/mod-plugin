@@ -1,18 +1,21 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, SessionSpend, ThemeId, PlanItem } from '../../types'
+import type { Agent, Commit, Flow, GitForm, Ph, SessionSpend, ThemeId } from '../../types'
 import { upsertSession } from '../spend'
-import { parseSettings, settingsText } from '../rules'
-import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
 import { INITIAL, PANE } from '../state'
 import { THEME_IDS } from '../theme'
 
-// The session's Cockpit state (see state.ts)
-export const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
+
+// The session's Cockpit state. The engine reads an atom only in the file that declares it, so this is the one place:
+// everything else reads through look() and writes through set(). Bump the tag when Ph's fields change, so an older
+// stored value reads as INITIAL.
+const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 export type $ = EngineInterface
+export function look($: $) {
+  return read($, S)
+}
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 
 // The choices that outlast a session, a reload and a change of the state's shape: kept in the store, read at session start

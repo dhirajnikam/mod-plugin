@@ -1,9 +1,8 @@
-import { atom, read } from 'claude-code'
+import { look } from './ops/core'
 import type { Register } from 'claude-code'
 import type { Ph } from '../types'
 import { compactNow, confirmPending, inBackground, openPane, set, skipPending } from './actions'
 import { EXPERTS, PIPELINES, base, expertName, fmt, kTok, progress, tally, toOp, verifyState } from './logic'
-import { INITIAL } from './state'
 import { budgetLevel, todaySpend, withCurrent } from './spend'
 import { chatThemeOf, ctxShades, themeOf } from './theme'
 import { Card, seatDots } from './views'
@@ -12,7 +11,6 @@ import type { UI } from './views'
 // Everything Cockpit draws around the chat: the spinner, the band above the prompt, the chat's cards and rows, and the
 // line under the prompt (the side pane is pane.tsx). register.tsx calls this.
 // The state atom is declared here too: the engine reads it from the module that names it
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 type Patch = Partial<Ph> | ((s: Ph) => Partial<Ph>)
 // Where a card or a band label leads: the pane, opened on that tab, so a press shows what it names even when it is closed
@@ -44,7 +42,7 @@ function liveWords(s: Ph) {
 export function drawings(on: Parameters<Register>[0]) {
   // Activity line in place of the spinner: ✻ what is happening · elapsed
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
-    const s = await read($, S)
+    const s = await look($)
     const mode = e.props.mode
     const what = s.waiting ? 'Waiting for your answer' : mode === 'thinking' ? 'Thinking' : mode === 'requesting' ? 'Sending' : mode === 'responding' ? 'Writing' : s.activity
     // Where the task stands: its step in progress, by number, so a long turn shows it is getting somewhere
@@ -75,7 +73,7 @@ export function drawings(on: Parameters<Register>[0]) {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
-    const s = await read($, S)
+    const s = await look($)
     const t = themeOf(s)
     const p = progress(s)
     const win = s.ctx.window || 200000
@@ -253,7 +251,7 @@ export function drawings(on: Parameters<Register>[0]) {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     const p = e.props
     if (p.isExpanded || p.isErrored || p.isInterrupted) return next(e)
-    const s = await read($, S)
+    const s = await look($)
     const t = chatThemeOf(s)
     const table = $.ui.resolve(e)
     if (s.focus !== false) return <table.Box display='none' />
@@ -303,7 +301,7 @@ export function drawings(on: Parameters<Register>[0]) {
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
     if (e.props.isExpanded) return next(e)
     const ops = e.props.calls.map((c, i) => toOp(c.tool, (c.input ?? {}) as Record<string, unknown>, c.tool_use_id ?? `g${i}`, 0)).filter(o => o !== null)
-    const s = await read($, S)
+    const s = await look($)
     const table = $.ui.resolve(e)
     if (s.focus !== false) return <table.Box display='none' />
     if (!ops.length) return next(e)
@@ -319,7 +317,7 @@ export function drawings(on: Parameters<Register>[0]) {
   on('ui.render', { component: 'TurnDuration' }, async ($, e, next) => {
     if (e.props.isExpanded) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const s = await read($, S)
+    const s = await look($)
     const t = chatThemeOf(s)
     // A turn's flow is the one whose last turn the engine measured at this row's duration; one saved before flows kept
     // it is told by its clock times
@@ -362,7 +360,7 @@ export function drawings(on: Parameters<Register>[0]) {
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     if (e.props.isExpanded || e.props.origin.kind !== 'composer') return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const t = chatThemeOf(await read($, S))
+    const t = chatThemeOf(await look($))
     return (
       <Box backgroundColor={t.surface || undefined} paddingX={1} marginTop="md" width={Math.max(30, (e.viewport?.columns ?? 100) - 2)}>
         <Text color={t.hi}>{'› '}</Text>
@@ -377,7 +375,7 @@ export function drawings(on: Parameters<Register>[0]) {
     // A summary of the text between tool calls keeps the engine's row, which marks it as one
     if (!('Markdown' in table) || e.props.isSummary) return next(e)
     const { Box, Markdown, Text } = table
-    const t = chatThemeOf(await read($, S))
+    const t = chatThemeOf(await look($))
     // A reply opens a row apart from the prompt or card above it, as the engine's own does
     return (
       <Box marginTop={e.props.isFirstOfReply ? 'md' : 0}>
@@ -392,7 +390,7 @@ export function drawings(on: Parameters<Register>[0]) {
   // Status row under the prompt: [cockpit] ⎇ branch ↑ahead · diff · tests · cost · mode
   on('ui.render', { component: 'PromptHint' }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
-    const s = await read($, S)
+    const s = await look($)
     const t = chatThemeOf(s)
     const vs = verifyState(s.agents)
     const all = vs.cases

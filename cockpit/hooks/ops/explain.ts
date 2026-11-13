@@ -1,12 +1,10 @@
-import { atom, read } from 'claude-code'
+import { look } from './core'
 
 import { memoryText } from '../memory'
-import { INITIAL } from '../state'
 import type { $ } from './core'
 import { git, repoRoot, set, toast } from './core'
 
 // The state atom, declared here as in every module that reads it: the engine's scan wants the literal plugin and key
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 // What Claude is asked to write, and what Cockpit already knows so Claude reads less. Pure, so a test can read it
 export function explainPrompt(a: { path: string; exists: boolean; memory: string; readme: string; recent: string[] }) {
@@ -83,7 +81,7 @@ export async function explainCodebase($: $): Promise<boolean> {
   const root = await repoRoot($)
   if (!root) return (await toast($, 'Open a project folder first'), false)
   const g = await guidePath($, root)
-  const s = await read($, S)
+  const s = await look($)
   // ponytail: the README's first 40 lines cut at 2k characters, the memory at 2.6k, the ten most changed files of the last 100 commits
   const readme = (await $.fs.read(`${root}/README.md`).catch(() => '')).split('\n').slice(0, 40).join('\n').slice(0, 2000)
   const counts = new Map<string, number>()
@@ -98,7 +96,7 @@ export async function explainCodebase($: $): Promise<boolean> {
 
 // The person's change to the guide, handed to Claude as written
 export async function editGuide($: $, text: string) {
-  const path = (await read($, S)).guide?.path
+  const path = (await look($)).guide?.path
   if (!path || !text.trim()) return
   await set($, st => ({ ui: { ...st.ui, guideText: '' } }))
   // Not handed over: what was typed comes back to the box

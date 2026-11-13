@@ -1,74 +1,28 @@
-import type { ElementTable, EngineInterface, RenderNode } from 'claude-code'
 
-import type { Account, Agent, Decision, GitForm, Ph, SessionSpend, Tab, ThemeId } from '../../types'
+import type { Agent, Decision, SessionSpend } from '../../types'
 import { budgetLevel, costliest, dayOf, spendByDay, todaySpend, withCurrent } from '../spend'
 import {
   inBackground,
-  applyAccount,
-  commit,
   confirmPending,
-  createAgent,
-  buildMemory,
-  discoverAgentTypes,
-  loadProject,
-  runExpert,
-  ghLoginToken,
-  ghLoginWeb,
-  planCommit,
-  pushNow,
-  pullNow,
-  showCommit,
   skipPending,
-  suggestCommit,
-  gitInit,
-  loadAccounts,
-  removeAccount,
-  useAccount,
-  refreshRepo,
   refreshGit,
   undoFlow,
   setBudget,
   set,
-  startPipeline,
-  setTheme,
-  spawnAgent,
-  stopAgent,
-  rerun,
   compactNow,
   clearNow,
-  runMany,
-  stopAll,
-  clearFinished,
-  testAgent,
-  TESTERS,
 } from '../actions'
 import {
-  AGENT_TYPES,
   stepWords,
   planProgress,
   similarRuns,
   recallOf,
   neuralSvg,
-  graphRows,
-  graphSvg,
-  graphText,
-  agentIconSvg,
-  AUTO_WHENS,
-  BRANCH_PRESETS,
-  COMMIT_MODES,
-  EXPERTS,
-  PIPELINES,
   FLOWS,
   progressOf,
   SEAT_NAMES,
   expertGlyph,
-  expertName,
   verifyState,
-  GIT_OPTS,
-  MSG_PRESETS,
-  TYPES,
-  branchName,
-  commitMsg,
   fmt,
   kTok,
   progress,
@@ -76,19 +30,13 @@ import {
   ringSvg,
   tally,
   thrOf,
-  tree,
 } from '../logic'
-import type { IconState, Neuron } from '../logic'
-import { featureLayers, featureMapSvg, features as featureList, impactOf, isTestFeature, memberOf, memoryKey } from '../memory'
-import type { FeatureMark } from '../memory'
-import { loadRules, pickFlow, resumeAutopilot, setGit as setGitPref, startAutopilot, stopAutopilot, writeInstructions, writeSettings } from '../actions'
-import { HOOK_EVENTS, PERM_KINDS, changeHook, changePerm, changeRule, hookRows, parseSettings, permRows, ruleLines } from '../rules'
-import type { PermKind } from '../rules'
-import { THEMES, THEME_IDS, ctxShades } from '../theme'
-import type { Theme } from '../theme'
-import type { $, UI, V } from './shared'
+import type { Neuron } from '../logic'
+import { pickFlow, resumeAutopilot, stopAutopilot } from '../actions'
+import { ctxShades } from '../theme'
+import type { $, V } from './shared'
 import { Guide } from './guide'
-import { sp, Bar, Tracker, Segs, pad, cut, Seg, Check, Rule, kindColor, Head, MapText, Card, seatDots } from './shared'
+import { sp, Bar, Tracker, Segs, Seg, kindColor } from './shared'
 
 export function Overview($: $, v: V) {
   const { Box, Button, Input, Text, Svg } = v.ui

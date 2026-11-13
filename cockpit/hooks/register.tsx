@@ -1,10 +1,9 @@
-import { atom, read } from 'claude-code'
+import { look } from './ops/core'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Changed, Decision, Ph, Tab, ThemeId } from '../types'
 import {
   advancePipeline,
-  commit,
   decideCommit,
   discoverAgentTypes,
   finishAgent,
@@ -59,16 +58,14 @@ import {
   trackAgent,
 } from './actions'
 import { ACTS, act } from './acts'
-import { EXPERTS, FLOWS, activityOf, applyPlan, expertName, flowOf, progress, selfCheck, stepOf, toOp, verifyState } from './logic'
+import { EXPERTS, FLOWS, activityOf, applyPlan, expertName, flowOf, selfCheck, stepOf, toOp, verifyState } from './logic'
 import { memoryText } from './memory'
 import { withCurrent } from './spend'
-import { INITIAL, PANE } from './state'
+import { PANE } from './state'
 import { THEME_IDS } from './theme'
 import { drawings } from './drawings'
 import { fullPane } from './full-pane'
 
-// The session's Cockpit state (see state.ts)
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 const TABS: Tab[] = ['overview', 'files', 'agents', 'git', 'rules']
 
@@ -110,13 +107,13 @@ export const register: Register = on => {
     await set($, { busy: {} })
     // Live figures: a redraw a few times a second while anything runs; the repo and usage read again every 15 s while the pane is shown
     timers.push($.clock.every(400, async () => {
-      const s = await read($, S)
+      const s = await look($)
       const busy = s.isWorking || s.waiting !== '' || s.agents.some(a => a.status === 'running')
       if (busy) $.ui.invalidate('ui.render')
     }))
     // Claude's subagents, from the engine's own list: seen even where Cockpit's hooks are not
     timers.push($.clock.every(2000, async () => {
-      const s = await read($, S)
+      const s = await look($)
       if (s.isWorking || s.agents.some(a => a.status === 'running') || (await $.ui.panes().catch(() => [])).some(p => p.id === PANE && p.isPlaced)) await syncAgents($)
     }))
     timers.push($.clock.every(15000, async () => {
@@ -128,7 +125,7 @@ export const register: Register = on => {
         await loadGuide($).catch(() => null)
         // The accounts too while their box is on screen (the Git tab's setup, or its options open): a gh login added
         // or a token that stopped working shows by itself
-        const s = await read($, S)
+        const s = await look($)
         if (s.tab === 'git' && (s.ui.more || !s.git.setupDone)) await loadAccounts($).catch(() => null)
       }
     }))
@@ -147,7 +144,7 @@ export const register: Register = on => {
     void registerExperts($)
     void discoverAgentTypes($)
     // Focus keeps the pane closed until /cockpit asks for it
-    if ((await read($, S)).focus === false) void openPane($)
+    if ((await look($)).focus === false) void openPane($)
     return r
   })
 
@@ -161,7 +158,7 @@ export const register: Register = on => {
       const rest = e.args.trim().split(/\s+/).slice(1)
       // stop and resume alone are commands ("task stop using jquery" is a goal), and act only on a run of this role
       if (rest.length === 1 && (rest[0] === 'stop' || rest[0] === 'resume')) {
-        const ap = (await read($, S)).autopilot
+        const ap = (await look($)).autopilot
         if (ap && (ap.role ?? 'task') !== (product ? 'product' : 'task')) return { text: `The run is ${ap.role === 'product' ? 'the product owner: /cockpit product' : 'a task: /cockpit task'} ${rest[0]}` }
         if (rest[0] === 'stop') return (await stopAutopilot($, 'stopped', 'you stopped it'), { text: `${name} stopped.` })
         return (await resumeAutopilot($), { text: `${name} resumed.` })
@@ -186,7 +183,7 @@ export const register: Register = on => {
       await set($, { tab: 'overview' })
       await openPane($)
       if (!asked) return { text: 'Open a project folder first' }
-      return { text: `Asked Claude to write ${(await read($, S)).guide?.path ?? 'the codebase guide'}` }
+      return { text: `Asked Claude to write ${(await look($)).guide?.path ?? 'the codebase guide'}` }
     }
     if (verb === 'theme') {
       if (!THEME_IDS.includes(arg as ThemeId)) return { text: `Themes: ${THEME_IDS.join(', ')}` }
@@ -207,13 +204,13 @@ export const register: Register = on => {
     if (verb === 'focus') {
       const want = arg.toLowerCase()
       if (want && want !== 'on' && want !== 'off') return { text: 'Use /cockpit focus on, /cockpit focus off, or /cockpit focus to switch' }
-      const isOn = want === 'on' ? true : want === 'off' ? false : (await read($, S)).focus === false
+      const isOn = want === 'on' ? true : want === 'off' ? false : (await look($)).focus === false
       await set($, { focus: isOn })
       return { text: `Focus ${isOn ? 'on: only your prompts, replies and progress show' : 'off'}` }
     }
     if (verb === 'flow') {
       const known = ['task', 'plan', ...FLOWS.map(x => x.name)].includes(arg.toLowerCase())
-      if (known && !(await read($, S)).flows.length) return { text: 'No flow yet: send a prompt first.' }
+      if (known && !(await look($)).flows.length) return { text: 'No flow yet: send a prompt first.' }
       if (arg.toLowerCase() === 'task') {
         await pickFlow($, 'task')
         await openPane($)
@@ -237,7 +234,7 @@ export const register: Register = on => {
       const cut = rest.search(/(?:^|\s)--(?:\s|$)/)
       const names = cut < 0 ? rest : rest.slice(0, cut)
       const task = cut < 0 ? '' : rest.slice(cut).replace(/^\s*--/, '')
-      const s = await read($, S)
+      const s = await look($)
       const known = [...EXPERTS.map(x => x.type), ...s.custom.map(c => c.type)]
       const types = names.split(/[\s,]+/).filter(Boolean).map(n => known.find(k => k === n || k === `cockpit:${n}` || expertName(k).toLowerCase() === n.toLowerCase()) ?? n)
       if (!types.length) return { text: `Name the agents: /cockpit run ${EXPERTS.slice(0, 2).map(x => x.name.toLowerCase()).join(' ')} -- the task` }
@@ -269,7 +266,7 @@ export const register: Register = on => {
     }
     // Idle, so any prompt typed over an earlier turn has run or was read inside it
     queued.clear()
-    const was = await read($, S)
+    const was = await look($)
     changedThisTurn = false
     changesAtStart = atStartOf(await openFlow($, e.text, now))
     const r = await next(e)
@@ -295,7 +292,7 @@ export const register: Register = on => {
     carryOn = false
     if (handoffs.delete(e.text)) return next(e)
     const now = await $.clock.now()
-    const s = await read($, S)
+    const s = await look($)
     const last = s.flows[s.flows.length - 1]
     const fresh = (task: string) => {
       changedThisTurn = false
@@ -316,7 +313,7 @@ export const register: Register = on => {
     }
     // The working tree as it is before Claude's first tool call, to undo this turn by; the flow is kept for its end,
     // which may run after the next turn has opened another
-    turnFlow = (await read($, S)).flows.at(-1)?.id ?? ''
+    turnFlow = (await look($)).flows.at(-1)?.id ?? ''
     await snapTurn($, turnFlow, 'before').catch(() => null)
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -376,7 +373,7 @@ export const register: Register = on => {
   // The codebase memory in Claude's system prompt: the features, their files and how they connect
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
-    const m = (await read($, S)).memory
+    const m = (await look($)).memory
     if (!Object.keys(m.files).length) return r
     return { ...r, sections: [...r.sections, { id: 'cockpit:memory', text: memoryText(m.files, 2600, m.features), scope: 'session' as const }] }
   }).catch(($, e, next) => next(e))
@@ -415,7 +412,7 @@ export const register: Register = on => {
   // Claude's questions: judges vote in auto mode, the person answers in ask mode or on a split
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
     if (e.agentId) return next(e)
-    const s = await read($, S)
+    const s = await look($)
     const now = await $.clock.now()
     const qs = e.questions
     const ids = qs.map((_, i) => `${e.tool_use_id ?? now}-${i}`)
@@ -468,13 +465,13 @@ export const register: Register = on => {
       const id = r.agentId
       // One Cockpit started itself is named by its note; the model's by the event
       // (the note stands while Cockpit's start waits, so a spawn of another type then is the model's, not that one)
-      const note = (await read($, S)).starting
+      const note = (await look($)).starting
       const own = note && (!e.subagentType || e.subagentType === note.type) ? note : null
       const type = e.subagentType || own?.type || 'general-purpose'
       // A twin that runs in a worktree of its own is, to everything else, the agent it is a twin of
       const plain = plainType(type)
       // Who started it: Cockpit's own start is a pipeline's step or yours (a press, a command); else another agent or Claude
-      const s0 = await read($, S)
+      const s0 = await look($)
       const by = own ? (s0.pipeline && !s0.pipeline.agentId && s0.pipeline.steps[s0.pipeline.index] === plain ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
       await trackAgent($, { id, name: own?.name ?? (expertName(plain) !== plain ? expertName(plain) : e.description || plain), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(own?.pick ? { pick: own.pick } : {}), ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
       // A pipeline's expert whose start hands no id back: the id is known here
@@ -501,15 +498,15 @@ export const register: Register = on => {
     const now = await $.clock.now()
     if (e.agentId) {
       // A pipeline's own step is tested by the pipeline (Build ends in both testers); any other run that changed files is tested here
-      const isStep = (await read($, S)).pipeline?.agentId === e.agentId
+      const isStep = (await look($)).pipeline?.agentId === e.agentId
       await finishAgent($, e.agentId, e.answer, e.isAborted, e.reason === 'error')
       // One that ran in its own worktree: what it changed there, against where it started
-      const inWorktree = !!(await read($, S)).agents.find(x => x.id === e.agentId)?.worktree
+      const inWorktree = !!(await look($)).agents.find(x => x.id === e.agentId)?.worktree
       if (inWorktree && !(await measureWorktree($, e.agentId).catch(() => null))) await toast($, 'Could not read what the agent changed in its worktree; Bring back reads it again')
       // A notice while you are not watching; a pipeline's step tells you with its pipeline instead
-      const fin = (await read($, S)).agents.find(x => x.id === e.agentId)
+      const fin = (await look($)).agents.find(x => x.id === e.agentId)
       // One you stopped yourself needs no notice; several that ran together tell you once, when the last is done
-      const all = (await read($, S)).agents
+      const all = (await look($)).agents
       const busy = all.filter(x => x.id !== e.agentId && x.status === 'running' && !x.for)
       if (!isStep && fin && fin.status !== 'stopped' && !e.isAborted) {
         if (busy.length) batch.set(e.agentId, fin.startedAt)
@@ -523,7 +520,7 @@ export const register: Register = on => {
       // Its work is in its worktree, not your tree: the testers and auto-commit, which work on your tree, wait for Bring back
       if (!isStep && !e.isAborted && !inWorktree) await testAgent($, e.agentId, true)
       // Its work is committed as a turn's is (after the testers instead, where commits wait for them)
-      const s = await read($, S)
+      const s = await look($)
       const a = s.agents.find(x => x.id === e.agentId)
       if (!isStep && !e.isAborted && !inWorktree && a && changedFiles(a) && !TESTERS.includes(a.type) && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') {
         await refreshRepo($)
@@ -532,7 +529,7 @@ export const register: Register = on => {
       await saveHistory($)
       return r
     }
-    const flowId = (await read($, S)).flows.at(-1)?.id ?? ''
+    const flowId = (await look($)).flows.at(-1)?.id ?? ''
     await set($, st => {
       // A flow that ends in an answer reaches it when the turn completes
       const reached = !e.isAborted && st.reached.length && flowOf(st.task, st.reached, st.flows[st.flows.length - 1]?.kind).steps.includes('Answer') && !st.reached.includes('Answer') ? [...st.reached, 'Answer'] : st.reached
@@ -552,7 +549,7 @@ export const register: Register = on => {
     await snapTurn($, snapFlow || flowId, 'after').catch(() => null)
     await measure($)
     await syncAgents($)
-    const s = await read($, S)
+    const s = await look($)
     const didChange = changed || (atStart !== null && s.repo.changed.length > 0 && changesOf(s.repo.changed) !== atStart)
     // The autopilot's next cycle, once this turn's figures are in (cost for its budget, changes for its stall count)
     // A failure here must not leave the run marked running with no next cycle: it pauses, saying why
@@ -571,7 +568,7 @@ export const register: Register = on => {
       await set($, st => ({ flows: st.flows.map(f => (f.id === flowId ? { ...f, add: Math.max(f.add, add), del: Math.max(f.del, del) } : f)) }))
     }
     // A notice while you are not watching: the autopilot's cycle while one runs, else the turn
-    const now2 = await read($, S)
+    const now2 = await look($)
     const ap = now2.autopilot
     const fl = now2.flows.find(f => f.id === flowId)
     if (ap && endedCycle && !e.isAborted) await tellDone($, `cycle:${ap.at}:${endedCycle}`, { kind: 'cycle', cycle: endedCycle, ticked: ap.done, total: ap.total, spent: Math.max(0, now2.cost - ap.costAt), ...(ap.status !== 'running' ? { ended: ap.status } : {}) }).catch(() => null)
@@ -584,7 +581,7 @@ export const register: Register = on => {
     if (didChange && s.git.commitMode !== 'manual' && s.git.autoWhen !== 'tests') await decideCommit($)
     await saveHistory($)
     // The daily budget: a warning at 80% and at 100%, once each a day
-    const sb = await read($, S)
+    const sb = await look($)
     await checkBudget($, withCurrent(sb.pastSessions, sb.sessionAt, await $.clock.now(), sb.cost, sb.ctx.used, sb.flows.length), await $.clock.now()).catch(() => null)
     return r
   }).catch(async ($, e, next) => {
@@ -637,7 +634,7 @@ async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknow
   if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny) || ('isError' in r && (r as { isError?: unknown }).isError)) return
   const result = 'result' in r ? (r as { result?: unknown }).result : undefined
   if (agentId) {
-    const known = (await read($, S)).agents.some(a => a.id === agentId)
+    const known = (await look($)).agents.some(a => a.id === agentId)
     // ponytail: ids that never get a row are held to the last 40
     if (!known && earlyPlans.size >= 40 && !earlyPlans.has(agentId)) earlyPlans.delete(earlyPlans.keys().next().value!)
     if (!known) return void earlyPlans.set(agentId, applyPlan(earlyPlans.get(agentId) ?? [], tool, e as Record<string, unknown>, result))
@@ -651,7 +648,7 @@ async function trackPlan($: EngineInterface, tool: string, e: unknown, r: unknow
 // The flow-opening half of a prompt: a new flow, the repo read first; returns its changes as they stood, to compare at the turn's end
 async function openFlow($: EngineInterface, text: string, now: number) {
   await refreshRepo($)
-  const changes = (await read($, S)).repo.changed
+  const changes = (await look($)).repo.changed
   const task = text.trim().split('\n')[0] ?? ''
   await set($, s => ({
     task,
@@ -668,7 +665,7 @@ async function openFlow($: EngineInterface, text: string, now: number) {
 // A turn that carries on the last flow: it runs again, one turn more, its plan and steps kept
 async function resumeFlow($: EngineInterface, now: number) {
   await refreshRepo($)
-  const changes = (await read($, S)).repo.changed
+  const changes = (await look($)).repo.changed
   await set($, s => {
     const f = s.flows[s.flows.length - 1]!
     const { endedAt: _, ...open } = f

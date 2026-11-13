@@ -1,22 +1,17 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import { look } from './core'
 
-import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { parseSettings, settingsText } from '../rules'
-import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parsePr, baseFor, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
-import { INITIAL, PANE } from '../state'
+import type { Account, Changed, Pending, Ph } from '../../types'
+import { TYPES, parseCommit, parsePr, baseFor, base, branchName, commitMsg, inferType, verifyState } from '../logic'
+import { INITIAL } from '../state'
 import { snapshot, turnRef, undoTurn } from '../turns'
 import { C_LOCALE, WORKTREE_COMMANDS, applyRefusal, fillArgs, parseStat, pickIsolated, worktreeFor } from '../worktrees'
 import type { Run } from '../turns'
-import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { claim, git, loadGitPrefs, moveSaved, note, release, repoRoot, set, toast } from './core'
 import { tellDone } from './notify'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 const firstLine = (r: { stdout: string; stderr: string }) => (r.stderr || r.stdout).trim().split('\n')[0] ?? ''
 
@@ -31,7 +26,7 @@ export const subjectFor = (s: Ph, files: string[]) => s.git.subject.trim() || su
 // one write per set of files, shared by everyone waiting on it
 const writing = new Map<string, Promise<void>>()
 export async function suggestCommit($: $) {
-  const s = await read($, S)
+  const s = await look($)
   const sig = commitSig(s)
   if (!sig || (s.suggest?.sig === sig && !s.suggest.busy)) return
   const w = writing.get(sig) ?? writeCommit($, s, sig).finally(() => writing.delete(sig))
@@ -144,7 +139,7 @@ export async function refreshRepo($: $) {
 
 // With several repos found, each one's branch and changed-file count for the picker
 async function repoInfo($: $) {
-  const repos = (await read($, S)).repos
+  const repos = (await look($)).repos
   if (repos.length < 2) return
   const info = await Promise.all(
     repos.map(async r => {
@@ -158,7 +153,7 @@ async function repoInfo($: $) {
 
 // Work on another found repo: every git and gh call follows repoRoot, so the tab's state is read again from it
 export async function pickRepo($: $, dir: string, hand = true) {
-  const s = await read($, S)
+  const s = await look($)
   if (dir === s.repoDir || !s.repos.some(r => r.dir === dir)) return
   await set($, { repoDir: dir, ...(hand ? { repoHand: true } : {}), git: INITIAL.git, staged: {}, pending: null })
   await $.store.set(`repo:${await $.session.cwd().catch(() => '')}`, dir).catch(() => null)
@@ -169,7 +164,7 @@ export async function pickRepo($: $, dir: string, hand = true) {
 // Claude edited a file in another found repo: follow it, unless the person picked a repo by hand
 export async function followEdit($: $, file: string) {
   await repoRoot($)
-  const s = await read($, S)
+  const s = await look($)
   if (s.repoHand || s.repos.length < 2) return
   const to = s.repos.find(r => file.startsWith(`${r.dir}/`))
   if (to) await pickRepo($, to.dir, false)
@@ -177,7 +172,7 @@ export async function followEdit($: $, file: string) {
 
 // A commit opened in the graph: its author, date, whole message and the files it changed
 export async function showCommit($: $, sha: string) {
-  const open = (await read($, S)).ui.openCommit === sha
+  const open = (await look($)).ui.openCommit === sha
   await set($, s => ({ ui: { ...s.ui, openCommit: open ? '' : sha, commitInfo: '' } }))
   if (open) return
   const r = await git($, ['show', '--stat=72', '--format=%an <%ae>%n%ad%n%n%B', '--date=format:%d %b %Y %H:%M', sha])
@@ -187,7 +182,7 @@ export async function showCommit($: $, sha: string) {
 // Brings the current branch up to its upstream, fast-forward only: a pull that would merge says so and changes nothing
 export async function pullNow($: $) {
   const r = await git($, ['pull', '--ff-only'])
-  await toast($, r.exitCode === 0 ? `Pulled ${(await read($, S)).repo.current}` : `Pull failed: ${firstLine(r)}`)
+  await toast($, r.exitCode === 0 ? `Pulled ${(await look($)).repo.current}` : `Pull failed: ${firstLine(r)}`)
   await refreshRepo($)
 }
 
@@ -210,7 +205,7 @@ export function planCommit(s: Ph): Pending {
 // Commit the staged files; push and open a PR when the form says so. `plan` commits as proposed (ask mode)
 export async function commit($: $, auto: boolean, plan?: Pending) {
   if (!plan) await suggestCommit($)
-  const s = await read($, S)
+  const s = await look($)
   const p = plan ?? planCommit(s)
   const g = { ...s.git, type: p.type }
   const picked = s.repo.changed.filter(f => p.files.includes(f.path))
@@ -274,7 +269,7 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
 
 // Ask mode: propose the commit and wait for Commit or Skip in the band or the pane
 export async function proposeCommit($: $) {
-  const s = await read($, S)
+  const s = await look($)
   const p = { ...planCommit(s), at: await $.clock.now() }
   if (!p.files.length || !p.msg) return
   await set($, { pending: p })
@@ -282,7 +277,7 @@ export async function proposeCommit($: $) {
 }
 
 export async function confirmPending($: $) {
-  const p = (await read($, S)).pending
+  const p = (await look($)).pending
   if (p) await commit($, true, p)
 }
 
@@ -297,7 +292,7 @@ export async function decideCommit($: $) {
   if (!(await claim($, 'commit', 'Committing'))) return
   try {
     await suggestCommit($)
-    const s = await read($, S)
+    const s = await look($)
     if (s.git.commitMode === 'auto') await commit($, true)
     else if (s.git.commitMode === 'ask') await proposeCommit($)
   } finally {
@@ -307,7 +302,7 @@ export async function decideCommit($: $) {
 
 // Push the current branch
 export async function pushNow($: $) {
-  const s = await read($, S)
+  const s = await look($)
   const acct = s.accounts.find(a => a.id === s.accountId)
   const why = acct?.gh ? await ghUse($, acct.gh) : ''
   const p = await git($, ['push', '-u', 'origin', s.repo.current])
@@ -336,7 +331,7 @@ async function ghAdded($: $) {
   await gh($, ['auth', 'setup-git', '-h', 'github.com'])
   const login = (await gh($, ['api', 'user', '--jq', '.login'])).stdout.trim()
   await loadAccounts($)
-  const s = await read($, S)
+  const s = await look($)
   const a = s.accounts.find(x => x.gh === login && x.id.startsWith('gh-')) ?? s.accounts.find(x => x.gh === login)
   if (a) await useAccount($, a.id)
   await set($, st => ({ ui: { ...st.ui, acctOpen: false } }))
@@ -426,7 +421,7 @@ export async function refreshGit($: $) {
 // Fix failing checks: Claude is handed each failing check's name and the end of its failed steps' log (GitHub Actions
 // only; another CI's check goes with its link), and asked to find the cause and fix it
 export async function fixChecks($: $) {
-  const pr = (await read($, S)).repo.pr
+  const pr = (await look($)).repo.pr
   if (!pr?.checks.failing.length) return toast($, 'No failing checks to fix')
   const parts: string[] = []
   // ponytail: three checks, the last 120 lines and 6k characters of each log; enough to name the error, not to read it all
@@ -459,7 +454,7 @@ export async function loadPr($: $, opt: { pushed?: boolean } = {}) {
   if (opt.pushed) armed = 4
   const n = ++prReads
   prAt = await $.clock.now().catch(() => Date.now())
-  const s = await read($, S)
+  const s = await look($)
   const br = s.repo.current
   if (!s.repo.isRepo || !br || br === s.git.base) return
   const cwd = (await repoRoot($)) || undefined
@@ -491,7 +486,7 @@ export async function loadPr($: $, opt: { pushed?: boolean } = {}) {
 // Called by the 15 s timer while the pane is placed: an open PR with a check still pending is read again once 30 s
 // have passed since the last read. Nothing pending, closed, or no PR (a new branch clears it): nothing is asked
 export async function livePr($: $) {
-  const { pr, current: br } = (await read($, S)).repo
+  const { pr, current: br } = (await look($)).repo
   const waiting = pr?.checks.unknown ? pendingPr === `${br}#${pr.number}` : (pr?.checks.pending ?? 0) > 0
   if (!pr || pr.state !== 'OPEN' || unreadable >= 10 || !(waiting || armed > 0)) return
   if ((await $.clock.now().catch(() => Date.now())) - prAt < 30_000) return
@@ -502,7 +497,7 @@ export async function livePr($: $) {
 export async function saveAccount($: $, a: Account) {
   if (!a.name.trim() || !a.email.trim()) return toast($, 'An account needs a name and an email')
   const acct = { ...a, id: a.id || `acct-${Date.now()}`, label: a.label.trim() || a.gh.trim() || a.name.trim() }
-  const s = await read($, S)
+  const s = await look($)
   const accounts = [...s.accounts.filter(x => x.id !== acct.id), acct]
   await $.store.set('accounts', accounts.filter(x => x.id !== 'global' && !x.id.startsWith('gh-') || x.id === acct.id))
   await set($, st => ({ accounts, accountId: acct.id, ui: { ...st.ui, acctOpen: false, acct: { id: '', label: '', name: '', email: '', gh: '' } } }))
@@ -515,7 +510,7 @@ export async function saveAccount($: $, a: Account) {
 // logged out, and for the global identity git's global user.name and user.email are unset too
 export async function removeAccount($: $, id: string) {
   await set($, st => ({ ui: { ...st.ui, acctRemove: '' } }))
-  const a = (await read($, S)).accounts.find(x => x.id === id)
+  const a = (await look($)).accounts.find(x => x.id === id)
   if (!a) return
   const why: string[] = []
   if (a.gh) {
@@ -542,7 +537,7 @@ export async function useAccount($: $, id: string) {
 
 // Write the chosen identity into this repository's own git config
 export async function applyAccount($: $) {
-  const s = await read($, S)
+  const s = await look($)
   const a = s.accounts.find(x => x.id === s.accountId)
   if (!a) return toast($, 'Pick an account first')
   const n = await git($, ['config', 'user.name', a.name])
@@ -628,9 +623,9 @@ export async function makeWorktree($: $, id: string): Promise<{ path: string; br
 // it started from. Cockpit's experts never commit, so the files are the work
 export async function measureWorktree($: $, agentId: string) {
   // One Claude Code isolated: found first, if Cockpit has not yet
-  const ag0 = (await read($, S)).agents.find(a => a.id === agentId)
+  const ag0 = (await look($)).agents.find(a => a.id === agentId)
   if (ag0?.worktree?.claude) await findIsolated($, agentId)
-  const ag = (await read($, S)).agents.find(a => a.id === agentId)
+  const ag = (await look($)).agents.find(a => a.id === agentId)
   const w = ag?.worktree
   // A finished agent whose worktree never showed changed nothing: Claude Code dropped it, and there is nothing to bring back
   if (w?.claude && !w.path && ag && ag.status !== 'running') {
@@ -651,7 +646,7 @@ export async function measureWorktree($: $, agentId: string) {
 // nothing; a clash with your own changes refuses, naming the files, and changes nothing
 export async function bringBack($: $, agentId: string) {
   await set($, s => ({ ui: { ...s.ui, wtAsk: '' } }))
-  const ag = (await read($, S)).agents.find(a => a.id === agentId)
+  const ag = (await look($)).agents.find(a => a.id === agentId)
   const w = ag?.worktree
   if (!w || w.removed) return toast($, 'That worktree is gone')
   if (ag.status === 'running') return toast($, 'Not brought back: the agent is still working')
@@ -676,7 +671,7 @@ export async function bringBack($: $, agentId: string) {
 // Remove, once you confirmed: the worktree goes (with anything in it not brought back), its branch stays
 export async function removeWorktree($: $, agentId: string) {
   await set($, s => ({ ui: { ...s.ui, wtAsk: '' } }))
-  const ag = (await read($, S)).agents.find(a => a.id === agentId)
+  const ag = (await look($)).agents.find(a => a.id === agentId)
   const w = ag?.worktree
   if (!w || w.removed) return
   if (ag.status === 'running') return toast($, 'Not removed: the agent is still working in it')
@@ -715,7 +710,7 @@ export async function beforeIsolated($: $): Promise<{ base: string; before: stri
 }
 // The worktree Claude Code made for an agent: the one not there before it started; kept on the agent once found
 export async function findIsolated($: $, agentId: string) {
-  const s0 = await read($, S)
+  const s0 = await look($)
   const w = s0.agents.find(a => a.id === agentId)?.worktree
   if (!w?.claude || w.path || !w.before) return w ?? null
   const claimed = s0.agents.filter(a => a.id !== agentId && a.worktree?.path).map(a => a.worktree!.path)

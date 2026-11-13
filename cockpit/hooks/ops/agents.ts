@@ -1,13 +1,9 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import { look } from './core'
 
-import type { Account, Agent, Autopilot, Changed, RuleFiles, Commit, Decision, Flow, GitForm, Pending, Ph, ThemeId, PlanItem } from '../../types'
-import { parseSettings, settingsText } from '../rules'
-import { factsOf, featurePrompt, filesSig, importers, isCode, memoryKey, memoryMarkdown, parseFeatures, parseImports, resolveImport } from '../memory'
-import { AGENT_TYPES, EXPERTS, PIPELINES, TYPES, recallOf, similarRuns, parseCommit, parseSteps, base, branchName, commitMsg, expertName, inferType, nJ, parseCases, parseReport, tally, verifyState } from '../logic'
+import type { Agent, Ph, PlanItem } from '../../types'
+import { importers, memoryKey } from '../memory'
+import { AGENT_TYPES, EXPERTS, PIPELINES, recallOf, similarRuns, expertName, parseCases, parseReport, verifyState } from '../logic'
 import { pickLabel, pickRun } from '../pick'
-import { INITIAL, PANE } from '../state'
-import { THEME_IDS } from '../theme'
 import type { $ } from './core'
 import { cockpitDir, note, saveHistory, set, summary, toast } from './core'
 import { beforeIsolated, decideCommit, dropWorktree, findIsolated, makeWorktree, refreshRepo } from './git'
@@ -15,7 +11,6 @@ import { tellDone } from './notify'
 
 // The session's state, declared here as in every module that reads it: the engine reads a state atom from its literal
 // plugin and key in the module that names it, so each reader declares the same atom
-const S = atom({ plugin: 'cockpit', key: 's' } as const, INITIAL, { shape: 'ph-25' })
 
 // Spawns started from the pane right now, each its type and exact prompt: the tool.check hook puts these to the person
 const ownStarts: { type: string; prompt: string }[] = []
@@ -81,7 +76,7 @@ const TOOLS = ['Read', 'Grep', 'Glob', 'Bash', 'Edit', 'Write', 'WebFetch', 'Web
 // An agent from the person's own words: a model writes its definition, Cockpit registers it as cockpit:<name>
 // (runnable at once, here and by Claude) and keeps it in the store for later sessions
 export async function createAgent($: $, describe: string) {
-  if ((await read($, S)).creating) return toast($, 'Still making the last agent')
+  if ((await look($)).creating) return toast($, 'Still making the last agent')
   await set($, { creating: describe })
   try {
     // privacy: agent-definition (docs/privacy.md lists what it sends)
@@ -186,7 +181,7 @@ export async function handOff($: $, items: { type: string; brief: string }[]) {
 }
 
 export async function runExpert($: $, type: string, prior: string[] = [], opts: { task?: string; batch?: { type: string; brief: string }[]; inTree?: boolean } = {}) {
-  const s0 = await read($, S)
+  const s0 = await look($)
   const s = opts.task ? { ...s0, task: opts.task } : s0
   const name = expertName(type)
   const pick = s.chooseModel ? pickRun(s.task, type, new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path)).size) : undefined
@@ -225,7 +220,7 @@ let startingPipeline = false
 export async function startPipeline($: $, name: string, opts: { for?: string; prior?: string[] } = {}) {
   const def = PIPELINES.find(p => p.name === name)
   if (!def) return
-  const s = await read($, S)
+  const s = await look($)
   // A pipeline whose expert never got an id (nothing can ever finish it) is stale and gives way
   if (startingPipeline || s.pipeline?.agentId) return toast($, `${PIPELINES.find(p => p.name === s.pipeline?.name)?.label ?? 'A pipeline'} is still running`)
   startingPipeline = true
@@ -252,7 +247,7 @@ async function bindExpert($: $, id: string | null) {
 
 // The agent that just finished was the pipeline's: keep its report and start the next expert, or finish
 export async function advancePipeline($: $, agentId: string, answer: string, aborted = false) {
-  const s = await read($, S)
+  const s = await look($)
   const p = s.pipeline
   if (!p || p.agentId !== agentId) return
   if (aborted) {
@@ -267,7 +262,7 @@ export async function advancePipeline($: $, agentId: string, answer: string, abo
     const label = PIPELINES.find(x => x.name === p.name)?.label ?? p.name
     await toast($, `${label} pipeline done`)
     await note($, `⧉ ${label} pipeline done · ${reports.length} experts`)
-    const after = await read($, S)
+    const after = await look($)
     // A notice while you are not watching: passed, or the first case that failed
     const vs = verifyState(after.agents)
     // The first failing case of this run's testers (the latest Prover and Breaker), never an older run's
@@ -290,7 +285,7 @@ export async function finishAgent($: $, agentId: string, answer: string, aborted
   const cases = parseCases(answer)
   const report = parseReport(answer)
   await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && (a.status === 'running' || (a.status !== 'stopped' && !a.report && !a.cases.length)) ? { ...a, status: aborted ? 'stopped' : failed ? 'failed' : 'done', endedAt: at, cases, report, log: [...a.log, { at, t: failed ? 'Failed · the run ended on an error' : 'Done · report ready' }] } : a)) }))
-  const a = (await read($, S)).agents.find(x => x.id === agentId)
+  const a = (await look($)).agents.find(x => x.id === agentId)
   if (a && cases.length) {
     const fail = cases.filter(c => c.st === 'fail').length
     await toast($, `${a.name}: ${cases.length - fail}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
@@ -310,7 +305,7 @@ export async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | '
   const at = await $.clock.now()
   // Its worktree, if one waits for it: by id, by the folder its spawn named, or, for a twin, the next queued for its
   // type; taken here, once, outside the state's update. A twin with none waiting is noted, for its start to find
-  const isNew = !(await read($, S)).agents.some(x => x.id === a.id)
+  const isNew = !(await look($)).agents.some(x => x.id === a.id)
   if (a.cwd) spawnedIn.set(slashed(a.cwd), a.id)
   const key = pendingWorktrees.has(a.id) ? a.id : a.cwd && pendingWorktrees.has(slashed(a.cwd)) ? slashed(a.cwd) : ''
   const wt = key ? pendingWorktrees.get(key) : isNew ? pendingTwins.get(a.type)?.shift() : undefined
@@ -337,7 +332,7 @@ export const changedFiles = (a: Agent) => a.log.some(l => /^(Edit|Write|Notebook
 // with what that agent was asked and reported. auto: after a run that changed files, while the setting is on, and
 // never on a tester's own run or while another pipeline runs
 export async function testAgent($: $, id: string, auto: boolean) {
-  const s = await read($, S)
+  const s = await look($)
   const a = s.agents.find(x => x.id === id)
   if (!a || a.status !== 'done' || TESTERS.includes(a.type)) return
   if (auto && (!s.testAgents || !changedFiles(a) || s.pipeline)) return
@@ -364,7 +359,7 @@ export async function discoverAgentTypes($: $) {
 }
 
 export async function spawnAgent($: $, task: string, type: string) {
-  const pick = (await read($, S)).chooseModel ? pickRun(task, type) : undefined
+  const pick = (await look($)).chooseModel ? pickRun(task, type) : undefined
   await set($, s => ({ starting: { name: expertName(type) === type && type === 'general-purpose' ? 'Agent' : expertName(type), type, task, ...(s.ui.agentWorktree ? { worktree: true } : {}), ...(pick ? { pick: pickLabel(pick) } : {}) } }))
   const wt = await worktreeToRun($, type)
   // A twin start holds the one-at-a-time turn until its worktree has been looked for, and gives it back whatever happens
@@ -434,7 +429,7 @@ export async function syncAgents($: $) {
 
 // An agent run again with your instructions: a run's own brief with them added, or a team agent with them as its task
 export async function rerun($: $, target: string, text: string) {
-  const s = await read($, S)
+  const s = await look($)
   const said = text.trim()
   await set($, st => ({ ui: { ...st.ui, rerunFor: '', rerunText: '' } }))
   if (target.startsWith('type:')) return runExpert($, target.slice(5), [], said ? { task: said } : {})
@@ -447,7 +442,7 @@ export async function rerun($: $, target: string, text: string) {
 
 // Every running agent, stopped
 export async function stopAll($: $) {
-  const live = (await read($, S)).agents.filter(a => a.status === 'running')
+  const live = (await look($)).agents.filter(a => a.status === 'running')
   for (const a of live) await stopAgent($, a.id, true)
   await toast($, live.length ? `Stopped ${live.length} agent${live.length === 1 ? '' : 's'}` : 'Nothing running')
 }
@@ -522,7 +517,7 @@ function takeIsolation(): Promise<() => void> {
   return turn
 }
 async function worktreeToRun($: $, type: string): Promise<Plan> {
-  if (!(await read($, S)).ui.agentWorktree) return null
+  if (!(await look($)).ui.agentWorktree) return null
   // Claude Code's own isolation, through the type's isolated twin
   const twin = isolatedTwin.get(type)
   if (twin) {
@@ -559,7 +554,7 @@ async function keepIsolated($: $, id: string | null, plan: { twin: string; base:
     if (!waiting) return void pendingTwins.set(plan.twin, [...(pendingTwins.get(plan.twin) ?? []), w])
     id = waiting
   }
-  if ((await read($, S)).agents.some(a => a.id === id)) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: w } : a)) }))
+  if ((await look($)).agents.some(a => a.id === id)) await set($, s => ({ agents: s.agents.map(a => (a.id === id ? { ...a, worktree: w } : a)) }))
   else pendingWorktrees.set(id, w)
   await findIsolated($, id).catch(() => null)
 }
@@ -572,6 +567,6 @@ async function keepWorktree($: $, id: string | null, plan: Plan) {
   const wt = plan.own
   if (id === null) return dropWorktree($, wt)
   const owner = id || spawnedIn.get(slashed(wt.path)) || ''
-  if (owner && (await read($, S)).agents.some(a => a.id === owner)) await set($, s => ({ agents: s.agents.map(a => (a.id === owner ? { ...a, worktree: wt } : a)) }))
+  if (owner && (await look($)).agents.some(a => a.id === owner)) await set($, s => ({ agents: s.agents.map(a => (a.id === owner ? { ...a, worktree: wt } : a)) }))
   else pendingWorktrees.set(owner || slashed(wt.path), wt)
 }
