@@ -14,6 +14,10 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the next session keeps the names without asking a model; only Map again, a new repository, or over a quarter of the
   files new names them again.
 
+### Fixed
+- **Files a shell command makes or removes reach the memory**: one made in a new folder (which git status names only as
+  the folder) is mapped, and one deleted or renamed away leaves it, at the end of the turn that changed them.
+
 ## [0.8.0] - 2026-11-13
 
 ### Added
