@@ -105,7 +105,7 @@ in `chat/drawings.tsx`).
 - **The session's state**: the atom, for the life of the session (it outlasts a reload of the mod).
 - **Across sessions** (Claude Code's plugin store, `$.store`): preferences, Git settings and accounts per repository,
   the agents you made.
-- **In the repository** (`.cockpit/`, git-ignored): `history.json`, `memory.json` and `MEMORY.md`, hand-off briefs,
+- **In the repository** (`.cockpit/`, git-ignored): `history.json`, `memory.json`, `MEMORY.md` and the feature pages in `memory/`, hand-off briefs,
   and the autopilot's `roadmap.md`. See [Privacy and cost](privacy.md).
 
 ## Tests

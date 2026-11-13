@@ -5,6 +5,15 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Codebase memory in pages**: `.cockpit/MEMORY.md` is now an index (the codebase in short, one row per feature, the
+  folders), and each feature has its own page in `.cockpit/memory/`: its files by folder, each with what it does, what
+  it exports and imports, and what imports it. Claude's prompt points to them, so it finds the file to change without
+  reading the code.
+- **Features keep up by themselves**: a new file joins its feature and a deleted one leaves it as the edit happens, and
+  the next session keeps the names without asking a model; only Map again, a new repository, or over a quarter of the
+  files new names them again.
+
 ## [0.8.0] - 2026-11-13
 
 ### Added

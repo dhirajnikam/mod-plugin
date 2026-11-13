@@ -31,12 +31,16 @@ At each session start Cockpit maps the repository: every source file (TypeScript
 the like), the files it imports and the files that import it. A model then names the product's **features** from what
 each file exports and its first comment (for example "Hero section", "Contact form", "Commit flow"), each with one
 sentence on what it does; the links between features come from the real imports between their files. The names are
-written again only when files are added or removed; until then, or where no model can be asked, features are the
-folders.
+kept from session to session; a model names them again only on **↻ Map again**, the first time, or when over a quarter
+of the files are new. Until then, or where no model can be asked, features are the folders.
 
-- After every edit (Claude's, an agent's, or a shell command's) the file is read again.
-- **Claude reads it** every turn, as a short section of its system prompt, and **the testers get it**: each brief
-  lists the files that import the changed ones.
-- **It is kept in the repository** as `.cockpit/memory.json` and a readable `.cockpit/MEMORY.md` (git-ignored).
+- After every edit (Claude's, an agent's, or a shell command's) the file is read again. A new file joins the feature
+  most of its folder is in (else the one its imports are in), and a deleted one leaves its feature, with no reload.
+- **Claude reads it** every turn, as a short section of its system prompt that points to the feature pages, so it can
+  find the file to change without reading the code; **the testers get it** too: each brief lists the files that import
+  the changed ones.
+- **It is kept in the repository** (git-ignored): `.cockpit/memory.json`, the index `.cockpit/MEMORY.md` (the codebase
+  in short, one row per feature, the folders), and one page per feature in `.cockpit/memory/`, its files by folder,
+  each with what it does, what it exports and imports, and what imports it.
 
 [All docs](README.md) · [Project README](../README.md)
