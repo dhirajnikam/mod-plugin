@@ -171,7 +171,7 @@ test('a run that passes says so; none while you watch the pane, none when the fi
   expect(notices.length).toBe(1)
 })
 
-test('with finish notices off, a finished run is not told; an unreadable answer is not taken for finished', { timeoutMs: 30_000 }, async ($, on) => {
+test('with finish notices off, a finished run is read all the same, and not told', { timeoutMs: 30_000 }, async ($, on) => {
   let now = 1_000_000
   let checks = PENDING
   const ran: string[] = []
@@ -180,9 +180,13 @@ test('with finish notices off, a finished run is not told; an unreadable answer 
   const tick = stand(on, { now: () => now, checks: () => checks, branch: () => 'feat/x', shown: () => false, view: () => VIEW(), notices, ran, prefs })
   await start($)
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const read = () => ran.filter(c => c.startsWith('gh pr checks') && c.endsWith('feat/x')).length
+  const before = read()
   checks = PASSED
   now += 30_000
   await tick()
+  // The tick did read the finished run: the silence is the setting's, not a timer that never asked
+  expect(read()).toBe(before + 1)
   expect(notices).toEqual([])
 })
 

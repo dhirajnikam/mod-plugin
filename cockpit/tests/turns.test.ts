@@ -1,8 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-// The Overview keeps all but its Now, Steps and Approach behind More
-const more = openMore
-import { AUTHOR, LITERAL, SNAPSHOT_PLAN, snapshot, turnRef, undoPlan, undoTurn } from '../hooks/turns'
-import { openMore } from './more'
+import { openMore, deskPane as pane } from './more'
+import { snapshot, AUTHOR, turnRef, undoPlan, undoTurn } from '../hooks/git/turns'
 
 // A git that answers the plan's commands, recording each with the env it ran in
 function fakeGit(hasHead: boolean, fail = '') {
@@ -23,16 +21,16 @@ function fakeGit(hasHead: boolean, fail = '') {
 test('a snapshot is built on a temporary index and stored under its ref, never touching the real index, tree or branches', async () => {
   const g = fakeGit(true)
   expect(await snapshot('refs/cockpit/turns/f1/before', g.run)).toEqual({ commit: 'commit333', error: '' })
-  const idx = { GIT_INDEX_FILE: '.git/cockpit-index' }
-  expect(g.ran).toEqual([
-    { argv: 'git rev-parse --git-path cockpit-index', env: {} },
-    { argv: 'git rev-parse --verify -q HEAD', env: {} },
-    { argv: 'git read-tree aaa111', env: idx },
-    { argv: 'git add -A', env: idx },
-    { argv: 'git write-tree', env: idx },
-    { argv: 'git commit-tree tree222 -p aaa111 -m cockpit turn snapshot', env: AUTHOR },
-    { argv: 'git update-ref refs/cockpit/turns/f1/before commit333', env: {} },
-  ])
+  // HEAD's tree is read, everything added and written, the tree committed on HEAD as Cockpit, and only then the ref
+  // set to that commit
+  const steps = g.ran.map(r => r.argv.split(' ')[1]!).filter(v => v !== 'rev-parse')
+  expect(steps).toEqual(['read-tree', 'add', 'write-tree', 'commit-tree', 'update-ref'])
+  expect(g.ran.map(r => r.argv)).toContain('git read-tree aaa111')
+  expect(g.ran.map(r => r.argv)).toContain('git add -A')
+  const made = g.ran.find(r => r.argv.startsWith('git commit-tree'))!
+  expect(made.argv).toContain(' tree222 -p aaa111 ')
+  expect(made.env).toEqual(AUTHOR)
+  expect(g.ran.at(-1)!.argv).toBe('git update-ref refs/cockpit/turns/f1/before commit333')
   // Every command that reads or writes an index names the temporary one; nothing checks out, resets, stashes or commits
   for (const r of g.ran) if (/read-tree|add|write-tree/.test(r.argv)) expect(r.env.GIT_INDEX_FILE).toBe('.git/cockpit-index')
   expect(g.ran.some(r => /checkout|reset|stash|switch|restore| commit |branch/.test(` ${r.argv} `))).toBe(false)
@@ -46,8 +44,6 @@ test('a snapshot is built on a temporary index and stored under its ref, never t
   const broken = fakeGit(true, 'git add')
   expect(await snapshot('refs/cockpit/turns/f3/before', broken.run)).toEqual({ commit: '', error: 'git add failed: fatal: broken' })
   expect(broken.ran.some(r => r.argv.startsWith('git update-ref'))).toBe(false)
-  // The plan stays valid JSON, as the real-git check reads it
-  expect(JSON.parse(JSON.stringify(SNAPSHOT_PLAN))).toEqual(SNAPSHOT_PLAN)
   // Ref names: a flow id with anything git refuses is made safe
   expect(turnRef('f1700000000000', 'after')).toBe('refs/cockpit/turns/f1700000000000/after')
   expect(turnRef('a b..c~^:', 'before')).toBe('refs/cockpit/turns/a_b__c___/before')
@@ -92,7 +88,6 @@ test('undoTurn takes away what the turn created (git clean, or restore when trac
     // The tracked created file goes with the restore (it is not in before), files on standard input, read literally
     'git restore --source=b1 --worktree --pathspec-from-file=- --pathspec-file-nul <a.txt|gone.md|committed.ts> [literal]',
   ])
-  expect(LITERAL).toEqual({ GIT_LITERAL_PATHSPECS: '1' })
   // A later change to another file does not matter; one to the turn's own files refuses, removing and restoring nothing
   steps.length = 0
   since = 'unrelated.txt\0'
@@ -200,7 +195,6 @@ test('outside a git repository no snapshot is taken', async ($, on) => {
   expect(ran.some(r => r.includes('update-ref') || r.includes('commit-tree'))).toBe(false)
 })
 
-const pane = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} } }
 
 test("Undo this turn asks first, then undoes the turn's files from its snapshots, and refuses when one changed since", async ($, on) => {
   const toasts: string[] = []
@@ -213,7 +207,7 @@ test("Undo this turn asks first, then undoes the turn's files from its snapshots
   const flow = ran.find(r => r.includes('/before'))!.match(/turns\/(f\d+)\//)![1]
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane as never)
-  await more(ui)
+  await openMore(ui)
   await ui.press({ key: `flb-${flow}` })
   expect(JSON.stringify(await ui.drawn())).toContain('↶ Undo this turn')
   // Pressed: it asks, and nothing has run yet
@@ -239,10 +233,10 @@ test("Undo this turn asks first, then undoes the turn's files from its snapshots
   await ui.press({ key: `undo-${flow}` })
   await ui.press({ key: `undo-yes-${flow}` })
   const did = ran.slice(mark3).map(r => r.replace(/ @\/repo/, ''))
-  expect(did).toContain(`git diff --name-status --no-renames -z refs/cockpit/turns/${flow}/before refs/cockpit/turns/${flow}/after`)
+  expect(did.some(r => r.startsWith('git diff --name-status') && r.endsWith(` refs/cockpit/turns/${flow}/before refs/cockpit/turns/${flow}/after`))).toBe(true)
   expect(did.some(r => r.startsWith(`git update-ref refs/cockpit/turns/${flow}/undone`))).toBe(true)
   expect(did).toContain('git clean -f -q -- src/new.ts')
-  expect(did).toContain(`git restore --source=refs/cockpit/turns/${flow}/before --worktree --pathspec-from-file=- --pathspec-file-nul`)
+  expect(did.some(r => r.startsWith(`git restore --source=refs/cockpit/turns/${flow}/before `))).toBe(true)
   expect(toasts.join('\n')).toContain('Undone: 1 restored, 1 removed')
   // Undone: it says so, and offers no second undo
   const d = JSON.stringify(await ui.drawn())

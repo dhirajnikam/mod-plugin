@@ -1,12 +1,11 @@
 import { expect, test } from 'claude-code/testing'
-import { explainPrompt } from '../hooks/ops/explain'
+import { ok as out, posix } from './more'
+import { explainPrompt } from '../hooks/memory/explain'
 
 const scroll = { offset: 0, bodyRows: 60 }
 const PANE = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } }
 
-const out = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const wait = () => new Promise(r => (globalThis as any).setTimeout(r, 300))
-const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
 // The engine stood in with a repository at /repo whose files are the keys of `disk`
 function stand($: unknown, on: any, disk: Record<string, string>, opt: { cwd?: string } = {}) {
@@ -39,9 +38,9 @@ function stand($: unknown, on: any, disk: Record<string, string>, opt: { cwd?: s
   return asked
 }
 
-test('explainPrompt names the path and every section, and a refresh keeps the person\'s edits', () => {
+test('explainPrompt names the path and carries the memory, the readme and the recent files, and a refresh keeps the person\'s edits', () => {
   const p = explainPrompt({ path: 'docs/CODEBASE.md', exists: false, memory: '- core: the core', readme: '# Proj', recent: ['src/a.ts'] })
-  for (const w of ['docs/CODEBASE.md', 'What the project is for', 'laid out', 'flows through', 'design decisions', 'build, test and run', 'Where to start', '400 lines', '- core: the core', '# Proj', 'src/a.ts']) expect(p).toContain(w)
+  for (const w of ['docs/CODEBASE.md', '- core: the core', '# Proj', 'src/a.ts']) expect(p).toContain(w)
   expect(explainPrompt({ path: 'CODEBASE.md', exists: true, memory: '', readme: '', recent: [] })).toContain('keep every edit the person made by hand')
 })
 

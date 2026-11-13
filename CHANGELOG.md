@@ -6,7 +6,7 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
-- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/ops/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
+- **Simpler Overview**: it leads with one plain sentence of what Claude is doing now (`Editing hooks/git/git.ts · step 3 of 5 · 2 agents running · $0.42 today`),
   a few rows (changed files, checks, agents, the pull request), the steps as a plain checklist and the last three decisions as short sentences
   (`Chose X over Y because Z`). The ring, the agents view, earlier flows and sessions, spend, context and the full decisions are behind **More**,
   folded by default; every button is still there. The band above the prompt is one short line (`Step 2 of 5 · Add the limiter`).
@@ -14,6 +14,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `On feat/x · 3 files changed · PR #7 checks running`, `3 CLAUDE.md files · 2 hooks · 5 skills load before you type, ≈4k tokens`), then only what you act on most
   (the feed's latest events; the Build, Verify and Review buttons and running agents; the repo picker, changed files with Commit and the pull request; what loads each session).
   Everything else is behind one **More** fold per tab, folded by default; no button was removed.
+- **Code laid out by feature**: `cockpit/hooks/` has one folder per feature (`core`, `flows`, `git`, `agents`, `judges`, `memory`, `rules`,
+  `pane`, `ui`, `chat`) in place of `ops/` and `tabs/`, and the state is declared in one file, `core/core.ts`, which the rest read through.
+  See [docs/CODEBASE.md](docs/CODEBASE.md).
+- **One table of tabs**: every way of opening a tab (its button, `/cockpit tab`, a link from another tab or the chat) goes through one
+  function, so a tab's button now also reads the codebase guide again for Overview and syncs the agents for Agents, as `/cockpit tab` always did.
 
 ### Added
 - **Codebase guide**: `/cockpit explain` and an **Explain this codebase** button on the Overview ask Claude to write
@@ -32,6 +37,12 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Spend by day**: each session's cost, context tokens, length and turns are kept in `.cockpit/history.json`, and the
   Overview's Earlier sessions shows what the last 14 days cost, a bar for each day, and the five costliest sessions,
   marked as Claude Code's estimates.
+
+### Fixed
+- The Rules tab no longer says a change was saved when the file could not be written; it says why it was not.
+
+### Removed
+- The self-check that ran at every session start; its table of cases is a test now (`cockpit/tests/logic.test.ts`).
 
 ## [0.7.0] - 2026-11-08
 

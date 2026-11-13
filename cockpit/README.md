@@ -29,18 +29,20 @@ Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit
 
 | File | Holds |
 |---|---|
-| `hooks/register.tsx` | event hooks: prompts, tool calls, judges, turn ends, agents |
-| `hooks/drawings.tsx` | every drawing around the chat: the band, the spinner, the chat's cards |
-| `hooks/pane.tsx`, `full-pane.tsx` | the side pane: its header and tabs, and the whole pane with the open tab |
-| `hooks/tabs/` | the pane, one file per tab (`views.tsx` re-exports them) |
-| `hooks/ops/` | what Cockpit does: state and history, git, agents, judges and the autopilot, memory, rules files (`actions.ts` re-exports them) |
-| `hooks/logic.ts` | pure helpers: flows and progress, diffs, the tree, the ring and other SVG drawings |
-| `hooks/memory.ts` | the codebase memory and the feature map |
-| `hooks/rules.ts` | the Rules tab's reading and changing of settings and `CLAUDE.md` |
-| `hooks/theme.ts` | the themes |
-| `hooks/state.ts` | the initial state |
+| `hooks/register.tsx` | event hooks, in order: prompts, tool calls, judges, turn ends, agents |
+| `hooks/commands.ts`, `acts.ts` | the `/cockpit` command; the actions another plugin can call by name |
+| `hooks/core/` | the state (declared in `core.ts`, first value in `state.ts`), repos, history, spend, notices, the themes |
+| `hooks/flows/` | flows, their steps and progress, a turn's start and end |
+| `hooks/git/` | git, gh accounts, commits, the pull request, the commit graph, turn snapshots and undo, the Git tab |
+| `hooks/agents/` | the experts, pipelines, hand-offs, testers, worktrees, the model choice, the Agents tab |
+| `hooks/judges/` | the judges and the autopilot |
+| `hooks/memory/` | the codebase memory, the feature map, the codebase guide, the Activity tab |
+| `hooks/rules/` | the Rules tab and its reading and changing of settings and `CLAUDE.md` |
+| `hooks/pane/` | the side pane: its header and tabs, the whole pane with the open tab, the Overview tab |
+| `hooks/ui/` | the pieces the tabs share; the ring and other SVG drawings |
+| `hooks/chat/drawings.tsx` | every drawing around the chat: the band, the spinner, the chat's cards |
 | `types/index.d.ts` | the state contract |
 | `agents/*.md` | the six experts |
 
-`hooks/logic.ts` has a `selfCheck()` that runs at session start and logs any failure. To work on it, see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+The code is laid out by feature; where a feature has the pair, `x.ts` is its pure logic and `x-io.ts` its engine
+I/O; `x-tab.tsx` is its tab. To work on it, see [CONTRIBUTING.md](../CONTRIBUTING.md).

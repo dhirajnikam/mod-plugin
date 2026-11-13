@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
+import { ok } from './more'
 
 // A folder holding two repos (api and web), and a plain single repo: which one git runs in, the picker, auto-follow
 const PANE = { plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} } }
-const ok = (stdout = '', exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const SETUP = { commitMode: 'manual', setupDone: true, branchAuto: false, base: 'main' }
 
 async function session($: any, on: any, root: string, repos: string[]) {
@@ -35,9 +35,11 @@ async function session($: any, on: any, root: string, repos: string[]) {
   return { ran, store }
 }
 const statusCwds = (ran: { cmd: string; cwd: string }[]) => ran.filter(r => r.cmd.startsWith('git status')).map(r => r.cwd)
+// The repository the picker shows as the one git runs in
+const picked = async (ui: any) => (await ui.find({ key: 'git-repo' }))?.props.value
 
 test('a folder of repos lists both, runs git in the first, and a hand pick switches', { timeoutMs: 20_000 }, async ($, on) => {
-  const { ran, store } = await session($, on, '/work', ['/work/api', '/work/web'])
+  const { ran } = await session($, on, '/work', ['/work/api', '/work/web'])
   const ui = await $.ui.mount(PANE as never)
   const d = JSON.stringify(await ui.drawn())
   // The picker names both, with branch and changed-file count; node_modules and dot folders are not repos
@@ -47,28 +49,29 @@ test('a folder of repos lists both, runs git in the first, and a hand pick switc
   expect(d).toContain('2 changed')
   expect(d).not.toContain('node_modules')
   expect(statusCwds(ran)).toContain('/work/api')
+  expect(await picked(ui)).toBe('/work/api')
   ran.length = 0
   await (ui as any).select({ key: 'git-repo', value: '/work/web' })
   expect(statusCwds(ran)).toContain('/work/web')
-  expect(store['repo:/work']).toBe('/work/web')
+  expect(await picked(ui)).toBe('/work/web')
   await ui.unmount()
 })
 
 test('an Edit in the other repo switches to it, unless one was picked by hand', { timeoutMs: 20_000 }, async ($, on) => {
-  const { ran, store } = await session($, on, '/work2', ['/work2/api', '/work2/web'])
+  const { ran } = await session($, on, '/work2', ['/work2/api', '/work2/web'])
   const ui = await $.ui.mount(PANE as never)
-  await ui.drawn()
+  expect(await picked(ui)).toBe('/work2/api')
   ran.length = 0
   await $.tool.call({ tool: 'Edit', file_path: '/work2/web/src/b.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e1' } as never)
   expect(statusCwds(ran)).toContain('/work2/web')
-  expect(store['repo:/work2']).toBe('/work2/web')
+  expect(await picked(ui)).toBe('/work2/web')
   await $.tool.call({ tool: 'Edit', file_path: '/work2/api/x.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e2' } as never)
-  expect(store['repo:/work2']).toBe('/work2/api')
+  expect(await picked(ui)).toBe('/work2/api')
   // Picked by hand: edits no longer move it
   await (ui as any).select({ key: 'git-repo', value: '/work2/web' })
-  expect(store['repo:/work2']).toBe('/work2/web')
+  expect(await picked(ui)).toBe('/work2/web')
   await $.tool.call({ tool: 'Edit', file_path: '/work2/api/y.ts', old_string: 'a', new_string: 'b', tool_use_id: 'e3' } as never)
-  expect(store['repo:/work2']).toBe('/work2/web')
+  expect(await picked(ui)).toBe('/work2/web')
   await ui.unmount()
 })
 

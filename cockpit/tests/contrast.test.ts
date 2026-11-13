@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { THEMES } from '../hooks/theme'
+import { THEMES } from '../hooks/core/theme'
 
 // WCAG contrast of two #rrggbb colours
 const lum = (hex: string) => {

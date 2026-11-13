@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Agents in worktrees, on real git: reads the worktree commands out of cockpit/hooks/worktrees.ts and the snapshot
-plan out of cockpit/hooks/turns.ts (the same data Cockpit runs), makes two worktrees whose agents work at once, brings
+"""Agents in worktrees, on real git: reads the worktree commands out of cockpit/hooks/agents/worktrees.ts and the snapshot
+plan out of cockpit/hooks/git/turns.ts (the same data Cockpit runs), makes two worktrees whose agents work at once, brings
 both back, and checks every change arrives and nothing else moves. The test kit cannot start processes, so this is
 where the git commands themselves are proven."""
 import json, os, re, subprocess, sys, tempfile
@@ -12,8 +12,9 @@ def block(file, name, const):
     if not m:
         sys.exit(f'check_worktrees: no {name} block in {file}')
     return json.loads(m.group(1))
-WT, PLAN = block('worktrees.ts', 'wt', 'WORKTREE_COMMANDS'), block('turns.ts', 'plan', 'SNAPSHOT_PLAN')
-AUTHOR = {'GIT_AUTHOR_NAME': 'Cockpit', 'GIT_AUTHOR_EMAIL': 'cockpit@localhost', 'GIT_COMMITTER_NAME': 'Cockpit', 'GIT_COMMITTER_EMAIL': 'cockpit@localhost'}
+WT, PLAN = block('agents/worktrees.ts', 'wt', 'WORKTREE_COMMANDS'), block('git/turns.ts', 'plan', 'SNAPSHOT_PLAN')
+AUTHOR = block('git/turns.ts', 'author', 'AUTHOR')
+C_LOCALE = block('agents/worktrees.ts', 'locale', 'C_LOCALE')
 fill = lambda argv, v: [re.sub(r'\{(\w+)\}', lambda m: v.get(m.group(1), ''), a) for a in argv]
 
 def run(cwd, argv, env=None, stdin=None, ok=False):
@@ -46,7 +47,7 @@ def bring_back(root, path, base, slug):
     # What Bring back does: snapshot the worktree, diff it against its base, check, then apply to the working tree
     snap = snapshot(path, f'refs/cockpit/worktrees/{slug}')
     patch = run(root, fill(WT['diff'], {'base': base, 'snap': snap})).stdout
-    check = run(root, WT['check'], {'LC_ALL': 'C', 'LANGUAGE': 'C'}, stdin=patch, ok=True)
+    check = run(root, WT['check'], C_LOCALE, stdin=patch, ok=True)
     if check.returncode:
         return check.stderr
     run(root, WT['apply'], stdin=patch)
@@ -109,7 +110,7 @@ with tempfile.TemporaryDirectory() as root:
     check('its branch is kept', run(root, ['git', 'rev-parse', '--verify', '-q', 'refs/heads/cockpit/ag-3'], ok=True).returncode == 0)
 
 def listing(root):
-    # git's own porcelain list, read as listWorktrees in cockpit/hooks/ops/git.ts reads it
+    # git's own porcelain list, read as listWorktrees in cockpit/hooks/agents/worktrees-io.ts reads it
     out = []
     for block in run(root, ['git', 'worktree', 'list', '--porcelain']).stdout.split('\n\n'):
         w = re.search(r'^worktree (.+)$', block, re.M)
@@ -120,7 +121,7 @@ def listing(root):
     return out
 
 def pick(lst, before, claimed):
-    # pickIsolated of cockpit/hooks/worktrees.ts: only Claude Code's own (.claude/worktrees/), new and unheld
+    # pickIsolated of cockpit/hooks/agents/worktrees.ts: only Claude Code's own (.claude/worktrees/), new and unheld
     return next((w for w in lst if '/.claude/worktrees/' in w['path'] and w['path'] not in before and w['path'] not in claimed), None)
 
 with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as elsewhere:

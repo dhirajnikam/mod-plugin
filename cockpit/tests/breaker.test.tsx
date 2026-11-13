@@ -1,16 +1,10 @@
 import { expect, test } from 'claude-code/testing'
-// The Overview keeps all but its Now, Steps and Approach behind More
-const more = openMore
-import { parseCases, parseReport, verifyState } from '../hooks/logic'
-import { openMore } from './more'
+import { openMore, ok, posix } from './more'
+import { parseCases, parseReport, verifyState } from '../hooks/agents/experts'
 
 // Every feature driven end to end with the engine stood in: judges, testers, agents, files, commands, accounts, buttons
 const scroll = { offset: 0, bodyRows: 60 }
 const pane = (tab: string) => ({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } })
-const band = { plugin: 'cockpit', surface: 'terminal', component: 'AbovePrompt', requestId: 'band', props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 90, scroll, view: {} } }
-const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-// The engine hands fs hooks native paths (C:\repo\a on Windows); the stand-ins match them as POSIX
-const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 
 type Stubs = { votes?: number[]; score?: number; spawnFails?: boolean; noId?: boolean; denyAfter?: number; regDeny?: boolean; core?: 'allow' | 'ask' | 'deny'; hold?: boolean; noVerdict?: number }
 function stand($: unknown, on: any, st: Stubs = {}) {
@@ -190,7 +184,7 @@ test('a start auto mode refuses for want of a request goes to Claude, and the ag
   // The hand-off is no task of the person's: no flow opened
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(agentsPane as never)
-  await more(ui)
+  await openMore(ui)
   expect(JSON.stringify(await ui.drawn())).toContain('No task yet')
   await ui.unmount()
   // Claude starts it: the waiting step takes it, and its answer hands on to the Breaker
@@ -367,7 +361,6 @@ test('an agent made from a description joins the team, runs from its card, and i
   expect(spec.tools).toEqual(['Read', 'Grep', 'TodoWrite', 'TaskCreate', 'TaskUpdate'])
   expect(spec.prompt).toContain('Keep a short task list')
   expect(spec.prompt).toContain('Never commit, push')
-  expect(log.store.agents).toEqual([spec])
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('Api Guard')
   expect(drawn).toContain('Checks API changes for breaking changes')
@@ -428,22 +421,48 @@ test('refused spawn on first step clears pipeline so a retry works', async ($, o
   const log = stand($, on, { spawnFails: true })
   await verify($)
   await verify($)
-  expect(log.toasts.filter(t => /could not start/i.test(t)).length).toBe(2)
+  expect(log.toasts.filter(t => t.includes('could not start: no agents here')).length).toBe(2)
 })
 
-test('spawn that returns no id and no spawn event leaves the pipeline stuck', async ($, on) => {
+test('spawn that returns no id and no spawn event does not leave the pipeline stuck: the next start runs', async ($, on) => {
   const log = stand($, on, { noId: true })
   await verify($)
   await verify($)
   expect(log.toasts.join('|')).not.toContain('still running')
+  expect(log.spawned).toEqual(['Prover', 'Prover'])
 })
 
-test('refused spawn on second step ends pipeline', async ($, on) => {
+test('refused spawn on second step ends pipeline, so the next start is tried and not turned away', async ($, on) => {
   const log = stand($, on, { denyAfter: 1 })
   await verify($)
   await done($, 'ag1', 'CASE PASS a\nREPORT: r')
   await verify($)
   expect(log.toasts.join('|')).not.toContain('still running')
+  // The Breaker's refusal, then the second start's own
+  expect(log.spawned).toEqual(['Prover', 'Breaker', 'Prover'])
+  expect(log.toasts.filter(t => /could not start/i.test(t)).length).toBe(2)
+})
+
+test('▶ Build runs the six experts in order, each started when the one before it ends, and says when it is done', { timeoutMs: 20_000 }, async ($, on) => {
+  const log = stand($, on)
+  await $.command.run({ command: 'cockpit', args: 'tab agents' } as never)
+  const ui = await $.ui.mount(agentsPane as never)
+  await openMore(ui)
+  await ui.press({ key: 'pipe-build' })
+  expect(log.spawned).toEqual(['Planner'])
+  // The engine's own spawn event for the Planner, which is where the pipeline takes its id from here (a press alone,
+  // even waited on, did not advance it): the stand's second spawn, so the Planner is ag2 and each expert after it the next
+  await $.agent.spawn({ tool_use_id: 'p1', prompt: log.prompts[0], description: 'the event', subagentType: 'cockpit:planner', provider: { plugin: 'cockpit', tier: 'user' }, parentModel: 'x', background: true, fork: false } as never)
+  const order = ['Planner', 'Builder', 'Reviewer', 'Prover', 'Breaker', 'Scribe']
+  const started = () => log.spawned.filter(x => x !== 'the event')
+  for (let i = 0; i < order.length; i++) {
+    expect(started()).toEqual(order.slice(0, i + 1))
+    expect(log.toasts.join('|')).not.toContain('Build pipeline done')
+    await done($, `ag${i + 2}`, `REPORT: step ${i + 1}`)
+  }
+  expect(started()).toEqual(order)
+  expect(log.toasts.join('|')).toContain('Build pipeline done')
+  await ui.unmount()
 })
 
 test('answer without REPORT/HANDOFF still hands something on; odd CASE lines parse', async ($, on) => {

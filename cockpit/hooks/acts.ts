@@ -1,7 +1,12 @@
-// What $.cockpit.act runs, by name. The engine follows $ only into a call written out by name, so this stays a
-// switch, not a table; the type-check holds ACTS and the cases to each other
-import type { $ } from './ops/core'
-import { applyAccount, buildMemory, claim, clearFinished, clearNow, commit, compactNow, confirmPending, createAgent, discoverAgentTypes, ghLoginToken, ghLoginWeb, gitInit, loadAccounts, loadProject, openPane, pullNow, pushNow, refreshGit, refreshRepo, release, removeAccount, rerun, resumeAutopilot, runExpert, runMany, setGit, setTheme, showCommit, skipPending, spawnAgent, startAutopilot, startPipeline, stopAgent, stopAll, stopAutopilot, suggestCommit, testAgent, useAccount } from './actions'
+import type { $ } from './core/core'
+import { applyAccount, ghLoginToken, ghLoginWeb, loadAccounts, removeAccount, useAccount } from './git/accounts'
+import { buildMemory } from './memory/memory-io'
+import { claim, openPane, release, setTheme } from './core/core'
+import { clearFinished, createAgent, discoverAgentTypes, rerun, runExpert, runMany, spawnAgent, startPipeline, stopAgent, stopAll, testAgent } from './agents/agents'
+import { clearNow, compactNow } from './core/session'
+import { commit, confirmPending, gitInit, loadProject, pullNow, pushNow, refreshGit, refreshRepo, setGit, showCommit, skipPending, suggestCommit } from './git/git'
+import { resumeAutopilot, startAutopilot, stopAutopilot } from './judges/autopilot'
+
 
 export const ACTS = ["applyAccount", "buildMemory", "claim", "clearFinished", "clearNow", "commit", "compactNow", "confirmPending", "createAgent", "discoverAgentTypes", "ghLoginToken", "ghLoginWeb", "gitInit", "loadAccounts", "loadProject", "openPane", "pullNow", "pushNow", "refreshGit", "refreshRepo", "release", "removeAccount", "rerun", "resumeAutopilot", "runExpert", "runMany", "setGit", "setTheme", "showCommit", "skipPending", "spawnAgent", "startAutopilot", "startPipeline", "stopAgent", "stopAll", "stopAutopilot", "suggestCommit", "testAgent", "useAccount"] as const
 

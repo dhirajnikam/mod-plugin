@@ -159,7 +159,6 @@ export type GitForm = {
 // A git identity to commit as, and the GitHub login to push and open PRs with
 export type Account = { id: string; label: string; name: string; email: string; gh: string }
 
-// `from` is a rename's old path: it is committed with the new one
 // A commit Cockpit proposes in ask mode, waiting for your Commit or Skip
 export type Pending = { type: string; branch: string; msg: string; files: string[]; at: number }
 
@@ -197,9 +196,12 @@ export type PlanItem = { id: string; text: string; st: 'pending' | 'in_progress'
 // One commit of the graph: refs as `git log %D` names them (HEAD -> main, origin/main, tag: v1)
 export type LogCommit = { sha: string; parents: string[]; refs: string[]; msg: string; when: string; author: string }
 
+// `from` is a rename's old path: it is committed with the new one
 export type Changed = { path: string; meta: string; add: number; del: number; from?: string }
 export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 
+// The whole state. When a field's meaning changes, bump the shape tag on the atom in hooks/core/core.ts so an older
+// stored value reads as INITIAL; a new field is optional, so a session saved by an older version still loads
 export type Ph = {
   theme: ThemeId
   isDarkTerm: boolean
@@ -221,7 +223,7 @@ export type Ph = {
   turnStart: number
   isWorking: boolean
   activity: string
-  // Step index reached per step name; drives Progress
+  // The names of the steps reached so far; drives Progress
   reached: string[]
   // Every prompt's work, oldest first; the last one is the current flow
   flows: Flow[]
@@ -270,7 +272,7 @@ export type Ph = {
   agents: Agent[]
   pipeline: Pipeline | null
   // What Cockpit is starting right now, for its agent.spawn hook to name the record by
-  starting: { name: string; type: string; task: string; worktree?: boolean; pick?: string } | null
+  starting: { name: string; type: string; task: string; pick?: string } | null
   // Agent types the form can start: built-ins, agents/*.md files found, and any seen starting
   agentTypes: string[]
   // The tabs an add-on said it draws; absent, Cockpit draws every tab
@@ -315,7 +317,6 @@ export type Ph = {
     // The commit opened in the graph, and what git show said of it
     openCommit: string
     commitInfo: string
-    fileView: 'tree' | 'list'
     collapsed: Record<string, boolean>
     treeSel: string
     more: boolean
@@ -350,7 +351,6 @@ export type Ph = {
     ruleB?: string
     ruleC?: string
     acctOpen: boolean
-    acct: Account
     // The account whose Remove was pressed, waiting for its confirmation
     acctRemove?: string
     // The setup wizard's step, the token being typed, and the gh web login's note

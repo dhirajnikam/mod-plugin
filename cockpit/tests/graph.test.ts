@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { graphRows, graphText } from '../hooks/logic'
+import { graphRows, graphText } from '../hooks/git/graph'
 
 // The terminal's graph: a merge opens a lane (╮), the branch's commit sits on it, the root takes it back (╯)
 test('the commit graph draws as connected lane characters on the terminal', async () => {

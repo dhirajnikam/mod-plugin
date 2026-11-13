@@ -1,15 +1,11 @@
 import { expect, test } from 'claude-code/testing'
-// The Overview keeps all but its Now, Steps and Approach behind More
-const more = openMore
-import { parseOptions } from '../hooks/ops/decisions'
-import { openMore } from './more'
+import { openMore, ok, posix } from './more'
+import { parseOptions } from '../hooks/judges/decisions'
 
 // The autopilot's two roles end to end, with the engine stood in: a file system in memory, judges whose replies the
 // test writes, and the prompts Cockpit sends
 const scroll = { offset: 0, bodyRows: 80 }
 const pane = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 100, placement: 'dock', scroll, view: {} } }
-const ok = (stdout = '') => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
-const posix = (p: unknown) => String(p).replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 const settle = () => new Promise(res => (globalThis as any).setTimeout(res, 60))
 
 function stand(on: any) {
@@ -68,7 +64,7 @@ async function cycle($: any, log: { submitted: string[] }, answer: string, edit 
 const overview = async ($: any) => {
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane as never)
-  await more(ui)
+  await openMore(ui)
   const d = JSON.stringify(await ui.drawn())
   await ui.unmount()
   return d
@@ -105,7 +101,7 @@ test('a finished roadmap the judges doubt ends in two claims, not a loop: their 
   const id = d.match(/decb-(ap-\d+-2)/)?.[1]
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const ui = await $.ui.mount(pane as never)
-  await more(ui)
+  await openMore(ui)
   await ui.press({ key: `decb-${id}` })
   expect(JSON.stringify(await ui.drawn())).toContain('Pragmatist · Not done yet: ')
   await ui.unmount()
@@ -253,6 +249,9 @@ test('DONE claim on the third no-change cycle is judged, not paused', { timeoutM
   log.vote = '1 - done'
   await cycle($, log, 'AUTOPILOT: DONE all good', false)
   expect(log.judged.length).toBeGreaterThan(0)
+  const d = await overview($)
+  expect(d).not.toContain('AUTOPILOT · PAUSED')
+  expect(d).toContain('AUTOPILOT · DONE')
 })
 
 test("while the autopilot runs, each cycle's end tells you once, with its milestones and spend, instead of a turn's notice", { timeoutMs: 20_000 }, async ($, on) => {

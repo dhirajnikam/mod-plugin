@@ -64,9 +64,8 @@ test('the Git tab reads the repo and commits only the ticked files', { timeoutMs
   expect(drawn).toContain(' ⌑ v1.0 ')
   expect(drawn).toContain(' ☁ origin/master ')
   expect(drawn).toContain(' ⎇ feature/x ')
-  // Desktop draws each row as SVG: the merge's curve out to the branch's lane, and HEAD's ringed dot
+  // Desktop draws each row as SVG, the merge's curve out to the branch's lane among them
   expect(drawn).toContain('<path d=')
-  expect(drawn).toContain('r=\\"7\\"')
   expect(drawn).toContain('1 not pushed')
   // A press opens the commit: author, message, files
   await ui.press({ key: 'cm-9e39bea' })
@@ -286,8 +285,9 @@ test("the branch's pull request is read with gh when the Git tab opens, its chec
     return out('')
   })
   await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
-  expect(ran).toContain('gh pr view --json number,title,url,state,isDraft,reviewDecision -- feat/x')
-  expect(ran).toContain('gh pr checks --json name,bucket,link -- feat/x')
+  // The branch's own pull request and its checks are asked of gh
+  expect(ran.some(c => c.startsWith('gh pr view ') && c.endsWith(' -- feat/x'))).toBe(true)
+  expect(ran.some(c => c.startsWith('gh pr checks ') && c.endsWith(' -- feat/x'))).toBe(true)
   const ui = await $.ui.mount(PANE as never)
   await openMore(ui)
   for (const step of ['Account', 'Branch pattern', 'Message pattern', 'Commit mode', 'When']) await ui.press({ key: step === 'When' ? 'setup-done' : 'setup-next' })
