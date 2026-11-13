@@ -11,9 +11,9 @@ import { verifyState } from '../agents/experts'
 import { refreshRepo, followEdit, decideCommit } from '../git/git'
 import { snapTurn } from '../git/turns-io'
 import { stopAutopilot, autopilotTurnEnd } from '../judges/autopilot'
-import { updateMemory } from '../memory/memory-io'
+import { updateMemory, loadProject } from '../memory/memory-io'
 import { flowOf } from './flows'
-import { stepOf, activityOf } from './tools'
+import { stepOf, activityOf, isEditTool } from './tools'
 
 // The repository's changes as one text: a turn changed files when it differs at the turn's end, however the turn
 // edited them (Edit and Write, a shell command, a script, a formatter)
@@ -38,8 +38,18 @@ export async function openFlow($: $, text: string, now: number) {
 }
 
 // The flow openFlow opened, taken back for a prompt that was refused: no turn runs. was: the state before openFlow
+// A flow that was running then, and that openFlow closed to open this one, runs again as it did
 export function dropFlow($: $, id: string, was: Ph) {
-  return set($, s => ({ task: was.task, turnStart: was.turnStart, isWorking: false, activity: was.activity, reached: was.reached, flows: s.flows.filter(f => f.id !== id) }))
+  return set($, s => {
+    const flows = s.flows
+      .filter(f => f.id !== id)
+      .map(f => {
+        if (f.status !== 'aborted' || !was.flows.some(w => w.id === f.id && w.status === 'running')) return f
+        const { endedAt: _, ...open } = f
+        return { ...open, status: 'running' as const }
+      })
+    return { task: was.task, turnStart: was.turnStart, isWorking: was.isWorking && flows.at(-1)?.status === 'running', activity: was.activity, reached: was.reached, flows }
+  })
 }
 
 // A turn that carries on the last flow: it runs again, one turn more, its plan and steps kept
@@ -73,10 +83,10 @@ export function toolFailed($: $, tool: string, deny: string | undefined, result:
 
 // A main-loop tool call that went through: the codebase memory follows an edit, and the repo shown follows one made
 // in another found repo
-export async function toolDone($: $, input: Record<string, unknown>, op: FileOp | null) {
-  if (!op || (op.op !== 'Write' && op.op !== 'Edit')) return
+export async function toolDone($: $, tool: string, op: FileOp | null) {
+  if (!op || !isEditTool(tool)) return
   await updateMemory($, op.path)
-  if (typeof input.file_path === 'string') await followEdit($, input.file_path).catch(() => null)
+  if (op.path) await followEdit($, op.path).catch(() => null)
 }
 
 // The main loop's turn ended: its flow closes, the repo and the figures are read again, and what follows a turn
@@ -85,24 +95,29 @@ export async function toolDone($: $, input: Record<string, unknown>, op: FileOp 
 // (null: no prompt of this load started it) with each file's lines then, and the flow it started in
 export async function mainTurnEnd($: $, e: { isAborted?: boolean | undefined; durationMs: number; answer?: string | undefined; turnId: string }, turn: { changed: boolean; atStart: string | null; linesWere: Changed[]; flow: string }) {
   const now = await $.clock.now()
-  const flowId = (await look($)).flows.at(-1)?.id ?? ''
+  // Everything here is the flow's the turn started in. A prompt sent as the turn ended may already have opened the
+  // next (and closed this one as stopped): that one's steps and its working mark are not this turn's to end
+  const flowId = turn.flow || ((await look($)).flows.at(-1)?.id ?? '')
   await set($, st => {
-    const reached = !e.isAborted && st.reached.length && flowOf(st.task, st.reached, st.flows[st.flows.length - 1]?.kind).steps.includes('Answer') && !st.reached.includes('Answer') ? [...st.reached, 'Answer'] : st.reached
+    const isLast = st.flows.at(-1)?.id === flowId
+    const mine = st.flows.find(f => f.id === flowId)
+    const was = isLast ? st.reached : (mine?.reached ?? [])
+    const reached = !e.isAborted && was.length && flowOf(isLast ? st.task : (mine?.task ?? ''), was, mine?.kind).steps.includes('Answer') && !was.includes('Answer') ? [...was, 'Answer'] : was
     return {
-      isWorking: false,
       // A question the person never answered (the turn was interrupted) waits no longer
       waiting: '',
-      activity: 'Done',
       // The engine's own figure, the one the TurnDuration row is matched against
       lastTurnMs: e.durationMs,
-      reached,
-      flows: st.flows.map((f, i) => (i === st.flows.length - 1 && f.status === 'running' ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached, ms: e.durationMs } : f)),
+      ...(isLast || st.flows.at(-1)?.status !== 'running' ? { isWorking: false, activity: 'Done' } : {}),
+      ...(isLast ? { reached } : {}),
+      flows: st.flows.map(f => (f.id === flowId && (f.status === 'running' || (!isLast && f.status === 'aborted')) ? { ...f, status: e.isAborted ? ('aborted' as const) : ('done' as const), endedAt: now, reached, ms: e.durationMs } : f)),
     }
   })
   await refreshRepo($)
-  // The working tree as the turn left it, before any auto-commit; under the flow the turn started in, which may no
-  // longer be the last
-  await snapTurn($, turn.flow || flowId, 'after').catch(() => null)
+  // The Activity tab's file list, as the turn left the project
+  await loadProject($).catch(() => null)
+  // The working tree as the turn left it, before any auto-commit
+  await snapTurn($, flowId, 'after').catch(() => null)
   await measure($)
   await syncAgents($)
   const s = await look($)

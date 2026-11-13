@@ -6,6 +6,10 @@ import { EXPERTS, isOwn } from './experts'
 // A run's state as the word the Agents tab and the chat's cards say
 export const STATUS_WORD = { running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' } as const
 
+// Who started an agent and who provides its type, in the words the Agents tab and the agents graph both say
+export const startedBy = (a: Agent, agents: Agent[]) => (a.by === 'agent' ? `the ${agents.find(x => x.id === a.parent)?.name ?? 'agent'}` : a.by === 'you' ? 'you' : a.by === 'pipeline' ? 'a Cockpit pipeline' : a.by === 'claude' ? 'Claude' : 'Claude, outside Cockpit\'s view')
+export const providedBy = (a: Agent) => (a.provider === 'engine' ? 'Claude Code' : (a.provider ?? (a.type.includes(':') ? a.type.split(':')[0] : 'Claude Code')))
+
 // The agents and who started them, as a diagram: you, Claude and Cockpit on top, an arrow from each to the agents it
 // started (a pipeline's steps under Cockpit), a tester's arrow to the agent whose work it tests, an agent's to the ones
 // it started. Running ones are filled and breathe, finished ones outlined; ↗ marks an agent from outside Cockpit
@@ -25,7 +29,7 @@ export function agentGraph(agents: Agent[]) {
   const nodes = new Map<string, { name: string; uses: string[]; what: string; files: string[]; usedBy: string[] }>()
   const node = (n: string, what = '') => nodes.get(n) ?? (nodes.set(n, { name: n, uses: [], what, files: [], usedBy: [] }), nodes.get(n)!)
   for (const a of agents) {
-    const me = node(label.get(a.id)!, [a.task, a.status, `started by ${a.by === 'agent' ? 'an agent' : (a.by ?? 'Claude, outside Cockpit\'s view')}`, `provided by ${a.provider ?? (a.type.includes(':') ? a.type.split(':')[0] : 'Claude Code')}`].filter(Boolean).join('\n'))
+    const me = node(label.get(a.id)!, [a.task, a.status, `started by ${startedBy(a, agents)}`, `provided by ${providedBy(a)}`].filter(Boolean).join('\n'))
     const from = a.for && label.has(a.for) ? null : by(a)
     if (from) node(from).uses.push(me.name)
     if (a.for && label.has(a.for)) me.uses.push(label.get(a.for)!)

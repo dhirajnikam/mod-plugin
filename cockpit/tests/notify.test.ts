@@ -6,13 +6,13 @@ import { doneText } from '../hooks/core/notify'
 // back, how an autopilot run ended, and a long task
 test("each kind of finish says what finished and how it went", () => {
   expect(doneText({ kind: 'turn', task: 'fix the login', files: 3, add: 40, del: 12, tests: { pass: 3, total: 3 } })).toEqual({ title: 'Claude is done', text: 'fix the login · 3 files +40 −12 · tests 3/3' })
-  const agent = { name: 'Reviewer', status: 'done' as const, report: 'REPORT: Two findings, none blocking\nHANDOFF: nothing', cases: [], worktree: undefined }
+  const agent = { name: 'Reviewer', status: 'done' as const, found: 'Two findings, none blocking', cases: [], worktree: undefined }
   expect(doneText({ kind: 'agent', agent: { ...agent, name: 'Prover', cases: [{ n: 'a', st: 'pass' }, { n: 'b', st: 'fail' }] as never } }).text).toBe('1/2 passed')
-  expect(doneText({ kind: 'agent', agent: { ...agent, status: 'failed' as const, report: '' } })).toEqual({ title: 'Reviewer failed', text: 'failed' })
+  expect(doneText({ kind: 'agent', agent: { ...agent, status: 'failed' as const, found: '' } })).toEqual({ title: 'Reviewer failed', text: 'failed' })
   // A worktree agent with work to bring back says so; once brought back, it does not
   const wt = { path: '/w', branch: 'cockpit/x', base: 'b', files: ['a.ts', 'b.ts'], add: 9, del: 2 }
-  expect(doneText({ kind: 'agent', agent: { ...agent, report: 'Refactored', worktree: wt } }).text).toBe('Refactored · Bring back ready: 2 files +9 −2')
-  expect(doneText({ kind: 'agent', agent: { ...agent, report: 'Refactored', worktree: { ...wt, back: true } } }).text).toBe('Refactored')
+  expect(doneText({ kind: 'agent', agent: { ...agent, found: 'Refactored', worktree: wt } }).text).toBe('Refactored · Bring back ready: 2 files +9 −2')
+  expect(doneText({ kind: 'agent', agent: { ...agent, found: 'Refactored', worktree: { ...wt, back: true } } }).text).toBe('Refactored')
   expect(doneText({ kind: 'cycle', cycle: 6, ticked: 5, total: 5, spent: 2, ended: 'done' }).title).toBe('Autopilot done after cycle 6')
   expect(doneText({ kind: 'cycle', cycle: 3, ticked: 1, total: 5, spent: 2, ended: 'paused' }).title).toBe('Autopilot paused after cycle 3')
   // A long task is cut to one line

@@ -8,7 +8,8 @@ import { FLOWS } from './flows/flows'
 import { pickFlow } from './flows/flows-io'
 import { stopAutopilot, resumeAutopilot, startAutopilot } from './judges/autopilot'
 import { explainCodebase } from './memory/explain'
-import { isTab, openTab, showTab } from './pane/tabs'
+import { TABS, isTab, openTab, showTab } from './pane/tabs'
+import { MODES } from './core/modes'
 
 const BUDGET = /^\$\d+(\.\d+)?$/
 const HOURS = /^\d+(\.\d+)?h$/
@@ -58,11 +59,16 @@ export async function runCockpitCommand($: $, args: string) {
     return { text: `Cockpit theme: ${arg}` }
   }
   if (verb === 'mode') {
-    if (arg !== 'auto' && arg !== 'ask' && arg !== 'off') return { text: 'Modes: auto (the judges decide, and only advise on what is hard to undo), ask (they advise, you decide), off (no judges)' }
-    await set($, { mode: arg })
-    return { text: `Decisions: ${arg === 'auto' ? 'Auto · judge' : arg === 'ask' ? 'Ask me · the judges advise' : 'Judges off'}` }
+    const mode = MODES.find(m => m.id === arg)
+    if (!mode) return { text: `Modes: ${MODES.map(m => `${m.id} (${m.what})`).join(', ')}` }
+    await set($, { mode: mode.id })
+    return { text: `Decisions: ${mode.status}` }
   }
-  if (verb === 'tab' && isTab(arg)) await openTab($, arg)
+  // A bare /cockpit tab opens the pane, as it always did; a word that is no tab is answered with the tabs there are
+  if (verb === 'tab' && arg) {
+    if (!isTab(arg)) return { text: `Tabs: ${TABS.map(x => (x.label.toLowerCase() === x.id ? x.id : `${x.id} (${x.label})`)).join(', ')}` }
+    await openTab($, arg)
+  }
   if (verb === 'focus') {
     const want = arg.toLowerCase()
     if (want && want !== 'on' && want !== 'off') return { text: 'Use /cockpit focus on, /cockpit focus off, or /cockpit focus to switch' }

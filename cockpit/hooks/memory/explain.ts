@@ -54,9 +54,9 @@ export async function loadGuide($: $) {
   await set($, { guide: { path: g.path, at: st?.mtimeMs ?? 0, exists: g.exists } })
 }
 
-// One prompt to Claude, tried again once whether the engine dropped it or threw; what to do first when it cannot go
+// One prompt to Claude; what to do first when it cannot go
 function handOff($: $, text: string, what: string, onFail?: () => void) {
-  submitPrompt($, text, () => (onFail?.(), void toast($, `Could not hand ${what} to Claude`)), true)
+  submitPrompt($, text, () => (onFail?.(), void toast($, `Could not hand ${what} to Claude`)))
 }
 
 // Explain this codebase (and Refresh): one prompt to Claude

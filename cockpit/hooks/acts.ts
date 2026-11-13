@@ -1,10 +1,10 @@
 import type { $ } from './core/core'
 import { applyAccount, ghLoginToken, ghLoginWeb, loadAccounts, removeAccount, useAccount } from './git/accounts'
-import { buildMemory } from './memory/memory-io'
+import { buildMemory, loadProject } from './memory/memory-io'
 import { claim, openPane, release, setTheme } from './core/core'
 import { clearFinished, createAgent, discoverAgentTypes, rerun, runExpert, runMany, spawnAgent, startPipeline, stopAgent, stopAll, testAgent } from './agents/agents'
 import { clearNow, compactNow } from './core/session'
-import { commit, confirmPending, gitInit, loadProject, pullNow, pushNow, refreshGit, refreshRepo, setGit, showCommit, skipPending, suggestCommit } from './git/git'
+import { commit, confirmPending, gitInit, pullNow, pushNow, refreshGit, refreshRepo, setGit, showCommit, skipPending, suggestCommit } from './git/git'
 import { resumeAutopilot, startAutopilot, stopAutopilot } from './judges/autopilot'
 
 

@@ -8,6 +8,7 @@ import type { $ } from '../core/core'
 import type { V } from '../ui/shared'
 import { sp, Rule } from '../ui/shared'
 import { TABS, openTab } from './tabs'
+import { modeOf } from '../core/modes'
 
 export function Header($: $, v: V) {
   const { Box, Button, Select, Text } = v.ui
@@ -26,7 +27,7 @@ export function Header($: $, v: V) {
         {/* Slow work a press started, running on after it: "⟳ Pushing" */}
         {busy.length > 0 && <Text color={t.busy}>{`⟳ ${busy.join(' · ')}`}</Text>}
         {s.repo.isRepo && <Text color={t.accent} wrap="truncate-end">{`⎇ ${s.repo.current}`}</Text>}
-        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
+        <Text color={t.dim}>{modeOf(s.mode).status}</Text>
         {v.desk ? (
           <Select key="theme" value={s.theme} options={THEME_IDS.map(id => ({ value: id, label: id === 'auto' ? '◐ auto' : `● ${id}` }))} onSelect={val => setTheme($, val as ThemeId)} />
         ) : (

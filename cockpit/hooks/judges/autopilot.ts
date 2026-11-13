@@ -173,7 +173,7 @@ export async function autopilotTurnEnd($: $, answer: string, changed: boolean, a
   const spinning = stall >= 3
   const limit = ap.role === 'product' ? 6 : 12
   if (!(claimsDone && allTicked) && (spinning || stuck >= limit)) {
-    const why = spinning ? 'three cycles in a row changed nothing' : `${limit === 6 ? 'six' : 'twelve'} cycles without a milestone ticked (on: ${next || 'the next milestone'})`
+    const why = spinning ? 'three cycles in a row changed nothing' : `${limit} cycles without a milestone ticked (on: ${next || 'the next milestone'})`
     if (ap.role === 'product') return setAside($, why)
     return stopAutopilot($, 'paused', why)
   }

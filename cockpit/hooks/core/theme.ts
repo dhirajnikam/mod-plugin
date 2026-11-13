@@ -54,6 +54,14 @@ export const DARK_SURFACE = '#262624'
 // The tones the SVG drawings share; each drawing adds the ones only it has
 export const SVG_TONES = { accent: AUTO.accent, busy: '#d9a441', text: '#d6d3ce', dim: '#8a8a8a', track: 'rgba(128,128,128,0.35)' }
 
+// How full the context window is: calm below half, busy from 50 %, bad from 80 %, when Claude Code is about to compact it
+export const ctxLevel = (pct: number) => (pct >= 80 ? 'bad' : pct >= 50 ? 'busy' : 'ok')
+// The colour its fill is written in: the theme's own for busy and bad; a calm one keeps the colour of the words around it
+export const ctxColor = (t: Theme, pct: number, calm: string) => {
+  const level = ctxLevel(pct)
+  return level === 'ok' ? calm : t[level]
+}
+
 // Context legend shades, darkest first, as the design ramps the accent
 export const ctxShades = (t: Theme) => [t.deep, t.accent, t.lo, t.faint]
 

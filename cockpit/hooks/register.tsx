@@ -11,7 +11,7 @@ import { syncAgents, registerExperts, discoverAgentTypes, isHandoff, takeHandoff
 import { expertName } from './agents/experts'
 import { drawings } from './chat/drawings'
 import { writeSteps, trackPlan } from './flows/flows-io'
-import { toOp } from './flows/tools'
+import { toOp, isEditTool } from './flows/tools'
 import { changesOf, openFlow, dropFlow, resumeFlow, toolStarted, toolFailed, toolDone, mainTurnEnd } from './flows/turn-io'
 import { loadAccounts } from './git/accounts'
 import { refreshRepo, loadGitPrefs } from './git/git'
@@ -21,7 +21,7 @@ import { nextStep } from './judges/autopilot'
 import { personSpoke, judgeQuestions, personAnswered } from './judges/decisions'
 import { loadGuide } from './memory/explain'
 import { memoryText } from './memory/memory'
-import { buildMemory } from './memory/memory-io'
+import { buildMemory, loadProject } from './memory/memory-io'
 import { fullPane } from './pane/full-pane'
 
 // The hooks module: every hook Cockpit registers, in the order the engine runs them for one event. Each hook keeps
@@ -45,6 +45,8 @@ export const register: Register = on => {
   let carryOn = false
   // The flow the running main turn belongs to, for its after-snapshot
   let turnFlow = ''
+  // The same by the turn's id, so a turn's end finds its own flow even when the next turn started first
+  const turnFlows = new Map<string, string>()
   // A turn begins: nothing of its own changed yet, and the repository as its flow's opening read it is what its end
   // compares with
   const beginTurn = async <F extends { changes: Changed[] }>(opening: Promise<F>) => {
@@ -84,15 +86,18 @@ export const register: Register = on => {
     }))
     timers.push($.clock.every(15000, async () => {
       if (await paneShown($)) {
-        await refreshRepo($)
+        // Each reading by itself: one that fails must not skip the rest of the tick
+        await refreshRepo($).catch(() => null)
         // The branch's PR while a check is pending: green or red by itself, and a notice when the run finishes
         await livePr($).catch(() => null)
-        await measure($)
+        await measure($).catch(() => null)
         await loadGuide($).catch(() => null)
         // The accounts too while their box is on screen (the Git tab's setup, or its options open): a gh login added
         // or a token that stopped working shows by itself
         const s = await look($)
         if (s.tab === 'git' && (s.ui.more || !s.git.setupDone)) await loadAccounts($).catch(() => null)
+        // The Activity tab's file list, while it is the tab on screen
+        if (s.tab === 'files') await loadProject($).catch(() => null)
       }
     }))
     await loadPrefs($)
@@ -110,7 +115,8 @@ export const register: Register = on => {
     return r
   })
 
-  on('command.run', { command: 'cockpit' }, async ($, e) => runCockpitCommand($, e.args))
+  // A sub-command that fails answers so, rather than failing the command
+  on('command.run', { command: 'cockpit' }, async ($, e) => runCockpitCommand($, e.args)).catch(() => ({ text: 'Cockpit could not run that: try again, or /cockpit alone to open the pane.' }))
 
   on('prompt.submit', async ($, e, next) => {
     // Cockpit's own hand-off of an agent start is no task of yours: no flow, no steps (turn.start drops the mark)
@@ -171,6 +177,11 @@ export const register: Register = on => {
     // The working tree as it is before Claude's first tool call, to undo this turn by; the flow is kept for its end,
     // which may run after the next turn has opened another
     turnFlow = (await look($)).flows.at(-1)?.id ?? ''
+    if (e.turnId) {
+      turnFlows.set(e.turnId, turnFlow)
+      // A turn whose end never came leaves its entry: the oldest goes
+      if (turnFlows.size > 20) turnFlows.delete(turnFlows.keys().next().value!)
+    }
     await snapTurn($, turnFlow, 'before').catch(() => null)
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -209,8 +220,8 @@ export const register: Register = on => {
       return r
     }
     // Set before anything awaits, so a failure below does not lose it
-    if (op && (op.op === 'Write' || op.op === 'Edit' || op.op === 'Delete')) changedThisTurn = true
-    await toolDone($, input, op)
+    if (isEditTool(e.tool) || op?.op === 'Delete') changedThisTurn = true
+    await toolDone($, e.tool, op)
     return r
   }).catch(($, e, next) => next(e))
 
@@ -255,7 +266,7 @@ export const register: Register = on => {
     if (v.decision !== 'ask' || !isOwnStart(e.input)) return v
     const i = (e.input ?? {}) as Record<string, unknown>
     return { decision: 'ask', reason: `Cockpit pane: you asked it to start the ${expertName(String(i.subagent_type ?? 'general-purpose'))} agent` }
-  })
+  }).catch(($, e, next) => next(e))
 
   // Subagents the model or anyone else starts show in the Agents tab
   on('agent.spawn', async ($, e, next) => {
@@ -267,10 +278,15 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     // This turn's figures, taken before anything awaits: the next turn may start while this hook still runs, and a
     // failure below must not carry them into it
-    const turn = { changed: changedThisTurn, atStart: changesAtStart, linesWere: linesAtStart, flow: turnFlow }
+    const own = e.agentId ? undefined : turnFlows.get(e.turnId)
+    const turn = { changed: changedThisTurn, atStart: changesAtStart, linesWere: linesAtStart, flow: own ?? turnFlow }
     if (!e.agentId) {
       changedThisTurn = false
       changesAtStart = null
+      turnFlows.delete(e.turnId)
+      // A turn with no start of its own here (a hand-off's) must not end the flow of an earlier one; a next turn that
+      // started first keeps its own
+      if (own === undefined || own === turnFlow) turnFlow = ''
     }
     const r = await next(e)
     if (e.agentId) await agentTurnEnd($, e.agentId, e.answer, e.isAborted, e.reason === 'error', batch)
@@ -292,7 +308,7 @@ export const register: Register = on => {
   on('session.measure', async ($, e, next) => {
     await measure($)
     return next(e)
-  })
+  }).catch(($, e, next) => next(e))
 
   // What another plugin hooking Cockpit calls: they read the state and change it through these, answered here (the
   // state itself is written in core/core.ts); `act` runs an action of ./acts by name, its result handed back as plain data
@@ -300,12 +316,12 @@ export const register: Register = on => {
   on('cockpit.set', async ($, e) => {
     await set($, e.patch as Partial<Ph>)
     return { value: true }
-  })
+  }).catch(() => ({ deny: 'Cockpit could not change its state' }))
   on('cockpit.act', async ($, e) => {
     if (!(ACTS as readonly string[]).includes(e.name)) return { deny: `Cockpit has no action ${e.name}` }
     const r = await act($, e.name, e.args)
     return { value: r === undefined ? null : JSON.parse(JSON.stringify(r)) }
-  })
+  }).catch((_$, e) => ({ deny: `Cockpit's action ${e.name} failed` }))
   // An add-on says which tab it draws; the pane shows only those, and opens on one of them
   on('cockpit.tab', async ($, e) => {
     await set($, st => {
@@ -313,7 +329,7 @@ export const register: Register = on => {
       return { tabsAvailable: tabs, tab: tabs.includes(st.tab) ? st.tab : (tabs[0] ?? st.tab) }
     })
     return { value: true }
-  })
+  }).catch(() => ({ deny: 'Cockpit could not add the tab' }))
   drawings(on)
   fullPane(on, () => root)
 }

@@ -1,8 +1,10 @@
 
 import type { Agent, Decision, SessionSpend } from '../../types'
-import { progress, FLOWS, planProgress, progressOf } from '../flows/flows'
-import { verifyState, similarRuns, recallOf, expertGlyph } from '../agents/experts'
-import { ctxShades } from '../core/theme'
+import { progress, FLOWS, planProgress, progressOf, stepNo, autopilotWords } from '../flows/flows'
+import { verifyState, similarRuns, recallOf, expertGlyph, passedOf } from '../agents/experts'
+import { ctxShades, ctxLevel, ctxColor } from '../core/theme'
+import { INITIAL } from '../core/state'
+import { STATUS_WORD } from '../agents/agents-view'
 import { set, setUi, inBackground } from '../core/core'
 import { sessionsNow, spendByDay, budgetLevel, todaySpend, costliest, dayOf } from '../core/spend'
 import { tally, thrOf, SEAT_NAMES } from '../judges/judges'
@@ -17,12 +19,13 @@ import { setBudget } from '../core/notify'
 import { compactNow, clearNow } from '../core/session'
 import type { $ } from '../core/core'
 import type { V } from '../ui/shared'
-import { sp, Bar, Seg, kindColor, Segs, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
+import { sp, Bar, Seg, kindColor, Segs, Head, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
 import { Tracker } from '../agents/agents-tab'
-import { CommitSkip } from '../git/git-tab'
+import { CommitSkip, prWords } from '../git/git-tab'
 import { ringSvg, ringRuns, neuralSvg } from '../ui/svg'
 import { openTab } from './tabs'
 import type { Neuron } from '../ui/svg'
+import { modeOf, MODES } from '../core/modes'
 
 export function Overview($: $, v: V) {
   const { Box, Button, Input, Text, Svg } = v.ui
@@ -37,7 +40,7 @@ export function Overview($: $, v: V) {
   const dels = s.repo.changed.reduce((a, c) => a + c.del, 0)
   const shades = ctxShades(t)
   const used = s.ctx.used
-  const win = s.ctx.window || 200000
+  const win = s.ctx.window || INITIAL.ctx.window
   const decs = s.decisions.slice().reverse()
   // The current flow is the hero under More; these are the ones before it
   const flows = s.flows.slice(0, -1).reverse()
@@ -46,18 +49,12 @@ export function Overview($: $, v: V) {
   const toggle = (k: string) => setUi($, ui => ({ collapsed: { ...ui.collapsed, [`ov-${k}`]: !ui.collapsed[`ov-${k}`] } }))
   // Every section opens with the same small heading; a fold has an arrow, and one with nothing to hide is a plain
   // heading, as an arrow that changes nothing reads as broken
-  const Label = ({ label, n, color }: { label: string; n?: number; color?: string }) => (
-    <Text size="footnote" bold>
-      <Text color={color ?? t.dim}>{label.toUpperCase()}</Text>
-      {n !== undefined && <Text color={t.faint}>{` ${n}`}</Text>}
-    </Text>
-  )
   const Section = ({ k, label, n, can = true }: { k: string; label: string; n?: number; can?: boolean }) => !can ? (
-    <Label label={label} {...(n !== undefined ? { n } : {})} />
+    <Head v={v} label={label} {...(n !== undefined ? { n } : {})} />
   ) : (
     <Fold v={v} id={`fold-${k}`} open={isOpen(k)} label={label} {...(n !== undefined ? { n } : {})} onPress={() => toggle(k)} />
   )
-  const ctxCol = s.ctx.pct >= 80 ? t.bad : s.ctx.pct >= 50 ? t.busy : t.dim
+  const ctxCol = ctxColor(t, s.ctx.pct, t.dim)
   const sessions: SessionSpend[] = sessionsNow(s, v.now)
   const days = spendByDay(sessions, v.now, 14)
   const peak = Math.max(0.01, ...days.map(d => d.usd))
@@ -65,10 +62,11 @@ export function Overview($: $, v: V) {
   const level = budgetLevel(todaySpend(sessions, v.now), s.dailyBudget)
   const running = s.agents.filter(a => a.status === 'running').length
   const pr = s.repo.pr
-  const stepAt = p.steps.findIndex(x => x.st === 'active')
+  const step = stepNo(p)
+  const passed = passedOf(vs.cases)
   const nowLine = [
     s.isWorking ? s.activity : s.flows.length ? 'Idle' : 'Ready',
-    p.steps.length > 0 && p.total > 0 ? `step ${(stepAt >= 0 ? stepAt : Math.min(p.done, p.steps.length - 1)) + 1} of ${p.steps.length}` : '',
+    step ? `step ${step.n} of ${step.of}` : '',
     running > 0 ? `${plural(running, 'agent')} running` : '',
     `$${todaySpend(sessions, v.now).toFixed(2)} today`,
   ].filter(Boolean).join(' · ')
@@ -106,7 +104,7 @@ export function Overview($: $, v: V) {
           <Box flexDirection="column" borderStyle={live ? 'round' : undefined} borderColor={live ? t.busy : undefined} paddingX={live ? 1 : 0}>
             <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
               <Text size="footnote" bold>
-                <Text color={col}>{`${po ? `◈ PRODUCT OWNER · ROUND ${ap.round ?? 1}` : '⟳ AUTOPILOT'} · ${ap.status !== 'running' ? ap.status.toUpperCase() : scouting ? 'SCOUTING' : `CYCLE ${ap.cycle}`}`}</Text>
+                <Text color={col}>{autopilotWords(ap).toUpperCase()}</Text>
               </Text>
               <Box columnGap={sp(v, 1)}>
                 {live ? (
@@ -158,7 +156,7 @@ export function Overview($: $, v: V) {
           )}
       {(vs.cases.length > 0 || vs.running || err) && (
         <Box flexDirection="column">
-          <Label label={err || vs.fail ? 'Checks · failing' : 'Checks'} {...(err || vs.fail ? { color: t.bad } : {})} />
+          <Head v={v} label={err || vs.fail ? 'Checks · failing' : 'Checks'} {...(err || vs.fail ? { color: t.bad } : {})} />
           {err && (
             <Text wrap="wrap">
               <Text color={t.bad}>{`✗ ${err.tool} `}</Text>
@@ -170,7 +168,7 @@ export function Overview($: $, v: V) {
             <Text wrap="truncate-end">
               <Text color={t.dim}>Tests </Text>
               {/* Words beside each mark, so a count of passes never reads as the running test's result */}
-              {vs.pass > 0 && <Text color={t.ok}>{`✓ ${vs.pass} passed  `}</Text>}
+              {passed > 0 && <Text color={t.ok}>{`✓ ${passed} passed  `}</Text>}
               {vs.fail > 0 && <Text color={t.bad}>{`✗ ${vs.fail} failed  `}</Text>}
               {vs.running ? <Text color={t.busy}>{vs.cases.length ? '· more running' : 'running'}</Text> : vs.fail > 0 && <Text color={t.dim}>{`· ${vs.cases.find(c => c.st === 'fail')?.n ?? ''}`}</Text>}
             </Text>
@@ -185,7 +183,7 @@ export function Overview($: $, v: V) {
               </Button>
             </Box>
           )}
-          {pr && <Text color={pr.checks.fail > 0 || pr.review === 'changes' ? t.bad : t.dim} wrap="truncate-end">{`PR #${pr.number} ${pr.state.toLowerCase()}${pr.review ? ` · ${pr.review === 'changes' ? 'changes requested' : pr.review === 'required' ? 'review needed' : pr.review}` : ''}${pr.checks.unknown ? '' : ` · checks ${pr.checks.fail ? `${pr.checks.fail} failing` : pr.checks.pending ? 'running' : 'passing'}`}`}</Text>}
+          {pr && <Text color={pr.checks.fail > 0 || pr.review === 'changes' ? t.bad : t.dim} wrap="truncate-end">{prWords(pr).line}</Text>}
         </Box>
       </Box>
       {Guide($, v)}
@@ -280,7 +278,7 @@ export function Overview($: $, v: V) {
         if (!busy.length && !ran.length && !mem.length) return null
         const lineOf = (a: Agent) => {
           const pp = planProgress(a.plan)
-          return a.status === 'running' ? pp.now || stepWords(a.log[a.log.length - 1]?.t) : recallOf(a) || a.status
+          return a.status === 'running' ? pp.now || stepWords(a.log[a.log.length - 1]?.t) : recallOf(a) || STATUS_WORD[a.status].toLowerCase()
         }
         const neurons: Neuron[] = [
           ...[...busy, ...ran.slice(-4)].map(a => {
@@ -295,7 +293,7 @@ export function Overview($: $, v: V) {
         return (
           <Box flexDirection="column">
             <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
-              <Label label="Agents" n={busy.length} />
+              <Head v={v} label="Agents" n={busy.length} />
               <Button key="ov-agents-more" plain onPress={() => openTab($, 'agents')}>
                 <Text color={t.accent} size="footnote">{`${ran.length ? `${ran.length} finished · ` : ''}${mem.length ? `${mem.length} remembered · ` : ''}Open Agents ›`}</Text>
               </Button>
@@ -333,7 +331,7 @@ export function Overview($: $, v: V) {
         <Box flexDirection="column">
           <Box justifyContent="space-between" flexWrap="wrap" columnGap={sp(v, 1)}>
             <Box columnGap={sp(v, 1)}>
-              <Label label="Changed files" n={changed} />
+              <Head v={v} label="Changed files" n={changed} />
               {(adds || dels) > 0 && <Diff ui={v.ui} t={t} add={adds} del={dels} size="footnote" />}
             </Box>
             <Button key="changed-git-more" plain onPress={() => openTab($, 'git')}>
@@ -497,7 +495,7 @@ export function Overview($: $, v: V) {
           )}
         </Box>
         <Segs ui={v.ui} w={Math.max(10, w)} track={t.track} parts={s.ctx.segs.map(([, n], i) => [n / win, shades[i] ?? t.faint])} />
-        {s.ctx.pct >= 80 && <Text color={t.bad} size="footnote">Auto-compact is about to run.</Text>}
+        {ctxLevel(s.ctx.pct) === 'bad' && <Text color={t.bad} size="footnote">Auto-compact is about to run.</Text>}
         {isOpen('ctx') && (
           <Box flexWrap="wrap" columnGap={sp(v, 3)}>
             <Text color={t.dim}>{`${kTok(used)} of ${kTok(win)}`}</Text>
@@ -523,9 +521,9 @@ export function Overview($: $, v: V) {
       <Box flexDirection="column">
         <Box justifyContent="space-between" flexWrap="wrap">
           <Section k="dec" label="Decisions" {...(decs.length ? { n: decs.length } : {})} />
-          {!isOpen('dec') && <Text color={t.faint} size="footnote">{s.mode === 'auto' ? 'Judges decide' : s.mode === 'ask' ? 'Judges advise' : 'Judges off'}</Text>}
+          {!isOpen('dec') && <Text color={t.faint} size="footnote">{modeOf(s.mode).status}</Text>}
         </Box>
-        {isOpen('dec') && <Seg v={v} id="mode" value={s.mode} items={[['auto', 'Auto · judge'], ['ask', 'Ask me'], ['off', 'Off']]} onPick={k => set($, { mode: k })} />}
+        {isOpen('dec') && <Seg v={v} id="mode" value={s.mode} items={MODES.map(m => [m.id, m.label] as [typeof m.id, string])} onPick={k => set($, { mode: k })} />}
         {isOpen('dec') && <Text color={t.dim} size="footnote" wrap="wrap">{s.mode === 'off' ? 'Judges off: every question and next step is yours, with no advice.' : `${s.mode === 'auto' ? 'The judges answer questions and next steps; anything hard to undo, a split, or a fourth in a row comes to you with their advice.' : 'Every question and next step is yours; the judges say what they recommend.'} Complexity 0–3 → 3 judges · 4–6 → 6 · 7–10 → 9 · two thirds to pass.`}</Text>}
         {(isOpen('dec') ? decs : decs.slice(0, 3)).map(d => {
           const tl = tally(d)

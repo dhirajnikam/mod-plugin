@@ -9,9 +9,10 @@ import { plural } from '../core/text'
 import { refreshRepo, decideCommit } from '../git/git'
 import { importers, memoryKey } from '../memory/memory'
 import { updateMemory } from '../memory/memory-io'
-import { expertName, EXPERTS, similarRuns, recallOf, PIPELINES, parseReport, verifyState, parseCases, AGENT_TYPES, TESTERS, shortType } from './experts'
+import { expertName, agentName, EXPERTS, similarRuns, recallOf, PIPELINES, parseReport, reportPart, verifyState, parseCases, AGENT_TYPES, TESTERS, shortType, passedOf } from './experts'
 import { pickRun, pickLabel } from './pick'
 import { plainType, twinSpec, registerIsolated, worktreeToRun, keepWorktree, takeWorktree, measureWorktree } from './worktrees-io'
+import { EDIT_TOOLS } from '../flows/tools'
 
 // The agents the Agents tab keeps, and the early plans held for agents with no row yet
 const AGENTS_KEPT = 40
@@ -197,7 +198,7 @@ async function startIn($: $, wt: Awaited<ReturnType<typeof worktreeToRun>>, a: P
 export async function runExpert($: $, type: string, prior: string[] = [], opts: { task?: string; batch?: { type: string; brief: string }[]; inTree?: boolean } = {}) {
   const s0 = await look($)
   const s = opts.task ? { ...s0, task: opts.task } : s0
-  const name = expertName(type)
+  const name = agentName(type)
   const pick = s.chooseModel ? pickRun(s.task, type, new Set(s.ops.filter(o => o.op === 'Write' || o.op === 'Edit').map(o => o.path)).size) : undefined
   await set($, { starting: { name, type, task: s.task || name, ...(pick ? { pick: pickLabel(pick) } : {}) } })
   const brief = expertPrompt(s, prior)
@@ -294,8 +295,8 @@ async function finishAgent($: $, agentId: string, answer: string, aborted: boole
   const a = (await look($)).agents.find(x => x.id === agentId)
   if (a && cases.length) {
     const fail = cases.filter(c => c.st === 'fail').length
-    await toast($, `${a.name}: ${cases.length - fail}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
-    await note($, `${fail ? '✗' : '✓'} ${a.name} · ${cases.length - fail}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
+    await toast($, `${a.name}: ${passedOf(cases)}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
+    await note($, `${fail ? '✗' : '✓'} ${a.name} · ${passedOf(cases)}/${cases.length} passed${fail ? ` · ${fail} failing` : ''}`)
   }
 }
 
@@ -332,7 +333,8 @@ async function trackAgent($: $, a: Pick<Agent, 'id' | 'name' | 'type' | 'task' |
 // A subagent started, whoever started it: it gets its row in the Agents tab, and a pipeline step waiting for it gets its id
 export async function agentSpawned($: $, id: string, e: AgentSpawnInput) {
   const s0 = await look($)
-  // One Cockpit started itself is named by its note; the model's by the event
+  // One Cockpit started itself is named by its note; the model's by the event. A row already there keeps its name
+  // (the event can come after the start that made the row)
   // (the note stands while Cockpit's start waits, so a spawn of another type then is the model's, not that one)
   const own = s0.starting && (!e.subagentType || e.subagentType === s0.starting.type) ? s0.starting : null
   const type = e.subagentType || own?.type || 'general-purpose'
@@ -341,7 +343,7 @@ export async function agentSpawned($: $, id: string, e: AgentSpawnInput) {
   const waitsForIt = (p: Ph['pipeline']): p is NonNullable<Ph['pipeline']> => !!p && !p.agentId && p.steps[p.index] === plain
   // Who started it: Cockpit's own start is a pipeline's step or yours (a press, a command); else another agent or Claude
   const by = own ? (waitsForIt(s0.pipeline) ? 'pipeline' : 'you') : e.parentAgentId ? 'agent' : 'claude'
-  await trackAgent($, { id, name: own?.name ?? (expertName(plain) !== plain ? expertName(plain) : e.description || plain), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(own?.pick ? { pick: own.pick } : {}), ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
+  await trackAgent($, { id, name: s0.agents.find(x => x.id === id)?.name ?? own?.name ?? agentName(plain, e.description), type, task: own?.task ?? e.description, prompt: e.prompt, by, ...(own?.pick ? { pick: own.pick } : {}), ...(e.provider?.plugin ? { provider: e.provider.plugin } : {}), ...(e.parentAgentId ? { parent: e.parentAgentId } : {}), ...(e.cwd ? { cwd: e.cwd } : {}) })
   // A pipeline's expert whose start hands no id back: the id is known here
   await set($, s => ({
     agentTypes: s.agentTypes.includes(plain) ? s.agentTypes : [...s.agentTypes, plain],
@@ -349,14 +351,12 @@ export async function agentSpawned($: $, id: string, e: AgentSpawnInput) {
   }))
 }
 
-// The tools that write or edit a file. An agent's log line reads "<tool> <what>"
-const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'MultiEdit']
-// A run that wrote or edited a file
+// A run that wrote or edited a file, by the tools that do (flows/tools). An agent's log line reads "<tool> <what>"
 const changedFiles = (a: Agent) => a.log.some(l => EDIT_TOOLS.some(t => l.t.startsWith(`${t} `)))
 
 // A subagent's tool call, as it starts: counted and logged on its row
 export function agentToolCall($: $, agentId: string, tool: string, input: Record<string, unknown>, at: number) {
-  const what = String(input.file_path ?? input.pattern ?? input.command ?? input.description ?? '').split('\n')[0]?.slice(0, 80) ?? ''
+  const what = String(input.file_path ?? input.notebook_path ?? input.path ?? input.pattern ?? input.command ?? input.description ?? '').split('\n')[0]?.slice(0, 80) ?? ''
   return set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, tools: a.tools + 1, log: [...a.log, { at, t: `${tool} ${what}` }].slice(-40) } : a)) }))
 }
 
@@ -380,6 +380,9 @@ export async function testAgent($: $, id: string, auto: boolean) {
   await startPipeline($, 'verify', { for: id, prior })
 }
 
+// A finished agent for its notice, with what it found: its REPORT, or the first line of a report that has no such lines
+const finished = (a: Agent) => ({ ...a, found: reportPart(a.report, 'REPORT') || (reportPart(a.report, 'HANDOFF') ? '' : (a.report.split('\n')[0] ?? '')) })
+
 // A subagent's turn ended: its record, what it changed in its worktree, a notice, its pipeline's next step, then its
 // tests and its commit. batch: the agents that finished while others of theirs still ran, for the one notice when the
 // last is done; the caller keeps it between calls
@@ -400,7 +403,7 @@ export async function agentTurnEnd($: $, agentId: string, answer: string, aborte
     else {
       const ran = [...batch].map(id => all.find(x => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x && x.status !== 'stopped')
       batch.clear()
-      await tellDone($, `agent:${[...ran.map(x => x.id), agentId].join(',')}`, ran.length ? { kind: 'agents', agents: [...ran, fin] } : { kind: 'agent', agent: fin }).catch(() => null)
+      await tellDone($, `agent:${[...ran.map(x => x.id), agentId].join(',')}`, ran.length ? { kind: 'agents', agents: [...ran, fin].map(finished) } : { kind: 'agent', agent: finished(fin) }).catch(() => null)
     }
   }
   await advancePipeline($, agentId, answer, aborted)
@@ -436,14 +439,14 @@ export async function discoverAgentTypes($: $) {
 
 export async function spawnAgent($: $, task: string, type: string) {
   const pick = (await look($)).chooseModel ? pickRun(task, type) : undefined
-  await set($, { starting: { name: type === 'general-purpose' ? 'Agent' : expertName(type), type, task, ...(pick ? { pick: pickLabel(pick) } : {}) } })
+  await set($, { starting: { name: agentName(type), type, task, ...(pick ? { pick: pickLabel(pick) } : {}) } })
   const r = await startIn($, await worktreeToRun($, type), { prompt: task, description: task.slice(0, 60), type, ...(pick ? { pick } : {}) })
   if ('deny' in r) {
     if (/no verdict/i.test(r.deny ?? '') && (await handOff($, [{ type, brief: task }]))) return set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '' } }))
     await note($, `⧉ ${type} could not start: ${r.deny}`)
     return toast($, `Could not start the agent: ${r.deny}`)
   }
-  if (r.agentId) await trackAgent($, { id: r.agentId, name: type === 'general-purpose' ? 'Agent' : type, type, task, prompt: task, ...(pick ? { pick: pickLabel(pick) } : {}) })
+  if (r.agentId) await trackAgent($, { id: r.agentId, name: agentName(type), type, task, prompt: task, ...(pick ? { pick: pickLabel(pick) } : {}) })
   await set($, s => ({ ui: { ...s.ui, spawnOpen: false, spawnTask: '', openAgent: r.agentId } }))
   await toast($, `Started ${type}`)
 }
@@ -471,7 +474,7 @@ export async function syncAgents($: $) {
       if (s.cleared.includes(a.id)) continue
       const st = a.status === 'completed' ? 'done' : a.status === 'failed' ? 'failed' : a.status === 'killed' ? 'stopped' : 'running'
       const was = agents.find(x => x.id === a.id)
-      const name = expertName(a.type) !== a.type ? expertName(a.type) : a.description || a.type
+      const name = agentName(plainType(a.type), a.description)
       if (!was) agents = [...agents, { ...takeEarly(a.id), id: a.id, name, type: a.type, task: a.description, prompt: '', status: st, startedAt: at, ...(st !== 'running' ? { endedAt: at } : {}), tools: 0, log: [], cases: [], report: '' }]
       else if (was.status === 'running' && st !== 'running') agents = agents.map(x => (x.id === a.id ? { ...x, status: st, endedAt: at } : x))
     }

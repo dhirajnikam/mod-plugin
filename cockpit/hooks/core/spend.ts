@@ -57,6 +57,22 @@ export function budgetLevel(spend: number, budget: number | undefined): BudgetLe
   return spend >= budget ? 'over' : spend >= budget * 0.8 ? 'near' : 'ok'
 }
 
+// A budget warning as it is kept with the settings: the day, the level reached, and the budget it was for. A store
+// edited by hand cannot put anything else there
+type Warned = NonNullable<Ph['budgetWarned']>
+export const isWarned = (v: unknown): v is Warned => {
+  const w = v as Warned
+  return !!w && typeof w === 'object' && typeof w.day === 'string' && (w.level === 'near' || w.level === 'over')
+}
+// Which warning stands, of the one the store holds now (another session may have warned since this one read it) and
+// this session's: the later day's; on the same day and for the same budget the higher level's, the stored one when
+// they are level; for a different budget this session's, so a changed budget warns again
+export function standingWarning(stored: unknown, ours: Warned | undefined): Warned | undefined {
+  if (!isWarned(stored)) return ours
+  if (!ours || stored.day > ours.day) return stored
+  return stored.day === ours.day && stored.budget === ours.budget && (stored.level === 'over' || ours.level === 'near') ? stored : ours
+}
+
 // Every session's spend as it stands now: the earlier ones, and this one with its live figures
 export function withCurrent(past: SessionSpend[] | undefined, at: number | undefined, now: number, usd: number, tokens: number, turns: number): SessionSpend[] {
   return at ? upsertSession(past ?? [], { id: `s${at}`, startedAt: at, endedAt: now, usd, tokens, turns }) : (past ?? [])

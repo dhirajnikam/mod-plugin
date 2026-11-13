@@ -207,7 +207,7 @@ test('several agents run at once with one task, and Stop all and Clear finished 
   let d = JSON.stringify(await ui.drawn())
   // Running lists the live runs, with their count
   expect(d).toContain('RUNNING')
-  expect(d).toContain('"  3"')
+  expect(d).toContain('" 3"')
   // Two copies of the planner: its roster row points up to them
   expect(d).toContain('running ×2 ↑')
   await ui.press({ key: 'stop-all' })
@@ -263,14 +263,14 @@ test('subagents Claude starts show in the Agents tab from the engine\'s list, an
   await openMore(ui)
   let d = JSON.stringify(await ui.drawn())
   expect(d).toContain('RUNNING')
-  expect(d).toContain('"  2"')
+  expect(d).toContain('" 2"')
   expect(d).toContain('scan the repo')
   expect(d).toContain('write the docs')
   // One ends without Cockpit hearing it: the list settles it at the turn's end
   log.list[0].status = 'completed'
   await $.turn.complete({ answer: 'ok', reason: 'answer', turnId: 'm', isAborted: false, durationMs: 1 } as never)
   d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('"  1"')
+  expect(d).toContain('" 1"')
   expect(d).toContain('FINISHED')
   await ui.unmount()
 })

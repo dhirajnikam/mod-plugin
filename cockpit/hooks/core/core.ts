@@ -2,8 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Ph, ThemeId } from '../../types'
+import { isWarned, standingWarning } from './spend'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
+import { MODES } from './modes'
 
 
 // The session's Cockpit state. The engine reads an atom only in the file that declares it, so this is the one place:
@@ -31,9 +33,8 @@ export async function set($: $, patch: Patch) {
   })
   if (!saved) return
   // Another session may have warned since this one read the settings: its warning stands over an older one here
-  const was = ((await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined)?.budgetWarned
-  const ours = (saved as Partial<Ph>).budgetWarned
-  if (was && (!ours || was.day > ours.day || (was.day === ours.day && was.budget === ours.budget && was.level === 'over'))) (saved as Partial<Ph>).budgetWarned = was
+  const prefs: Partial<Ph> = saved
+  prefs.budgetWarned = standingWarning((await storedPrefs($))?.budgetWarned, prefs.budgetWarned)
   // Bookkeeping in the background: a failed save must not fail the turn that changed the setting
   await $.store.set('prefs', saved).catch(() => null)
 }
@@ -43,18 +44,20 @@ export function setUi($: $, patch: Partial<Ph['ui']> | ((ui: Ph['ui']) => Partia
   return set($, s => ({ ui: { ...s.ui, ...(typeof patch === 'function' ? patch(s.ui) : patch) } }))
 }
 
+// The saved preferences as the store holds them right now; none where there are none, or the store cannot be read
+export async function storedPrefs($: $) {
+  return (await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined
+}
+
 export async function loadPrefs($: $) {
-  const p = (await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined
+  const p = await storedPrefs($)
   if (!p || typeof p !== 'object') return
   // Each saved setting is taken only if it is of its kind: a store edited by hand cannot put a word where a switch goes
   const ok: Record<(typeof PREFS)[number], (v: unknown) => boolean> = {
     theme: v => THEME_IDS.includes(v as ThemeId),
-    mode: v => v === 'auto' || v === 'ask' || v === 'off',
+    mode: v => MODES.some(m => m.id === v),
     dailyBudget: v => typeof v === 'number' && Number.isFinite(v) && v > 0,
-    budgetWarned: v => {
-      const w = v as Ph['budgetWarned']
-      return !!w && typeof w === 'object' && typeof w.day === 'string' && (w.level === 'near' || w.level === 'over')
-    },
+    budgetWarned: isWarned,
     focus: v => typeof v === 'boolean',
     autoVerify: v => typeof v === 'boolean',
     testAgents: v => typeof v === 'boolean',
@@ -126,8 +129,8 @@ export async function homeDir($: $) {
 
 // A prompt Cockpit sends to Claude without waiting for its turn. From inside a hook that holds the turn (a command, a
 // turn's end) the engine refuses the submit by throwing, so it goes once more from a timer after that hook has
-// returned. A prompt the engine drops has failed; with retryDropped it too is tried once more first
-export function submitPrompt($: $, text: string, failed: () => unknown, retryDropped = false) {
+// returned. A prompt the engine drops is tried once more the same way; one that cannot go the second time has failed
+export function submitPrompt($: $, text: string, failed: () => unknown) {
   const send = async (onDrop: () => unknown) => {
     const r = await $.prompt.submit({ text })
     if ('drop' in r && r.drop) await onDrop()
@@ -139,5 +142,5 @@ export function submitPrompt($: $, text: string, failed: () => unknown, retryDro
       void failed()
     }
   }
-  void send(retryDropped ? again : failed).catch(again)
+  void send(again).catch(again)
 }

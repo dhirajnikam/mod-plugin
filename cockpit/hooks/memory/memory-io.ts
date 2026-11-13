@@ -1,14 +1,43 @@
 import type { $ } from '../core/core'
-import { repoRoot, git, cockpitDir } from '../core/repos'
+import { repoRoot, cockpitDir, SKIP } from '../core/repos'
 import { isCode, parseImports, resolveImport, factsOf, filesSig, featurePrompt, parseFeatures, memoryKey, importers, memoryMarkdown } from './memory'
 import { set, toast, look } from '../core/core'
+
+// Every path git knows under a folder (the session's when none is given): tracked and untracked, ignored left out
+function lsFiles($: $, cwd?: string) {
+  return $.process.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd ? { cwd } : {}).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+}
+
+// The project's paths: git's view (tracked and untracked, ignored left out), or a shallow walk outside a repository
+export async function loadProject($: $) {
+  // From the session's folder, as the Activity tree shows paths
+  const r = await lsFiles($)
+  let project = r.exitCode === 0 ? r.stdout.split('\0').filter(Boolean) : []
+  if (r.exitCode !== 0) {
+    // ponytail: depth 3 and 3000 paths; git gives the full view where it exists
+    const walk = async (dir: string, depth: number): Promise<string[]> => {
+      if (depth > 3 || project.length > 3000) return []
+      const entries = await $.fs.list(dir || undefined).catch(() => [])
+      const out: string[] = []
+      for (const en of entries) {
+        if (SKIP(en.name)) continue
+        const p = dir ? `${dir}/${en.name}` : en.name
+        if (en.kind === 'dir') out.push(...(await walk(p, depth + 1)))
+        else if (en.kind === 'file') out.push(p)
+      }
+      return out
+    }
+    project = await walk('', 0)
+  }
+  await set($, { project: project.slice(0, 3000) })
+}
 
 // The codebase memory, built from every source file's imports at session start (in the background) and kept in
 // .cockpit/memory.json and .cockpit/MEMORY.md
 // ponytail: 1500 files and 300 KB a file; a bigger repository is mapped in part, by git's order
 export async function buildMemory($: $, rename = false) {
   const root = await repoRoot($)
-  const r = await git($, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+  const r = await lsFiles($, root)
   if (!root || r.exitCode !== 0) return
   const all = r.stdout.split('\0').filter(Boolean)
   const has = new Set(all)

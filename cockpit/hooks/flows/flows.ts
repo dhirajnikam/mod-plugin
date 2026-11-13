@@ -1,5 +1,5 @@
 import { cut, workOf } from '../core/text'
-import type { PlanItem, Ph } from '../../types'
+import type { PlanItem, Ph, Autopilot } from '../../types'
 
 // Every step a flow can reach, in order. A flow shows its own template's steps plus any it reaches beyond them
 const STEPS = ['Understand', 'Explore', 'Decide', 'Implement', 'Verify', 'Commit', 'Answer']
@@ -77,6 +77,19 @@ export const progress = (s: Ph) => {
   // Before the first prompt there is no task, so nothing has progressed (a pipeline started by hand included)
   if (!f) return progressOf('', [], false)
   return progressOf(s.task, s.reached, s.isWorking, f.kind, f.plan, f.steps)
+}
+// "Step N of M", the same number wherever it is said: the step in progress by its place among all the flow's steps (a
+// skipped one keeps its place); with none in progress, the one after those done. None before a flow has steps that count
+export function stepNo(p: { steps: { st: string }[]; done: number; total: number }) {
+  if (!p.steps.length || !p.total) return undefined
+  const at = p.steps.findIndex(x => x.st === 'active')
+  return { n: (at >= 0 ? at : Math.min(p.done, p.steps.length - 1)) + 1, of: p.steps.length }
+}
+// The autopilot in a few words, the same in the Overview's heading and the band: who (the product owner by its round),
+// then where it is: scouting, the cycle it is on, or how it ended
+export function autopilotWords(ap: Autopilot) {
+  const po = ap.role === 'product'
+  return `${po ? `◈ Product owner · round ${ap.round ?? 1}` : '⟳ Autopilot'} · ${ap.status !== 'running' ? ap.status : po && ap.phase === 'scout' ? 'scouting' : `cycle ${ap.cycle}`}`
 }
 // Claude's task list after one of its plan tools: TodoWrite sends the whole list; TaskCreate adds one (its id is in the
 // result), TaskUpdate changes or deletes one by id. An update to a task of an earlier prompt's plan carries that plan over

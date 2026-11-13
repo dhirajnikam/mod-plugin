@@ -266,7 +266,7 @@ test('subagents show in the Agents tab with their tool calls, and Stop stops the
   await openMore(ui)
   let drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('RUNNING')
-  expect(drawn).toContain('"  1"')
+  expect(drawn).toContain('" 1"')
   // Named by what it was asked to do, not by its type
   expect(drawn).toContain('look around')
   expect(drawn).toContain('1 tool call ')

@@ -122,7 +122,7 @@ test('cycles that tick nothing are told to change approach, and a reworded next 
   expect(await overview($)).toContain('AUTOPILOT · CYCLE 9')
   // ...but not without end: twelve with nothing ticked pause it
   for (let c = 0; c < 4; c++) await cycle($, log, 'AUTOPILOT: CONTINUE the queue')
-  expect(await overview($)).toContain('twelve cycles without a milestone ticked')
+  expect(await overview($)).toContain('12 cycles without a milestone ticked')
   await $.command.run({ command: 'cockpit', args: 'task resume' } as never)
   await settle()
   // Rewording the next milestone while nothing changes still counts toward the stall

@@ -2,7 +2,7 @@ import type { $ } from '../core/core'
 import { inBackground, toast, setUi } from '../core/core'
 import { explainCodebase, editGuide } from './explain'
 import type { V } from '../ui/shared'
-import { sp } from '../ui/shared'
+import { sp, Head } from '../ui/shared'
 
 
 // The Overview's codebase guide row: ask for it, then open it, refresh it, or tell Claude what to change in it
@@ -11,7 +11,7 @@ export function Guide($: $, v: V) {
   const { s, t } = v
   const g = s.guide
   const ask = (key: string, label: string) => <Button key={key} label={label} onPress={() => inBackground($, key, 'Asking Claude', () => explainCodebase($))} />
-  const head = <Text size="footnote" bold color={t.dim}>CODEBASE GUIDE</Text>
+  const head = <Head v={v} label="Codebase guide" />
   if (!g || !(g.exists ?? g.at))
     return (
       <Box flexDirection="column">

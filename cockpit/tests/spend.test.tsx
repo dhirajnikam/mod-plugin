@@ -266,7 +266,7 @@ test('saved settings of the wrong kind are left out: a word for the budget or a 
   await $.command.run({ command: 'cockpit', args: 'tab overview' } as never)
   const pane = await $.ui.mount({ plugin: 'cockpit', surface: 'desktop', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} } } as never)
   const p = JSON.stringify(await pane.drawn())
-  expect(p).toContain('Auto · judge')
+  expect(p).toContain('Auto · judges decide')
   expect(p).not.toContain('Judges off')
   // A theme that is none of the six is left out too: the pane is on Auto
   expect(p).not.toContain('<script>')

@@ -3,6 +3,9 @@ import type { TestCase, Agent } from '../../types'
 // Cockpit's own experts are registered as cockpit:<name>
 const PREFIX = 'cockpit:'
 export const isOwn = (type: string) => type.startsWith(PREFIX)
+
+// How many test cases passed: one that passed, or failed and was fixed. One still running is not a pass
+export const passedOf = (cases: { st: string }[]) => cases.filter(c => c.st === 'pass' || c.st === 'fixed').length
 export const shortType = (type: string) => (isOwn(type) ? type.slice(PREFIX.length) : type)
 
 // Cockpit's own experts, shipped as agents/<name>.md; they hand their reports to one another along a pipeline.
@@ -44,6 +47,9 @@ export const PIPELINES: { name: string; label: string; steps: string[]; what: st
   { name: 'review', label: 'Review', steps: [`${PREFIX}reviewer`], what: 'a second pair of eyes on the diff' },
 ]
 export const expertName = (type: string) => EXPERTS.find(x => x.type === type)?.name ?? (isOwn(type) ? shortType(type).replace(/(^|-)(\w)/g, (_, d, c: string) => `${d ? ' ' : ''}${c.toUpperCase()}`) : type)
+// An agent's name wherever Cockpit shows it, however it learned of the agent: the expert's where its type is one, else
+// what it was described as, else Agent for a general-purpose one and its type for any other
+export const agentName = (type: string, description = '') => (expertName(type) !== type ? expertName(type) : description || (type === 'general-purpose' ? 'Agent' : type))
 export const AGENT_TYPES = ['general-purpose', 'Explore', 'Plan', ...EXPERTS.map(x => x.type)]
 // "CASE PASS name" / "CASE FAIL name :: why" lines from a tester's answer
 export function parseCases(text: string): TestCase[] {
@@ -57,13 +63,21 @@ export function parseCases(text: string): TestCase[] {
       ...(m[3] ? { err: m[3] } : {}),
     }))
 }
+// What a line that starts with the tag says (REPORT: …), the tag in any case; of several such lines, the last
+const tagged = (text: string, tag: string) => text.split('\n').map(l => l.trim()).filter(l => l.toUpperCase().startsWith(`${tag}:`)).map(l => l.slice(tag.length + 1).trim()).pop() ?? ''
 // The REPORT and HANDOFF lines of an expert's answer, or its last lines
 export function parseReport(text: string) {
   const lines = text.split('\n').map(l => l.trim())
-  const pick = (tag: string) => lines.filter(l => l.toUpperCase().startsWith(`${tag}:`)).map(l => l.slice(tag.length + 1).trim()).pop() ?? ''
-  const report = pick('REPORT')
-  const handoff = pick('HANDOFF')
+  const report = tagged(text, 'REPORT')
+  const handoff = tagged(text, 'HANDOFF')
   return report || handoff ? `REPORT: ${report || '—'}\nHANDOFF: ${handoff || 'nothing'}` : lines.filter(Boolean).slice(-6).join('\n')
+}
+// What a kept report says under REPORT or HANDOFF, read by the rule that wrote it, so every place that shows a report
+// shows the same words (a pipeline's kept report, which has the expert's name above, too). '' where the report has no
+// such line, and for the — parseReport writes where an answer had a HANDOFF and no REPORT
+export function reportPart(report: string, tag: 'REPORT' | 'HANDOFF') {
+  const said = tagged(report, tag)
+  return said === '—' ? '' : said
 }
 // The latest Prover and Breaker: their cases together, and whether both are done without a failure
 export function verifyState(agents: Agent[]) {
@@ -74,7 +88,7 @@ export function verifyState(agents: Agent[]) {
   return {
     cases,
     fail,
-    pass: cases.length - fail,
+    pass: passedOf(cases),
     running: pair.some(a => a?.status === 'running'),
     passed: pair.every(a => a?.status === 'done') && cases.length > 0 && fail === 0,
   }
@@ -106,7 +120,7 @@ export function similarRuns(task: string, runs: Agent[]) {
 }
 // A remembered run in a line: its REPORT, or with none its cases' tally
 export const recallOf = (r: Agent) => {
-  const rep = r.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice('REPORT:'.length).trim()
+  const rep = reportPart(r.report, 'REPORT')
   const fail = r.cases.filter(c => c.st === 'fail').length
-  return rep || (r.cases.length ? `${r.cases.length - fail}/${r.cases.length} cases passed${fail ? `, failing: ${r.cases.filter(c => c.st === 'fail').map(c => c.n).slice(0, 3).join(', ')}` : ''}` : '')
+  return rep || (r.cases.length ? `${passedOf(r.cases)}/${r.cases.length} cases passed${fail ? `, failing: ${r.cases.filter(c => c.st === 'fail').map(c => c.n).slice(0, 3).join(', ')}` : ''}` : '')
 }

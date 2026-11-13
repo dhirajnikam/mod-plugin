@@ -1,20 +1,22 @@
 import type { Agent, SessionSpend } from '../../types'
 import type { $ } from './core'
-import { look, set, toast } from './core'
-import { todaySpend, budgetLevel, dayOf } from './spend'
+import { look, set, toast, storedPrefs } from './core'
+import { todaySpend, budgetLevel, dayOf, standingWarning } from './spend'
 import { PANE } from './state'
 import { cut, plural } from './text'
 
 // Telling you when work is done, while you are not watching: one notice per finish, through Claude Code's own
 // notification channel (ui.notify), in words made from what Cockpit already knows
 
+// An agent that finished, for its notice; found: what its report says in a line (the caller reads the report)
+type Finished = Pick<Agent, 'name' | 'status' | 'cases' | 'worktree'> & { found: string }
 type Finish =
   | { kind: 'turn'; task: string; files: number; add: number; del: number; tests?: { pass: number; total: number } }
-  | { kind: 'agent'; agent: Pick<Agent, 'name' | 'status' | 'report' | 'cases' | 'worktree'> }
+  | { kind: 'agent'; agent: Finished }
   | { kind: 'pipeline'; label: string; passed: boolean; failing?: string }
   | { kind: 'ci'; number: number; title: string; passed: boolean; failing?: string }
   | { kind: 'budget'; level: 'near' | 'over'; spend: number; budget: number }
-  | { kind: 'agents'; agents: Pick<Agent, 'name' | 'status' | 'report' | 'cases' | 'worktree'>[] }
+  | { kind: 'agents'; agents: Finished[] }
   | { kind: 'cycle'; cycle: number; ticked: number; total: number; spent: number; ended?: 'paused' | 'done' | 'stopped' }
 
 export function doneText(f: Finish): { title: string; text: string } {
@@ -26,9 +28,7 @@ export function doneText(f: Finish): { title: string; text: string } {
   if (f.kind === 'agent') {
     const a = f.agent
     const passed = a.cases.filter(c => c.st === 'pass' || c.st === 'fixed').length
-    // What it found: its REPORT line (the stored report also holds its HANDOFF)
-    const found = (a.report.match(/REPORT:\s*(.+)/)?.[1] ?? a.report.split('\n')[0] ?? '').trim()
-    const said = a.cases.length ? `${passed}/${a.cases.length} passed` : found || (a.status === 'done' ? 'done' : a.status)
+    const said = a.cases.length ? `${passed}/${a.cases.length} passed` : a.found || (a.status === 'done' ? 'done' : a.status)
     const back = a.worktree?.files?.length && !a.worktree.back && !a.worktree.removed ? ` · Bring back ready: ${plural(a.worktree.files.length, 'file')} +${a.worktree.add ?? 0} −${a.worktree.del ?? 0}` : ''
     return { title: `${a.name} ${a.status === 'done' ? 'finished' : a.status}`, text: cut(`${said}${back}`, 120) }
   }
@@ -58,7 +58,6 @@ export async function tellDone($: $, key: string, f: Finish, opt: { always?: boo
 
 // The daily budget, checked after each turn: crossing 80% and then 100% of it warns once each a day (kept across
 // sessions with the settings), through the notices, whatever the pane shows. A budget only warns; nothing is stopped
-const RANK = { none: 0, ok: 0, near: 1, over: 2 } as const
 export async function checkBudget($: $, sessions: SessionSpend[], now: number) {
   const s = await look($)
   const spend = todaySpend(sessions, now)
@@ -67,13 +66,11 @@ export async function checkBudget($: $, sessions: SessionSpend[], now: number) {
   const day = dayOf(now)
   // What any session warned today, read from the store just now (another session may have warned meanwhile); a
   // warning for a different budget does not count, so a raised budget warns again
-  const stored = ((await $.store.get('prefs').catch(() => undefined)) ?? {}) as { budgetWarned?: { day: string; level: 'near' | 'over'; budget?: number } }
-  const w = stored.budgetWarned
-  const was = w && w.day === day && w.budget === s.dailyBudget ? RANK[w.level] : 0
-  if (RANK[level] <= was) return
+  const mine = { day, level, budget: s.dailyBudget! }
+  if (standingWarning((await storedPrefs($))?.budgetWarned, mine) !== mine) return
   // Marked warned only once the notice went out
   if (!(await tellDone($, `budget:${day}:${level}:${s.dailyBudget}`, { kind: 'budget', level, spend, budget: s.dailyBudget! }, { always: true }))) return
-  await set($, { budgetWarned: { day, level, budget: s.dailyBudget! } })
+  await set($, { budgetWarned: mine })
 }
 
 // A daily budget typed in the Overview: dollars above 0, or left as it was with a word why

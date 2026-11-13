@@ -345,7 +345,9 @@ export function memoryStarts(cwd: string, home: string): string[] {
 // skipped: not read (too large, not text); outside: an import beyond the repository and your home, which Claude Code
 // asks before loading
 type MemoryFile = { path: string; text: string; via?: string; missing?: boolean; skipped?: string; outside?: boolean }
-// What a reader hands back for a file: its text, null when there is none, or why it was not read
+// What a reader hands back for a file: its text, null when there is none, or why it was not read. A reader that fails
+// has not shown the file is missing: its file is listed as not read, with this for the reason
+export const UNREAD = 'unreadable'
 export type MemoryRead = string | null | { skipped: string }
 // Every memory file that loads: the ones that exist of `starts`, then what they import, breadth first so each file is
 // expanded at the fewest hops it is reached in, up to the 5 Claude Code follows, each file once (so a cycle ends). A
@@ -361,7 +363,7 @@ export async function resolveMemory(starts: string[], read: (path: string) => Pr
     for (const { path, via, raw } of level) {
       if (seen.has(path)) continue
       seen.add(path)
-      const r = await read(path).catch(() => null)
+      const r = await read(path).catch((): MemoryRead => ({ skipped: UNREAD }))
       const tag = { ...(via ? { via } : {}), ...(via && !inside(path) ? { outside: true } : {}) }
       if (r === null) {
         if (via && raw && /^(~[\\/]|\.{1,2}[\\/]|[\\/]|[A-Za-z]:)|\.\w+$/.test(raw)) out.push({ path, text: '', ...tag, missing: true })

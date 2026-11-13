@@ -82,7 +82,7 @@ export async function removeWorktree($: $, agentId: string) {
   if (r.exitCode !== 0) {
     // Deleted by hand already: git's record of it is pruned, and once git lists it no more it counts as removed
     await run(WORKTREE_COMMANDS.prune, {})
-    const listed = (await run(WORKTREE_COMMANDS.list, {})).stdout.split('\n').some(l => l.replace(/^worktree /, '').replace(/\\/g, '/') === w.path)
+    const listed = (await listWorktrees($)).some(x => x.path === slashed(w.path))
     if (listed) return toast($, `Not removed: ${firstLine(r)}`)
   }
   await set($, s => ({ agents: s.agents.map(a => (a.id === agentId && a.worktree ? { ...a, worktree: { ...a.worktree, removed: true } } : a)) }))
@@ -95,11 +95,12 @@ async function dropWorktree($: $, w: { path: string; branch: string }) {
   await run(fillArgs(WORKTREE_COMMANDS.remove, { path: w.path }), {})
   await run(fillArgs(WORKTREE_COMMANDS.dropBranch, { branch: w.branch }), {})
 }
-// The worktrees git knows of, with their branches (`git worktree list --porcelain`), paths with forward slashes
+// The worktrees git knows of, with their branches (`git worktree list --porcelain`), paths with forward slashes and no
+// slash at the end
 async function listWorktrees($: $): Promise<{ path: string; branch: string; head: string }[]> {
   const run = await turnRun($)
   const out = (await run(WORKTREE_COMMANDS.list, {})).stdout
-  return out.split(/\n\n+/).map(b => ({ path: (b.match(/^worktree (.+)$/m)?.[1] ?? '').replace(/\\/g, '/'), branch: (b.match(/^branch refs\/heads\/(.+)$/m)?.[1] ?? ''), head: b.match(/^HEAD (\w+)$/m)?.[1] ?? '' })).filter(w => w.path)
+  return out.split(/\n\n+/).map(b => ({ path: slashed(b.match(/^worktree (.+)$/m)?.[1] ?? ''), branch: (b.match(/^branch refs\/heads\/(.+)$/m)?.[1] ?? ''), head: b.match(/^HEAD (\w+)$/m)?.[1] ?? '' })).filter(w => w.path)
 }
 // Before an isolated twin starts: the commit it starts from, and the worktrees there already, to tell its own from them
 async function beforeIsolated($: $): Promise<{ base: string; before: string[] } | null> {

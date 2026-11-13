@@ -7,7 +7,7 @@ import { kTok, plural } from '../core/text'
 import { loadRules, writeSkill, writeSettings, writeMcp, writeInstructions } from './rules-io'
 import type { PermKind } from './rules'
 import type { V } from '../ui/shared'
-import { grow, sp, Seg, More } from '../ui/shared'
+import { grow, sp, Seg, More, Head } from '../ui/shared'
 
 // Rules: the hooks, permission rules and instructions Claude Code follows, for this repository or for you everywhere.
 // Each is a row to edit in place or delete (after you confirm); each section has an add form. Every change is written
@@ -46,11 +46,7 @@ export function Rules($: $, v: V) {
   const save = (p: Promise<unknown>) => p.then(() => setUi($, clear))
   const head = (label: string, n: number, add: string, path: string) => (
     <Box justifyContent="space-between" alignItems="center" columnGap={sp(v, 1)}>
-      <Text size="footnote" bold wrap="truncate-end">
-        <Text color={t.dim}>{label.toUpperCase()}</Text>
-        <Text color={t.faint}>{` ${n}`}</Text>
-        <Text color={t.faint} bold={false}>{`  ${path}`}</Text>
-      </Text>
+      <Head v={v} label={label} n={n} note={path} />
       {add !== '' && <Button key={`radd-${add}`} plain onPress={() => setUi($, { ...clear, ruleAdd: s.ui.ruleAdd === add ? '' : add, ruleA: add === 'hook' ? 'PreToolUse' : add === 'perm' ? 'allow' : '' })}>
         <Text color={t.accent} size="footnote">{s.ui.ruleAdd === add ? '✕ Close' : '+ Add'}</Text>
       </Button>}

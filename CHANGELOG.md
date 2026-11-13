@@ -40,6 +40,42 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 - The Rules tab no longer says a change was saved when the file could not be written; it says why it was not.
+- **Notebook and multi-edits**: edits made with NotebookEdit or MultiEdit now count like any other edit: they show as
+  activity, move the flow to Implement, update the codebase memory and start auto-verify and auto-commit.
+- **Turn end**: when a prompt is sent as a turn ends, or the next turn starts before the last one is done, the finished
+  turn's flow is the one marked done and counted, not the next one.
+- **Refused prompt**: a prompt refused before it runs no longer marks the flow before it as stopped.
+- **/cockpit tab**: a word that is no tab is answered with the list of tabs instead of "Cockpit pane opened."
+- **Sturdier hooks**: a failure inside Cockpit no longer fails `/cockpit`, the permission check for an agent started
+  from the pane, the session's measurement or another plugin's call to Cockpit; one failed reading no longer skips the
+  rest of the 15-second refresh.
+- **Commit type**: a change is typed "test" only when every file is a test file (a tests folder or a `.test.`/`.spec.`
+  name), not when a path merely holds the letters, as `src/inspector.ts` does.
+- **Trunk as base**: a repository whose base branch is `trunk` is recognised as such, like main, master and develop.
+- **Pull request from a commit**: gh can no longer stop to ask a question when a commit opens its pull request.
+- **CI notices**: each finished run of a pull request is told once, and answers that a newer read has overtaken no
+  longer make Cockpit stop watching a pending run early.
+- **Lighter git refresh**: the Activity tab's file list is read when that tab is open and when a turn ends, not on
+  every git refresh.
+- **Agent names**: an agent is named the same however Cockpit learned of it, so an expert started from New agent shows
+  as "Planner", not `cockpit:planner`; the agents map says who started an agent and who provides it in the same
+  words as the Agents tab, and a subagent's notebook edits name their file.
+- **Expert reports**: an expert's REPORT and HANDOFF lines are read one way everywhere: the run's row, its notice and
+  the agents' recall.
+- **Hand-offs to Claude**: a hand-off the engine drops is tried once more for agents and autopilot cycles too, as it
+  was for the codebase guide.
+- **Removing a worktree**: a worktree git still lists is not called removed, however git spells its path.
+- **Judges**: each judge's seat and point of view come from one table, so a panel can never seat more judges than
+  there are seats.
+- **Daily budget warning**: which warning stands, when another session warned today too, is decided by one rule.
+- **Autopilot pause**: the message says how many cycles passed without a milestone as a number.
+- **Rules tab**: a memory file that is there but cannot be read is listed as unreadable, not as missing.
+- **Same words everywhere**: the decision mode reads "Auto · judges decide", "Ask me · judges advise" or "Judges off" in
+  the header, the line under the prompt, the Overview and `/cockpit mode`; a pull request says "review required" on
+  the Overview as on the Git tab, shows a closed or merged one by its state, and no longer says "checks passing" when
+  it has no checks; the context figure turns red at 80 % in the band as on the Overview; the band counts a skipped step
+  as the Overview does; the band names the autopilot as the Overview does; a test case counts as passed when it passed
+  or was fixed, wherever cases are counted; section headings are drawn one way on every tab.
 
 ### Removed
 - The self-check that ran at every session start; its table of cases is a test now (`cockpit/tests/logic.test.ts`).

@@ -2,11 +2,12 @@
 import type { Register, RenderNode } from 'claude-code'
 import type { Decision, Ph } from '../../types'
 import { set, look, inBackground } from '../core/core'
-import { progress } from '../flows/flows'
+import { progress, stepNo, autopilotWords } from '../flows/flows'
 import type { Theme } from '../core/theme'
-import { chatThemeOf, themeOf, ctxShades } from '../core/theme'
+import { chatThemeOf, themeOf, ctxShades, ctxLevel, ctxColor } from '../core/theme'
+import { INITIAL } from '../core/state'
 import { fmt, kTok, base, plural } from '../core/text'
-import { verifyState, PIPELINES, expertName, EXPERTS } from '../agents/experts'
+import { verifyState, PIPELINES, expertName, EXPERTS, passedOf } from '../agents/experts'
 import { STATUS_WORD } from '../agents/agents-view'
 import { todaySpend, sessionsNow, budgetLevel } from '../core/spend'
 import { compactNow } from '../core/session'
@@ -16,23 +17,25 @@ import { showTab } from '../pane/tabs'
 import type { UI } from '../ui/shared'
 import { Segs, Diff } from '../ui/shared'
 import { CommitSkip } from '../git/git-tab'
+import { modeOf } from '../core/modes'
 
 function stepAt(s: Ph) {
   const p = progress(s)
-  const i = p.steps.findIndex(x => x.st === 'active')
-  return i >= 0 && p.steps.length > 1 ? `${i + 1}/${p.steps.length}` : ''
+  const at = stepNo(p)
+  // The spinner names a step only while one is in progress
+  return at && p.active > 0 && at.of > 1 ? `${at.n}/${at.of}` : ''
 }
 
 // What the work around the chat is doing, in a few words: the agents running, the autopilot's cycle
 function liveWords(s: Ph) {
   const running = s.agents.filter(a => a.status === 'running').length
   const ap = s.autopilot
+  const live = ap?.status === 'running'
+  const building = live && !(ap.role === 'product' && ap.phase === 'scout')
   return [
     running ? `⧉ ${plural(running, 'agent')}` : '',
-    ap?.status === 'running'
-      ? `${ap.role === 'product' ? `◈ round ${ap.round ?? 1} · ` : '⟳ '}${ap.phase === 'scout' ? 'scouting' : `cycle ${ap.cycle}`}${ap.phase !== 'scout' && ap.total ? ` · ${ap.done}/${ap.total}` : ''}${ap.budget ? ` · $${(s.cost - ap.costAt).toFixed(2)}/$${ap.budget}` : ''}`
-      : '',
-    ap?.status === 'paused' ? (ap.role === 'product' ? '◈ product owner paused' : '⟳ autopilot paused') : '',
+    // Only work under way or waiting on you is named here; running, with its milestones and its spend against a budget
+    ap && (live || ap.status === 'paused') ? `${autopilotWords(ap)}${building && ap.total ? ` · ${ap.done}/${ap.total}` : ''}${live && ap.budget ? ` · $${(s.cost - ap.costAt).toFixed(2)}/$${ap.budget}` : ''}` : '',
   ].filter(Boolean)
 }
 
@@ -106,7 +109,8 @@ export function drawings(on: Parameters<Register>[0]) {
     const s = await look($)
     const t = themeOf(s)
     const p = progress(s)
-    const win = s.ctx.window || 200000
+    const step = stepNo(p)
+    const win = s.ctx.window || INITIAL.ctx.window
     const toggle = (
       <Button key="ph-focus" plain onPress={() => set($, st => ({ focus: st.focus === false }))}>
         <Text color={s.focus !== false ? t.accent : t.dim}>{s.focus !== false ? '◉ Focus' : '○ Focus'}</Text>
@@ -114,7 +118,7 @@ export function drawings(on: Parameters<Register>[0]) {
     )
     const vs = verifyState(s.agents)
     const testsFail = vs.fail > 0
-    const testsLine = vs.running ? 'testing…' : vs.cases.length ? `tests ${vs.pass}/${vs.cases.length}` : ''
+    const testsLine = vs.running ? 'testing…' : vs.cases.length ? `tests ${passedOf(vs.cases)}/${vs.cases.length}` : ''
     const live = liveWords(s)
     const liveLine = live.length > 0 && <Text color={t.dim}>{`  ·  ${live.join('  ·  ')}`}</Text>
     // A daily budget, once set: today's spend against it, amber from 80%, red from 100% (it only warns)
@@ -123,7 +127,7 @@ export function drawings(on: Parameters<Register>[0]) {
     const level = budgetLevel(today, s.dailyBudget)
     const budgetLine = level !== 'none' && <Text color={level === 'over' ? t.bad : level === 'near' ? t.busy : t.dim}>{`  ·  $${today.toFixed(2)} of $${s.dailyBudget!.toFixed(2)} today`}</Text>
     // A nearly full context: Compact, a press away, before Claude Code compacts it on its own
-    const compact = s.ctx.pct >= 80 && (
+    const compact = ctxLevel(s.ctx.pct) === 'bad' && (
       <Button key="ph-compact" plain onPress={() => inBackground($, 'compact', 'Compacting', () => compactNow($))}>
         <Text color={t.busy}>Compact</Text>
       </Button>
@@ -163,9 +167,9 @@ export function drawings(on: Parameters<Register>[0]) {
         {advice}
         <Box borderStyle="round" borderColor={t.dim} paddingX={1} justifyContent="space-between" flexWrap="wrap">
           <Text>
-            <Text color={t.text}>{p.steps.length > 0 && p.total > 0 ? `Step ${Math.min(p.done + 1, p.steps.length)} of ${p.steps.length}` : p.stepName}</Text>
-            {p.steps.length > 0 && p.total > 0 && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}
-            {s.ctx.pct >= 50 && <Text color={s.ctx.pct >= 80 ? t.busy : t.dim}>{`  ·  context ${s.ctx.pct}%`}</Text>}
+            <Text color={t.text}>{step ? `Step ${step.n} of ${step.of}` : p.stepName}</Text>
+            {step && <Text color={t.dim}>{` · ${p.stepName}`}</Text>}
+            {ctxLevel(s.ctx.pct) !== 'ok' && <Text color={ctxColor(t, s.ctx.pct, t.dim)}>{`  ·  context ${s.ctx.pct}%`}</Text>}
             {testsLine && <Text color={testsFail ? t.bad : testsLine === 'testing…' ? t.busy : t.ok}>{`  ·  ${testsLine}`}</Text>}
             {liveLine}
             {budgetLine}
@@ -246,7 +250,7 @@ export function drawings(on: Parameters<Register>[0]) {
             <Box columnGap={1}>
               {contextLabel}
               <Text>
-                <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`${s.ctx.pct}%`}</Text>
+                <Text color={ctxColor(t, s.ctx.pct, t.text)}>{`${s.ctx.pct}%`}</Text>
                 <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>
               </Text>
             </Box>
@@ -254,7 +258,7 @@ export function drawings(on: Parameters<Register>[0]) {
           <Box>
             {!narrow && <Box width={10}>{contextLabel}</Box>}
             <Segs ui={{ Text }} w={bw} track={t.track} parts={s.ctx.segs.map(([, n], i) => [n / win, shades[i] ?? t.faint])} />
-            {!narrow && <Text color={s.ctx.pct >= 80 ? t.busy : t.text}>{`  ${s.ctx.pct}%`}</Text>}
+            {!narrow && <Text color={ctxColor(t, s.ctx.pct, t.text)}>{`  ${s.ctx.pct}%`}</Text>}
             {!narrow && <Text color={t.dim}>{` · ${kTok(s.ctx.used)} / ${kTok(win)}`}</Text>}
           </Box>
         </Box>
@@ -289,12 +293,12 @@ export function drawings(on: Parameters<Register>[0]) {
       const type = String(input.subagent_type ?? 'Agent')
       const a = s.agents.filter(x => x.task === task).pop()
       // Running: its tool calls and time so far; finished: what its testers or its own CASE lines found
-      const passed = a ? a.cases.filter(c => c.st === 'pass' || c.st === 'fixed').length : 0
+      const passed = a ? passedOf(a.cases) : 0
       const failed = a ? a.cases.filter(c => c.st === 'fail').length : 0
       const live = p.isRunning || a?.status === 'running'
       const status = live
         ? `Running${a ? ` · ${plural(a.tools, 'tool')} · ${fmt((await $.clock.now()) - a.startedAt)}` : ''}`
-        : !a ? 'Done' : a.status !== 'done' ? STATUS_WORD[a.status] : a.cases.length ? (failed ? `✗ ${failed} failed · ${passed}/${a.cases.length}` : `✓ ${passed}/${a.cases.length} passed`) : 'Done'
+        : !a || a.status !== 'done' || !a.cases.length ? STATUS_WORD[a?.status ?? 'done'] : failed ? `✗ ${failed} failed · ${passed}/${a.cases.length}` : `✓ ${passed}/${a.cases.length} passed`
       const tone = live ? t.busy : a?.status === 'failed' || failed ? t.bad : a?.status === 'stopped' ? t.dim : a?.cases.length ? t.ok : undefined
       return <Card ui={table} t={t} w={w} id={id} dashed icon="⧉" left={<Text color={t.text} wrap="truncate-end">{`${EXPERTS.some(x => x.type === type) ? expertName(type) : `${type} subagent`} · ${task}`}</Text>} right={status} tone={tone} onPress={() => showTab($, 'agents', { openAgent: a?.id ?? '' })} />
     }
@@ -357,7 +361,7 @@ export function drawings(on: Parameters<Register>[0]) {
                 <Text color={t.bad}>{` −${f.del}`}</Text>
               </Text>
             )}
-            {isLatest && vs.cases.length > 0 && <Text color={vs.fail ? t.bad : t.ok}>{`  ·  tests ${vs.pass}/${vs.cases.length}`}</Text>}
+            {isLatest && vs.cases.length > 0 && <Text color={vs.fail ? t.bad : t.ok}>{`  ·  tests ${passedOf(vs.cases)}/${vs.cases.length}`}</Text>}
             {spent >= 0.01 && <Text color={t.dim}>{`  ·  $${spent.toFixed(2)}`}</Text>}
           </Text>
         </Box>
@@ -405,7 +409,7 @@ export function drawings(on: Parameters<Register>[0]) {
     const t = chatThemeOf(s)
     const vs = verifyState(s.agents)
     const all = vs.cases
-    const pass = vs.pass
+    const pass = passedOf(vs.cases)
     const fail = vs.fail
     const adds = s.repo.changed.reduce((a, c) => a + c.add, 0)
     const dels = s.repo.changed.reduce((a, c) => a + c.del, 0)
@@ -421,7 +425,7 @@ export function drawings(on: Parameters<Register>[0]) {
         )}
         <Text color={fail ? t.bad : all.length ? t.ok : t.dim}>{`tests ${all.length ? `✓${pass}${fail ? ` ✗${fail}` : ''}/${all.length}` : '—'}`}</Text>
         <Text color={t.accent}>{`$${s.cost.toFixed(2)}`}</Text>
-        <Text color={t.dim}>{s.mode === 'auto' ? 'Auto · judge' : s.mode === 'ask' ? 'Ask · advice' : 'Judges off'}</Text>
+        <Text color={t.dim}>{modeOf(s.mode).status}</Text>
         {e.props.isWorking && <Text color={t.faint}>esc to interrupt</Text>}
       </Box>
     )

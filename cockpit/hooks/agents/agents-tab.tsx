@@ -4,14 +4,14 @@ import type { $ } from '../core/core'
 import { set, setUi, inBackground } from '../core/core'
 import { featureMapSvg } from '../memory/memory-map'
 import type { IconState } from './agents-view'
-import { agentGraph, STATUS_WORD, agentIconSvg } from './agents-view'
-import { AGENT_TYPES, EXPERTS, expertName, expertGlyph, PIPELINES, TESTERS } from './experts'
+import { agentGraph, STATUS_WORD, agentIconSvg, startedBy, providedBy } from './agents-view'
+import { AGENT_TYPES, EXPERTS, expertName, expertGlyph, PIPELINES, TESTERS, reportPart, passedOf } from './experts'
 import { fmt, plural } from '../core/text'
 import { rerun, testAgent, stopAgent, startPipeline, stopAll, createAgent, spawnAgent, runMany, runExpert, clearFinished } from './agents'
 import { bringBack, removeWorktree } from './worktrees-io'
 import { startAutopilot } from '../judges/autopilot'
 import type { V } from '../ui/shared'
-import { sp, grow, Bar, Seg, Rule, Check, Fold, More, svgColors, svgWidth } from '../ui/shared'
+import { sp, grow, Bar, Seg, Rule, Check, Head, Fold, More, svgColors, svgWidth } from '../ui/shared'
 import { planProgress } from '../flows/flows'
 import { stepWords } from '../flows/tools'
 import { MapText } from '../memory/activity-tab'
@@ -88,7 +88,7 @@ export function Agents($: $, v: V) {
     )
   const word = (a: Agent) => STATUS_WORD[a.status]
   const took = (a: Agent) => fmt((a.endedAt ?? v.now) - a.startedAt)
-  const reportOf = (a?: Agent) => a?.report.split('\n').find(l => l.startsWith('REPORT:'))?.slice(7).trim() ?? ''
+  const reportOf = (a?: Agent) => (a ? reportPart(a.report, 'REPORT') : '')
   const testsOf = (id: string) => {
     const mine = [...s.pastAgents, ...s.agents].filter(x => x.for === id && shown(x))
     return { pos: mine.filter(x => x.type === TESTERS[0]).pop(), neg: mine.filter(x => x.type === TESTERS[1]).pop() }
@@ -98,7 +98,7 @@ export function Agents($: $, v: V) {
     if (x.status === 'running') return { t: `${spin} ${label} testing`, c: t.busy }
     const fail = x.cases.filter(c => c.st === 'fail').length
     if (x.status !== 'done') return { t: `${sign} ${label} ${word(x).toLowerCase()}`, c: t.bad }
-    return { t: x.cases.length ? `${sign} ${label} ${x.cases.length - fail}/${x.cases.length}` : `${sign} ${label} done`, c: fail ? t.bad : t.ok }
+    return { t: x.cases.length ? `${sign} ${label} ${passedOf(x.cases)}/${x.cases.length}` : `${sign} ${label} ${word(x).toLowerCase()}`, c: fail ? t.bad : t.ok }
   }
   const testLine = (id: string, key: string) => {
     const { pos, neg } = testsOf(id)
@@ -169,7 +169,7 @@ export function Agents($: $, v: V) {
                     </Box>
                     <Text size="footnote" wrap="truncate-end">
                       {/* The count stands for the result only when the run finished; a stopped or failed run says so first */}
-                      {!live && <Text color={colorOf(st)}>{`${a.status !== 'done' || !a.cases.length ? `${word(a)} · ` : ''}${a.cases.length ? `${a.cases.filter(c => c.st === 'pass' || c.st === 'fixed').length}/${a.cases.length} passed · ` : ''}`}</Text>}
+                      {!live && <Text color={colorOf(st)}>{`${a.status !== 'done' || !a.cases.length ? `${word(a)} · ` : ''}${a.cases.length ? `${passedOf(a.cases)}/${a.cases.length} passed · ` : ''}`}</Text>}
                       <Text color={live ? t.busy : t.dim}>{`${plural(a.tools, 'tool call')} · ${took(a)}`}</Text>
                     </Text>
                     {a.status === 'done' && !TESTERS.includes(a.type) && !testsOf(a.id).pos && <Button key={`test-${a.id}`} label="± Test" plain onPress={() => testAgent($, a.id, false)} />}
@@ -221,7 +221,7 @@ export function Agents($: $, v: V) {
                   ))}
                   {open && (
                     <Box flexDirection="column" paddingLeft={2}>
-                      <Text color={t.faint} size="footnote" wrap="wrap">{[a.type, `started by ${a.by === 'agent' ? `the ${s.agents.find(x => x.id === a.parent)?.name ?? 'agent'}` : a.by === 'you' ? 'you' : a.by === 'pipeline' ? 'a Cockpit pipeline' : a.by === 'claude' ? 'Claude' : 'Claude, outside Cockpit\'s view'}`, `provided by ${a.provider === 'engine' ? 'Claude Code' : a.provider ?? (a.type.includes(':') ? a.type.split(':')[0] : 'Claude Code')}`].join(' · ')}</Text>
+                      <Text color={t.faint} size="footnote" wrap="wrap">{[a.type, `started by ${startedBy(a, s.agents)}`, `provided by ${providedBy(a)}`].join(' · ')}</Text>
                       {a.report !== '' && <Text color={t.dim} size="footnote" wrap="wrap">{a.report}</Text>}
                       {a.log.slice(-8).map((l, i) => (
                         <Text key={`log-${a.id}-${i}`} size="footnote" wrap="truncate-end">
@@ -248,12 +248,7 @@ export function Agents($: $, v: V) {
   const spawn = (val = s.ui.spawnTask) => (val.trim() ? spawnAgent($, val.trim(), s.ui.spawnType) : undefined)
   const useType = (val: string) => setUi($, { spawnTypeText: val, spawnType: val.trim() || (types[0] ?? 'general-purpose') })
   const runSelected = (val = s.ui.runTask) => runMany($, Object.keys(s.ui.selected).filter(k => s.ui.selected[k]), val.trim())
-  const section = (label: string, extra = '') => (
-    <Text size="footnote">
-      <Text color={t.dim} bold>{label.toUpperCase()}</Text>
-      {extra !== '' && <Text color={t.faint}>{`  ${extra}`}</Text>}
-    </Text>
-  )
+
   const lastRun = s.agents.filter(a => a.status === 'done' && shown(a)).pop()
   const found = lastRun ? lastRun.cases.filter(c => c.st === 'fail').length : 0
   const state = [
@@ -291,7 +286,7 @@ export function Agents($: $, v: V) {
                   {at === 'done' && (() => {
                     const ran = s.agents.filter(x => x.type === st && x.startedAt >= pipe.at).pop()
                     const fail = ran?.cases.filter(c => c.st === 'fail').length ?? 0
-                    return ran?.cases.length ? <Text color={fail ? t.bad : t.ok} size="footnote">{`${fail ? '✗' : '✓'}${ran.cases.length - fail}/${ran.cases.length}`}</Text> : null
+                    return ran?.cases.length ? <Text color={fail ? t.bad : t.ok} size="footnote">{`${fail ? '✗' : '✓'}${passedOf(ran.cases)}/${ran.cases.length}`}</Text> : null
                   })()}
                 </Box>
               )
@@ -304,7 +299,7 @@ export function Agents($: $, v: V) {
           {pipe.reports.length > 0 && (
             <Text size="footnote" wrap="truncate-end">
               <Text color={t.accent}>{'↳ '}</Text>
-              <Text color={t.dim}>{pipe.reports[pipe.reports.length - 1]?.split('\n').find(l => l.startsWith('HANDOFF:'))?.slice(8).trim() || 'report handed on'}</Text>
+              <Text color={t.dim}>{reportPart(pipe.reports[pipe.reports.length - 1] ?? '', 'HANDOFF') || 'report handed on'}</Text>
             </Text>
           )}
         </Box>
@@ -312,7 +307,7 @@ export function Agents($: $, v: V) {
       {live_.length > 0 && (
         <Box flexDirection="column" gap={sp(v, 1)}>
           <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
-            {section('Running', String(live_.length))}
+            <Head v={v} label="Running" n={live_.length} />
             <Button key="stop-all" plain onPress={() => stopAll($)}>
               <Text color={t.dim} size="footnote">■ Stop all</Text>
             </Button>
@@ -402,7 +397,7 @@ export function Agents($: $, v: V) {
       )}
       {AgentMap($, v, [...s.agents.filter(a => a.status === 'running'), ...done_.slice(0, 8)].filter(a => !s.cleared.includes(a.id)))}
       <Box flexDirection="column" gap={sp(v, 1)}>
-        {section('Team', `${team.length} agents`)}
+        <Head v={v} label="Team" note={`${team.length} agents`} />
         <Check v={v} id="team-wt" on={!!s.ui.agentWorktree} label="Runs in their own worktree" onPress={() => setUi($, ui => ({ agentWorktree: !ui.agentWorktree }))} />
         {team.map(x => {
           const a = latestOf(x.type)
@@ -411,7 +406,7 @@ export function Agents($: $, v: V) {
           const copies = s.agents.filter(r => r.type === x.type && r.status === 'running')
           // The roster says what each expert does; its runs and their results are listed once, under Running and
           // Finished, and the row points there
-          const right = !a || live ? '' : `${st === 'failed' ? 'failed' : a.status === 'done' ? 'done' : word(a).toLowerCase()} ↓`
+          const right = !a || live ? '' : `${(st === 'failed' ? STATUS_WORD.failed : word(a)).toLowerCase()} ↓`
           const ticked = !!s.ui.selected[x.type]
           const rowEl = (
             <Box key={`ex-${x.type}`} alignItems={v.desk ? 'center' : 'flex-start'} columnGap={sp(v, 1)}>

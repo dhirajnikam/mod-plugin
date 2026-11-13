@@ -77,7 +77,8 @@ export const Rule = ({ v }: { v: V }) => <v.ui.Text color={v.t.divider} mono>{'â
 
 export const kindColor = (t: Theme, meta: string) => (meta === 'new' ? t.ok : meta === 'deleted' ? t.bad : meta.startsWith('renamed') ? t.busy : t.hi)
 
-// A section's heading that does not fold (the Activity tab's): small capitals, a dim count, a colour of its own when it warns
+// A section's heading that does not fold, the one every tab draws: small capitals, a dim count and note, a colour of
+// its own when it warns
 export function Head({ v, label, n, color, note }: { v: V; label: string; n?: number; color?: string; note?: string }) {
   const { Text } = v.ui
   return (

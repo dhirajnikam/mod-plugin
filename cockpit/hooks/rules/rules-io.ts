@@ -2,7 +2,7 @@ import type { RuleFiles, SkillFile } from '../../types'
 import type { $ } from '../core/core'
 import { set, look, toast, homeDir } from '../core/core'
 import { repoRoot } from '../core/repos'
-import { parseSettings, mcpRows, skillOf, slashes, resolveMemory, memoryStarts, startupLoad, skillListed, setInvocation, changeMcp, settingsText } from './rules'
+import { parseSettings, mcpRows, skillOf, slashes, resolveMemory, memoryStarts, startupLoad, skillListed, setInvocation, changeMcp, settingsText, UNREAD } from './rules'
 import type { MemoryRead } from './rules'
 
 // The Rules tab: the hooks, permission rules and instructions of the repository and of the user, read from their files
@@ -58,10 +58,12 @@ export async function loadRules($: $) {
   // ponytail: a file over 1 MB, or not a file, is listed but not read; a memory file that size is a mistake to see
   const readMemory = async (p: string): Promise<MemoryRead> => {
     const st = await $.fs.stat(p, { resolve: true }).catch(() => null)
-    if (!st || st.kind === 'dir') return null
+    // Not there is one thing, there but unreadable another: only the first is a missing file
+    if (!st) return (await $.fs.exists(p).catch(() => false)) ? { skipped: UNREAD } : null
+    if (st.kind === 'dir') return null
     if (st.kind !== 'file') return { skipped: 'not a file' }
     if (st.size > 1_000_000) return { skipped: 'over 1 MB' }
-    return $.fs.read(p).then(String).catch(() => null)
+    return $.fs.read(p).then(String).catch(() => ({ skipped: UNREAD }))
   }
   const memory = await resolveMemory(memoryStarts(cwd, home), readMemory, home, [top, home])
   const load = startupLoad(memory, [...repo, ...user], mcp.file.rows)

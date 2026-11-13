@@ -1,10 +1,7 @@
 import type { Decision } from '../../types'
 import type { $ } from '../core/core'
 import { look, set, toast, note } from '../core/core'
-import { nJ, tally } from './judges'
-
-// The judges' seats, in order: a panel of n takes the first n
-const PERSONAS = ['a pragmatic senior engineer', 'a security reviewer', 'a long-term maintainer', 'the end user', 'a sceptic who prefers the safest option', 'a performance engineer', 'a test engineer', 'a software architect', 'a minimalist who prefers less code']
+import { nJ, tally, SEATS } from './judges'
 
 // What the judges read where no evidence is given: a summary of the conversation, or the task where none comes
 async function recentContext($: $, task: string, q: string) {
@@ -77,7 +74,7 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
         .complete({
           model: 'haiku',
           maxTokens: 90,
-          system: `You are ${PERSONAS[seat % PERSONAS.length]} on a panel deciding for a coding agent. Judge from the context's facts, not from how confident a claim sounds. Reply on one line: the option number, then " - ", then your reason in at most 20 words.`,
+          system: `You are ${SEATS[seat % SEATS.length]!.persona} on a panel deciding for a coding agent. Judge from the context's facts, not from how confident a claim sounds. Reply on one line: the option number, then " - ", then your reason in at most 20 words.`,
           prompt: `Context: ${brief}\n\nQuestion: ${q}\n${menu}`,
         })
         .catch(() => null)

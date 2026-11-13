@@ -1,9 +1,21 @@
 import type { Decision } from '../../types'
 
-// How many judges sit, by the decision's complexity
-export const nJ = (score: number) => (score <= 3 ? 3 : score <= 6 ? 6 : 9)
-// The judges' seats, in the order they are filled (their points of view are PERSONAS in judges/decisions.ts)
-export const SEAT_NAMES = ['Pragmatist', 'Security', 'Maintainer', 'End user', 'Sceptic', 'Performance', 'Tester', 'Architect', 'Minimalist']
+// The judges' seats, in the order they are filled: each its name and the point of view it judges from. A panel of n
+// takes the first n
+export const SEATS = [
+  { name: 'Pragmatist', persona: 'a pragmatic senior engineer' },
+  { name: 'Security', persona: 'a security reviewer' },
+  { name: 'Maintainer', persona: 'a long-term maintainer' },
+  { name: 'End user', persona: 'the end user' },
+  { name: 'Sceptic', persona: 'a sceptic who prefers the safest option' },
+  { name: 'Performance', persona: 'a performance engineer' },
+  { name: 'Tester', persona: 'a test engineer' },
+  { name: 'Architect', persona: 'a software architect' },
+  { name: 'Minimalist', persona: 'a minimalist who prefers less code' },
+]
+export const SEAT_NAMES = SEATS.map(s => s.name)
+// How many judges sit, by the decision's complexity: never more than there are seats
+export const nJ = (score: number) => Math.min(score <= 3 ? 3 : score <= 6 ? 6 : 9, SEATS.length)
 // The two-thirds bar
 export const thrOf = (n: number) => Math.ceil((n * 2) / 3)
 export function tally(d: Decision) {

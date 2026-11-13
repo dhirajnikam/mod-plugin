@@ -1,11 +1,11 @@
 import type { Changed, Pending, Ph, GitForm } from '../../types'
 import { loadPr } from './pr'
-import { loadAccounts, ghUse } from './accounts'
+import { loadAccounts, ghUse, gh } from './accounts'
 import { base, firstLine } from '../core/text'
 import type { $ } from '../core/core'
 import { look, set, toast, note, claim, release } from '../core/core'
-import { repoRoot, git, repoInfo, prefsKey, moveSaved, branchOf, SKIP } from '../core/repos'
-import { TYPES, parseCommit, baseFor, inferType, branchName, commitMsg } from './git-form'
+import { repoRoot, git, repoInfo, prefsKey, moveSaved, branchOf } from '../core/repos'
+import { TYPES, BASE_BRANCHES, parseCommit, baseFor, inferType, branchName, commitMsg } from './git-form'
 import { verifyState } from '../agents/experts'
 import { INITIAL } from '../core/state'
 
@@ -54,33 +54,8 @@ async function writeCommit($: $, s: Ph, sig: string) {
   await set($, st => (st.suggest?.sig === sig ? { suggest: { sig, type: c?.type ?? '', subject: c?.subject ?? '' } } : {}))
 }
 
-// The project's paths: git's view (tracked and untracked, ignored left out), or a shallow walk outside a repository
-export async function loadProject($: $) {
-  // From the session's folder, as the Activity tree shows paths
-  const r = await $.process.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard']).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
-  let project = r.exitCode === 0 ? r.stdout.split('\0').filter(Boolean) : []
-  if (r.exitCode !== 0) {
-    // ponytail: depth 3 and 3000 paths; git gives the full view where it exists
-    const walk = async (dir: string, depth: number): Promise<string[]> => {
-      if (depth > 3 || project.length > 3000) return []
-      const entries = await $.fs.list(dir || undefined).catch(() => [])
-      const out: string[] = []
-      for (const en of entries) {
-        if (SKIP(en.name)) continue
-        const p = dir ? `${dir}/${en.name}` : en.name
-        if (en.kind === 'dir') out.push(...(await walk(p, depth + 1)))
-        else if (en.kind === 'file') out.push(p)
-      }
-      return out
-    }
-    project = await walk('', 0)
-  }
-  await set($, { project: project.slice(0, 3000) })
-}
-
 // Branch, ahead count, local branches and uncommitted files with their line counts
 export async function refreshRepo($: $) {
-  await loadProject($)
   // -z: paths come unquoted whatever they hold; a rename is "R  new\0old\0"
   const st = await git($, ['status', '--porcelain=v1', '-z', '-b'])
   if (st.exitCode !== 0) return set($, { repo: INITIAL.repo })
@@ -112,7 +87,7 @@ export async function refreshRepo($: $) {
   const origin = (await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])).stdout.trim().replace(/^origin\//, '')
   // No origin HEAD and no usual base: none is guessed, so the branch you happen to be on is not kept as the base
   // (the PR would then never be read); a PR opened from here falls back to the current branch itself
-  const base = origin || ['main', 'master', 'develop'].find(b => branches.includes(b)) || ''
+  const base = origin || BASE_BRANCHES.find(b => branches.includes(b)) || ''
   // Every branch, remote and tag in graph order: hash, parents, refs, subject, age, author, one field each
   const log = (await git($, ['log', '--branches', '--remotes', '--tags', '--topo-order', '-n', '40', '--format=%h%x1f%p%x1f%D%x1f%s%x1f%ar%x1f%an'])).stdout
     .split('\n')
@@ -206,9 +181,7 @@ export async function commit($: $, auto: boolean, plan?: Pending) {
     if (p.exitCode === 0 && g.pr && !g.base) extra.push('no PR: pick a base in Patterns & options')
     if (p.exitCode === 0 && g.pr && g.base) {
       const base = g.base
-      const pr = await $.process
-        .run(['gh', 'pr', 'create', '--base', base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])], { cwd: (await repoRoot($)) || '.' })
-        .catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+      const pr = await gh($, ['pr', 'create', '--base', base, '--head', br, '--title', msg, '--body', g.body || msg, ...(g.draft ? ['--draft'] : [])], undefined, (await repoRoot($)) || '.')
       extra.push(pr.exitCode === 0 ? `${g.draft ? 'draft PR' : 'PR'} → ${base} ${pr.stdout.trim()}` : `PR failed: ${firstLine(pr)}`)
     }
   }

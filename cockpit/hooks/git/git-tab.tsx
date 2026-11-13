@@ -71,7 +71,7 @@ function GitBody($: $, v: V) {
     s.repo.changed.length ? `${plural(s.repo.changed.length, 'file')} changed` : 'working tree clean',
     s.repo.ahead > 0 ? `${s.repo.ahead} to push` : '',
     s.repo.behind > 0 ? `${s.repo.behind} to pull` : '',
-    pr ? `PR #${pr.number}${pr.checks.unknown ? '' : ` checks ${pr.checks.fail ? 'failing' : pr.checks.pending ? 'running' : 'passing'}`}` : '',
+    pr ? prWords(pr).line : '',
   ].filter(Boolean).join(' · ')
   const moreOpen = !!s.ui.collapsed['git-more']
   return (
@@ -326,6 +326,8 @@ function Setup($: $, v: V) {
     </Box>
   )
   const sample = { ...g, subject: 'add login page', type: 'feat', ticket: g.ticket || 'API-12' }
+  // A commit option's switch, worded as the Options list words it (GIT_OPTS)
+  const opt = (key: 'branchAuto' | 'push' | 'pr' | 'preTest') => <Check v={v} id={`opt-${key}`} on={g[key]} label={GIT_OPTS.find(o => o[0] === key)?.[1] ?? key} onPress={() => setGit($, { [key]: !g[key] })} />
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
       <Box flexWrap="wrap" columnGap={sp(v, 1)}>
@@ -349,7 +351,7 @@ function Setup($: $, v: V) {
             {GitField($, v, 'ticket', 'ticket', 'Ticket', { placeholder: 'API-12' })}
             {GitField($, v, 'user', 'user', 'User')}
           </Box>
-          <Check v={v} id="opt-branchAuto" on={g.branchAuto} label="New branch off the base, by the pattern" onPress={() => setGit($, { branchAuto: !g.branchAuto })} />
+          {opt('branchAuto')}
         </Box>
       )}
       {step === 2 && (
@@ -376,9 +378,9 @@ function Setup($: $, v: V) {
           <Text color={t.text} wrap="wrap">{g.commitMode === 'auto' ? 'When does Cockpit commit?' : 'When does Cockpit propose a commit?'}</Text>
           <Seg v={v} id="when" value={g.autoWhen} items={AUTO_WHENS.map(a => [a.v, a.label] as [string, string])} onPick={k => setGit($, { autoWhen: k as GitForm['autoWhen'] })} />
           <Box flexWrap="wrap" columnGap={sp(v, 3)}>
-            <Check v={v} id="opt-push" on={g.push} label="Push after commit" onPress={() => setGit($, { push: !g.push })} />
-            <Check v={v} id="opt-pr" on={g.pr} label="Open pull request" onPress={() => setGit($, { pr: !g.pr })} />
-            <Check v={v} id="opt-preTest" on={g.preTest} label="Only after the Verify experts pass" onPress={() => setGit($, { preTest: !g.preTest })} />
+            {opt('push')}
+            {opt('pr')}
+            {opt('preTest')}
           </Box>
         </Box>
       )}
@@ -418,13 +420,21 @@ function Options($: $, v: V) {
 }
 
 const REVIEW_WORDS = { approved: 'approved', changes: 'changes requested', required: 'review required', draft: 'draft', '': 'open' } as const
+// A pull request in words, the same on the Git tab and the Overview: its state (an open one by its review, in GitHub's
+// own terms), whether it has any checks, and both in one line with what the checks came to
+export function prWords(pr: PrStatus) {
+  const c = pr.checks
+  const status = pr.state === 'OPEN' ? REVIEW_WORDS[pr.review] : pr.state.toLowerCase()
+  const none = !c.unknown && c.pass + c.fail + c.pending + c.skip === 0
+  const checks = c.unknown || none ? '' : ` · checks ${c.fail ? `${c.fail} failing` : c.pending ? 'running' : 'passing'}`
+  return { status, none, line: `PR #${pr.number} ${status}${checks}` }
+}
 function PrStatusRow($: $, v: V, pr: PrStatus) {
   const { Box, Button, Text } = v.ui
   const { t } = v
   const c = pr.checks
-  const status = pr.state === 'OPEN' ? REVIEW_WORDS[pr.review] : pr.state.toLowerCase()
+  const { status, none } = prWords(pr)
   const tone = pr.state === 'MERGED' || pr.review === 'approved' ? t.ok : pr.review === 'changes' ? t.bad : t.dim
-  const none = !c.unknown && c.pass + c.fail + c.pending + c.skip === 0
   return (
     <Box flexDirection="column">
       <Text wrap="truncate-end">

@@ -1,5 +1,6 @@
 import type { GitForm, PrStatus } from '../../types'
 import { slug, plain, workOf } from '../core/text'
+import { isTestFeature } from '../memory/memory'
 
 export const TYPES = ['feat', 'fix', 'refactor', 'perf', 'test', 'docs', 'chore']
 export const BRANCH_PRESETS = [
@@ -23,14 +24,15 @@ export const COMMIT_MODES: [GitForm['commitMode'], string, string][] = [
   ['manual', 'Manual', 'Only when you press Commit'],
 ]
 // Branches that work is cut from, never committed to directly when a branch pattern is set
-const BASE_BRANCHES = ['main', 'master', 'develop', 'trunk']
+export const BASE_BRANCHES = ['main', 'master', 'develop', 'trunk']
 // The commit type a change calls for, from the words of the task and the files it touched
 export function inferType(task: string, paths: string[]) {
   const named = workOf(task)
   if (named) return named
   if (task) return 'feat'
   if (paths.length && paths.every(p => /\.(md|txt|rst)$/i.test(p))) return 'docs'
-  if (paths.length && paths.every(p => /(test|spec)/i.test(p))) return 'test'
+  // The memory map's rule for a test file (a tests folder or a .test./.spec. name), not any path holding the letters
+  if (isTestFeature({ files: paths })) return 'test'
   return paths.length ? 'feat' : 'chore'
 }
 const kindOf = (type: string) => (type === 'feat' ? 'feature' : type)
@@ -111,7 +113,10 @@ export function parsePr(view: string, checks: string): PrStatus | null {
   }
   return { number: v.number, title: plain(v.title), url: plain(v.url), state: (['OPEN', 'CLOSED', 'MERGED'].includes(v.state) ? v.state : 'OPEN'), review, checks: c }
 }
-// The base branch: the one you picked, else the repository's (origin's HEAD, main, master, develop), else none. A
+// The key a finished run's notice is told under, once: the PR, which of its runs, and how it ended. Nothing in it
+// changes between two reads of the same finished run
+export const ciKey = (branch: string, number: number, run: number, passed: boolean) => `ci:${branch}#${number}:${run}:${passed ? 'passed' : 'failed'}`
+// The base branch: the one you picked, else the repository's (origin's HEAD, else the first of BASE_BRANCHES it has), else none. A
 // saved base that is only the branch you are on, with no real base around, is what an earlier version guessed; it is
 // let go, or that branch's pull request would never be read
 export function baseFor(saved: string, current: string, detected: string) {
