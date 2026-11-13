@@ -8,7 +8,7 @@ prompt that show each task's progress, the agents at work and what they found, y
 the controls to act on all of it. It can also work on a goal by itself, cycle after cycle, until a panel of judges
 agrees it is done.
 
-![Cockpit's Overview: a commit to confirm, the current task's progress, checks, the agents at work as a neural view, changed files and an earlier flow](docs/images/overview.png)
+![Cockpit's Overview: a commit to confirm, what Claude is doing now, changed files, checks, agents, the codebase guide and the steps as a checklist](docs/images/overview.png)
 
 *A preview of the Overview, drawn from the desktop pane.*
 
@@ -25,12 +25,14 @@ at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin up
 
 ## A tour
 
+Every tab opens on one plain sentence of what is happening and the few things you act on; the rest is under **More**.
+
 | Tab | What you see and do |
 |---|---|
-| [**Overview**](docs/overview.md) | The task's progress ring and steps, checks that turn red when something fails, the agents at work as a neural view with what is remembered from similar tasks, changed files, context with Compact and Clear, the judges' decisions, and **Undo this turn** on each earlier flow (whatever made its changes) |
+| [**Overview**](docs/overview.md) | One plain sentence of what Claude is doing now, then changed files, checks, agents and the pull request; the steps as a checklist and the last decisions as short sentences; a **codebase guide** Claude writes and you refine; under More: the progress ring, the agents as a neural view, context with Compact and Clear, **Undo this turn** on each earlier flow, and **spend by day** with an optional **daily budget** |
 | [**Activity**](docs/activity.md) | A live feed of every file read, edited or searched; your codebase's features as a map, with what is being worked on lit; the impact of a change |
-| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change; agents **in their own worktree** (Claude Code's isolation) with Bring back and Remove; a notice when work is done while you are not watching |
-| [**Git**](docs/git.md) | The next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch; the branch's **pull request** with its review and CI checks, and Fix failing checks |
+| [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; the **model and effort** for each agent chosen from its task; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change; agents **in their own worktree** (Claude Code's isolation) with Bring back and Remove; a notice when work is done while you are not watching |
+| [**Git**](docs/git.md) | **Several repositories** in one folder, with a picker; the next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch; the branch's **pull request** with its review and CI checks, kept live while a check runs, and Fix failing checks |
 | [**Rules**](docs/rules.md) | What loads into every session, with its estimated tokens; the hooks, permission rules, MCP servers, skills and `CLAUDE.md` instructions of the repository or of you, to add, edit, delete or switch |
 
 Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in

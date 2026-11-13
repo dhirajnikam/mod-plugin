@@ -129,5 +129,5 @@ export function Diff({ ui, t, add, del, size }: { ui: Pick<UI, 'Text'>; t: Theme
 
 // What an SVG map is drawn with: the theme's colours, on the pane's surface (a terminal's own when the theme names
 // none), at the pane's own width so it is drawn at full size instead of shrunk to fit
-export const svgColors = (v: V) => ({ accent: v.t.accent, busy: v.t.busy, text: v.t.text, dim: v.t.dim, track: v.t.divider, bg: /^#/.test(v.t.surface) ? v.t.surface : v.s.isDarkTerm ? DARK_SURFACE : '#f5f4ef' })
+export const svgColors = (v: V) => ({ accent: v.t.accent, busy: v.t.busy, text: v.t.text, dim: v.t.dim, track: v.t.divider, bg: /^#/.test(v.t.surface) ? v.t.surface : v.s.termBg === 'light' ? '#f5f4ef' : DARK_SURFACE })
 export const svgWidth = (v: V) => Math.max(320, v.w * 8)

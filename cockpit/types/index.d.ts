@@ -204,7 +204,8 @@ export type Commit = { sha: string; msg: string; meta: string; auto: boolean }
 // stored value reads as INITIAL; a new field is optional, so a session saved by an older version still loads
 export type Ph = {
   theme: ThemeId
-  isDarkTerm: boolean
+  // The terminal's background as last read (core.ts readTermBg), for Auto; absent: not known, Claude Code's theme keys
+  termBg?: 'dark' | 'light'
   // Focus: hide tool cards and turn lines, shrink the band to one line
   focus?: boolean
   tab: Tab

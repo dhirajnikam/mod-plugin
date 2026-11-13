@@ -3,7 +3,6 @@ import type { Ph } from '../../types'
 
 export const INITIAL: Ph = {
   theme: 'auto',
-  isDarkTerm: true,
   tab: 'overview',
   mode: 'auto',
   task: '',

@@ -50,7 +50,7 @@ Not tracked: `.cockpit/` (Cockpit's own per-repository data, which writes its ow
 
 ### The modules in cockpit/hooks/
 
-The code is laid out by feature: one folder per feature, holding its logic, its engine I/O and its tab.
+Cockpit's code laid out by feature: one folder per feature, holding its logic, its engine I/O and its tab.
 
 **Entry and wiring**
 
@@ -136,7 +136,7 @@ store (`$.store`); history, memory, hand-offs and roadmaps in the repository's `
 - **One state atom, declared once.** All state is one value of type `Ph`. The engine lets an atom be used only in the
   file that declares it, so [core.ts](../cockpit/hooks/core/core.ts) is the one place: everything else reads
   with `look($)` and writes with `set($, patch)` or `setUi($, uiPatch)`. `set()` also saves the preferences (`PREFS`)
-  that outlast a session. Drawings only read. When `Ph` changes shape, bump the `ph-25` tag in that file so an older
+  that outlast a session. Drawings only read. When `Ph` changes shape, bump the `ph-26` tag in that file so an older
   stored value reads as `INITIAL`; new fields are optional so an older saved session still loads.
 - **Module variables stay private to their file.** What a feature keeps between events (hand-offs on their way,
   worktrees waiting for their agent, notices already sent) is a module-level variable of the file that owns it,

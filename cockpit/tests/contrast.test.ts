@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { THEMES } from '../hooks/core/theme'
+import { THEMES, chatThemeOf, themeOf } from '../hooks/core/theme'
 
 // WCAG contrast of two #rrggbb colours
 const lum = (hex: string) => {
@@ -20,4 +20,15 @@ test('every palette\'s text, accent and status colours read on its own backgroun
       expect(r >= 3).toBe(true)
     }
   }
+})
+
+test('Auto paints for the terminal\'s background once it is known: Black on dark, White on light; unknown keeps Claude Code\'s keys', () => {
+  expect(themeOf({ theme: 'auto', termBg: 'dark' }).bg).toBe(THEMES.black.bg)
+  expect(themeOf({ theme: 'auto', termBg: 'light' }).text).toBe(THEMES.white.text)
+  expect(themeOf({ theme: 'auto' }).text).toBe('text')
+  // A named theme stays as chosen whatever the terminal
+  expect(themeOf({ theme: 'nord', termBg: 'light' }).bg).toBe(THEMES.nord.bg)
+  // The chat paints no background of its own, only the palette's text
+  const c = chatThemeOf({ theme: 'auto', termBg: 'dark' })
+  expect([c.bg, c.surface, c.wash, c.text]).toEqual(['', '', '', THEMES.black.text])
 })

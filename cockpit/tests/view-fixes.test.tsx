@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import { svgColors } from '../hooks/ui/shared'
 import { openMore, ok, posix } from './more'
 import { AUTO } from '../hooks/core/theme'
 import { passedOf } from '../hooks/agents/experts'
@@ -190,4 +191,12 @@ test('a section heading is drawn one way on every tab', { timeoutMs: 20_000 }, a
     looks.push(JSON.stringify(head[0]!.props))
   }
   expect(looks).toEqual(Array(3).fill(JSON.stringify({ size: 'footnote', bold: true, wrap: 'truncate-end' })))
+})
+
+// An SVG drawn under the Auto theme on a light terminal sits on a light ground, not the dark one it always had
+test('the drawings under Auto take a light ground on a light terminal and a dark one on a dark terminal', () => {
+  const v = (termBg?: 'dark' | 'light') => ({ t: { accent: 'a', busy: 'b', text: 't', dim: 'd', divider: 'v', surface: '' }, s: { termBg } }) as never
+  expect(svgColors(v('light')).bg).toBe('#f5f4ef')
+  expect(svgColors(v('dark')).bg).not.toBe('#f5f4ef')
+  expect(svgColors(v()).bg).toBe(svgColors(v('dark')).bg)
 })

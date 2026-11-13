@@ -35,12 +35,22 @@ export const THEME_IDS: ThemeId[] = ['auto', ...(Object.keys(THEMES) as Palette[
 // sits on the surface's own background (gold on its grey 'inactive' read at 1–2:1)
 export const AUTO: Theme = { bg: '', surface: '', text: 'text', dim: 'subtle', faint: 'inactive', track: 'inactive', divider: 'inactive', accent: '#b4833a', hi: '#c4934c', deep: '#a07a3c', lo: '#cfa159', wash: '', ok: 'success', bad: 'error', busy: 'warning' }
 
-export const themeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : THEMES[s.theme] ?? AUTO)
+// What Auto paints once the terminal's background is known (core.ts readTermBg): Black on a dark one, White on a light
+// one. Claude Code's own theme keys can be the wrong way round: its 'auto' theme follows the system's appearance as it
+// was when the session started, while a terminal profile can switch with the system later, or never
+export const AUTO_ON: Record<'dark' | 'light', Theme> = { dark: THEMES.black, light: THEMES.white }
+
+export const themeOf = (s: { theme: ThemeId; termBg?: 'dark' | 'light' }): Theme =>
+  s.theme === 'auto' ? (s.termBg ? AUTO_ON[s.termBg] : AUTO) : THEMES[s.theme] ?? AUTO
 
 // The chat's rows (spinner, cards, your messages, the status line) sit on the terminal's own background, which a palette
 // does not paint: they keep the surface's own text colours and take only the palette's accent, so White on a dark
 // terminal, or Black on a light one, never draws text the background hides
-export const chatThemeOf = (s: { theme: ThemeId }): Theme => (s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme]?.accent ?? AUTO.accent })
+export const chatThemeOf = (s: { theme: ThemeId; termBg?: 'dark' | 'light' }): Theme => {
+  // Auto with the background known: that palette's text and status colours, painted on nothing (no bg, surface or wash)
+  if (s.theme === 'auto' && s.termBg) return { ...AUTO_ON[s.termBg], bg: '', surface: '', wash: '' }
+  return s.theme === 'auto' ? AUTO : { ...AUTO, accent: THEMES[s.theme]?.accent ?? AUTO.accent }
+}
 
 // An SVG reads only real colours: a theme key (Auto's "text", "inactive") becomes the tone given for it, one that reads
 // on light and dark

@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Changed, Ph } from '../types'
 import { ACTS, act } from './acts'
 import { runCockpitCommand } from './commands'
-import { set, look, loadPrefs, openPane, paneShown } from './core/core'
+import { set, look, loadPrefs, openPane, paneShown, readTermBg } from './core/core'
 import { loadHistory, saveHistory } from './core/history'
 import { measure } from './core/session'
 import { syncAgents, registerExperts, discoverAgentTypes, isHandoff, takeHandoff, isOwnStart, agentSpawned, agentToolCall, agentToolDone, agentTurnEnd } from './agents/agents'
@@ -85,6 +85,8 @@ export const register: Register = on => {
       if (s.isWorking || s.agents.some(a => a.status === 'running') || (await paneShown($))) await syncAgents($)
     }))
     timers.push($.clock.every(15000, async () => {
+      // The terminal's background, so Auto switches when the terminal does
+      if ((await look($)).theme === 'auto') await readTermBg($).catch(() => null)
       if (await paneShown($)) {
         // Each reading by itself: one that fails must not skip the rest of the tick
         await refreshRepo($).catch(() => null)
@@ -101,6 +103,7 @@ export const register: Register = on => {
       }
     }))
     await loadPrefs($)
+    await readTermBg($).catch(() => null)
     await loadHistory($)
     void buildMemory($).catch(() => null)
     void loadGuide($).catch(() => null)
