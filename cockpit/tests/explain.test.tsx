@@ -7,14 +7,12 @@ import { recall } from '../hooks/memory/memory'
 const scroll = { offset: 0, bodyRows: 60 }
 const PANE = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 80, placement: 'dock', scroll, view: {} } }
 
-const beside: string[][] = []
 const wait = () => new Promise(r => (globalThis as any).setTimeout(r, 300))
 
 // The engine stood in with a repository at /repo whose files are the keys of `disk`
 function stand($: unknown, on: any, disk: Record<string, string>, opt: { cwd?: string } = {}) {
   const cwd = opt.cwd ?? '/repo'
   const asked: string[] = []
-  beside.length = 0
   on('clock.after', async (_: unknown, e: any) => (await new Promise(res => (globalThis as any).setTimeout(res, e.ms)), { value: undefined }) as never)
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('session.cwd', async () => ({ value: cwd }))
@@ -40,9 +38,7 @@ function stand($: unknown, on: any, disk: Record<string, string>, opt: { cwd?: s
     if (cmd.startsWith('git ls-files')) return out(Object.keys(disk).filter(k => k.startsWith('/repo/') && !k.includes('/.cockpit/')).map(k => `${k.slice(6)}\0`).join(''))
     return out('')
   })
-  // What went beside each prompt, for the tests that read it
-  on('prompt.submit', async (_: unknown, e: any) => (asked.push(String(e.text)), beside.push([...(e.context ?? [])]), { text: e.text }))
-  on('turn.complete', async () => ({ text: '' }) as never)
+  on('prompt.submit', async (_: unknown, e: any) => (asked.push(String(e.text)), { text: e.text }))
   return asked
 }
 
@@ -193,21 +189,4 @@ test('recall: one word from the prose of what a feature does recalls nothing; a 
   expect(recall(app, feats, {}, 'what the person buys')).toContain('Shopping cart')
   expect(recall(app, feats, {}, 'the cart')).toContain('Shopping cart')
   expect(recall(app, feats, {}, 'after lunch', ['src/cart.ts'])).toContain('Shopping cart')
-})
-
-test('when a hook above sends prompt.compose past Cockpit, the memory goes beside the next prompt once', { timeoutMs: 20_000 }, async ($, on) => {
-  const disk: Record<string, string> = { '/repo/a/x.ts': 'export const x = 1\n', '/repo/b/y.ts': 'export const y = 2\n', '/repo/.cockpit/.gitignore': '*' }
-  stand($, on, disk)
-  const got = beside
-  await (await mapped($, on)).unmount()
-  const say = (text: string) => $.prompt.submit({ text, command: null, isMeta: false, origin: { kind: 'composer' } } as never)
-  // The first prompt: the system prompt may not have been composed yet, so nothing is carried
-  await say('hello there')
-  expect(got.at(-1)).toEqual([])
-  await $.turn.complete({ answer: 'hi', reason: 'answer', turnId: 't', isAborted: false, durationMs: 10 } as never)
-  // A turn ran and the compose hook never did: the memory is carried, once
-  await say('and again')
-  expect(got.at(-1)!.join('\n')).toContain('memory/')
-  await say('once more')
-  expect(got.at(-1)).toEqual([])
 })

@@ -219,7 +219,8 @@ export function recall(files: Files, named: Named[], facts: Record<string, { exp
       const strong = naming(f)
       const hits = [...cue].reduce((a, w) => a + (strong.has(w) ? 2 : prose[i]!.has(w) && !common(w) ? 1 : 0), 0)
       const isHot = f.files.some(p => hot.has(p))
-      return { f, slug: slugs[i]!, score: isHot ? hits + 1 : hits >= 2 ? hits : 0 }
+      // Recent work lifts a feature the prompt hints at; it recalls none by itself (Claude has that work in front of it)
+      return { f, slug: slugs[i]!, score: hits >= 2 ? hits + (isHot ? 1 : 0) : hits && isHot ? 2 : 0 }
     })
     .filter(x => x.score > 0 && !isTestFeature(x.f))
     .sort((a, b) => b.score - a.score)

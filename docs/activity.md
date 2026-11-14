@@ -41,12 +41,11 @@ of the files are new. Until then, or where no model can be asked, features are t
   most of its folder is in (else the one its imports are in), and a deleted one leaves its feature, with no reload.
 - **Claude reads it** every turn, as a short section of its system prompt with every feature on a line of its own and
   its page, so it can find the file to change without reading the code; **the testers get it** too: each brief lists
-  the files that import the changed ones. Where another plugin's hook sends the system prompt on past Cockpit's,
-  the same lines go beside your next prompt instead, once.
-- **Recall per prompt**: each prompt you send carries the features its words name (or that were worked on lately),
-  at most three, with their pages and files, so Claude checks them first. A word names a feature when it is in the
+  the files that import the changed ones.
+- **Recall per prompt**: each prompt you send carries the features its words name, at most three, with their pages and files, so Claude checks them first. A word names a feature when it is in the
   feature's name, a file's name or an export; a word found only in the sentence of what the feature does is a hint,
-  and one hint alone recalls nothing, so a prompt about something else brings up no features. Files changed between turns, in your editor
+  and one hint alone recalls nothing unless the feature was worked on lately, so a prompt about something else
+  brings up no features. Files changed between turns, in your editor
   or by a checkout, join the memory when you send the next prompt.
 - **It is kept in the repository** (git-ignored): `.cockpit/memory.json`, the index `.cockpit/MEMORY.md` (the codebase
   in short, one row per feature, the folders), and one page per feature in `.cockpit/memory/`, its files by folder,

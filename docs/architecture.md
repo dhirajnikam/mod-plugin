@@ -49,7 +49,7 @@ which it calls, and the `/cockpit` command's work is in `commands.ts`.
 | `command.run` (`goal`) | notes the goal you set with `/goal` |
 | `prompt.submit` | opens a flow for your prompt and asks a model for its steps; attaches the features the prompt's words name (`recall()`) and syncs the memory with git's file list in the background |
 | `turn.start` | opens or carries on a flow for a turn that came without a prompt of yours (`/goal`, a continuation, a prompt another plugin kept) |
-| `prompt.compose` | adds the codebase memory to Claude's system prompt: every feature on one line with its page; when a hook above sends the event past this one, `prompt.submit` carries the same text beside the next prompt, once |
+| `prompt.compose` | adds the codebase memory to Claude's system prompt: every feature on one line with its page |
 | `tool.call` (any tool) | records file operations, moves the flow's steps, logs a subagent's calls, counts its edits |
 | `tool.call` (`TodoWrite`, `TaskCreate`, `TaskUpdate`, the app's `update_plan`) | Claude's or a subagent's task list becomes the flow's steps or the agent's tracker |
 | `tool.call` (`wrap_up`) | ticks the task list off; the next-step question goes to the judges |

@@ -15,11 +15,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - **Recall per prompt** no longer fires on a passing word: a word in a feature's name, a file's name or an export
-  names it; a word only in the sentence of what it does is a hint, and one hint alone recalls nothing.
-
-### Fixed
-- The codebase memory still reaches Claude when another plugin's hook sends the system prompt on past Cockpit's: it
-  goes beside your next prompt, once.
+  names it; a word only in the sentence of what it does is a hint, and one hint alone recalls nothing. Recent work
+  lifts a hinted feature but no longer attaches features to a prompt that names none.
 
 ## [0.10.0] - 2026-11-14
 

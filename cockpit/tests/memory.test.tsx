@@ -73,7 +73,9 @@ test('every feature fits the prompt on a line of its own, and a prompt recalls t
   expect(r).not.toContain('- Tests')
   expect(recall(app, feats, { 'auth/login.ts': { exports: ['verifyPassword'] } }, 'the password check is wrong')).toContain('Sign in')
   expect(recall(app, feats, {}, 'something else entirely')).toBe('')
-  expect(recall(app, feats, {}, 'something else entirely', ['auth/login.ts'])).toContain('Sign in')
+  // Recent work alone recalls nothing; with a hint from the prompt it does
+  expect(recall(app, feats, {}, 'something else entirely', ['auth/login.ts'])).toBe('')
+  expect(recall(app, feats, {}, 'people cannot get in', ['auth/login.ts'])).toContain('Sign in')
 })
 
 test('ESM .js specs, bare Dart and CSS imports, imports that leave the repository, and the longest memory key', async () => {
