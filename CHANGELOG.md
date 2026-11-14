@@ -17,6 +17,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Recall per prompt** no longer fires on a passing word: a word in a feature's name, a file's name or an export
   names it; a word only in the sentence of what it does is a hint, and one hint alone recalls nothing. Recent work
   lifts a hinted feature but no longer attaches features to a prompt that names none.
+- **Test-first experts**: the builder runs the project's tests before it changes anything, writes the failing test
+  for a bug or a change in behaviour, then makes it pass; the autopilot's cycles do the same for each milestone; the
+  reviewer reads the task before the diff, so a change that is not what was asked is its first finding.
 
 ## [0.10.0] - 2026-11-14
 
