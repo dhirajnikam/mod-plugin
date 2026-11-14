@@ -11,6 +11,10 @@ Claude asks you things two ways: its question box in the middle of a turn, and t
 
 Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; the choice is kept across sessions.
 
-The judges vote on Haiku, the quickest model. `judgeModels` in `/config` (or on the install screen) puts bigger models on some seats: `mixed` seats Haiku and Sonnet in turn, `wide` Haiku, Sonnet and Opus. That is slower and costs more, but the panel no longer shares one model's blind spots. Each judge's model shows beside its vote in the Overview.
+**Judge models**: the judges vote on Haiku, the quickest model. `judgeModels` in `/config` (or on the install screen) puts bigger models on some seats: `mixed` seats Haiku and Sonnet in turn, `wide` Haiku, Sonnet and Opus. That is slower and costs more, but the panel no longer shares one model's blind spots.
+
+**Faster judging**: the summary the judges read is written while the decision's complexity is scored, not after it.
+
+**Decisions card**: open a decision in the Overview to see each option's share of the panel as a bar (★ once it clears two thirds) and every judge on a row of its own with its model, its pick and its reason.
 
 [All docs](README.md) · [Project README](../README.md)

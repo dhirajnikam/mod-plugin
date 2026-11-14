@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Cockpit: progress by flow, an autopilot that works until the judges agree it is done, agents with trackers, memory and testers, codebase memory with a feature map, a Rules tab for hooks and permissions, and a git graph, around the prompt and in a side pane",
   "types": "./types/index.d.ts",
   "author": {
