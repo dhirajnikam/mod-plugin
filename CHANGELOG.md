@@ -5,6 +5,12 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Restructure**: `/cockpit restructure [what for]` has agents research the web for the stack's practices and Claude
+  write a proposed layout to `.cockpit/restructure.md`, for a new project or an old one, with its sources, every move
+  and the checks. Nothing moves until you run `/cockpit restructure agree`; Claude then applies the file as you left
+  it, one move at a time on a new branch, or says where it disagrees.
+
 ## [0.10.0] - 2026-11-14
 
 ### Added

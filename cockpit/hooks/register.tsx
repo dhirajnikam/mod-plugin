@@ -68,8 +68,8 @@ export const register: Register = (on, options) => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
-      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
+      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), restructure [what for] (agents research the web and propose a layout; restructure agree applies it), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | restructure [what for | agree] | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []
@@ -123,7 +123,7 @@ export const register: Register = (on, options) => {
   })
 
   // A sub-command that fails answers so, rather than failing the command
-  on('command.run', { command: 'cockpit' }, async ($, e) => runCockpitCommand($, e.args)).catch(() => ({ text: 'Cockpit could not run that: try again, or /cockpit alone to open the pane.' }))
+  on('command.run', { command: 'cockpit' }, async ($, e) => runCockpitCommand($, e.args, e.origin?.kind)).catch(() => ({ text: 'Cockpit could not run that: try again, or /cockpit alone to open the pane.' }))
 
   on('prompt.submit', async ($, e, next) => {
     // Cockpit's own hand-off of an agent start is no task of yours: no flow, no steps (turn.start drops the mark)

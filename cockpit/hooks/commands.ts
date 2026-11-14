@@ -8,6 +8,7 @@ import { FLOWS } from './flows/flows'
 import { pickFlow } from './flows/flows-io'
 import { stopAutopilot, resumeAutopilot, startAutopilot } from './judges/autopilot'
 import { explainCodebase } from './memory/explain'
+import { restructure } from './memory/restructure'
 import { TABS, isTab, openTab, showTab } from './pane/tabs'
 import { MODES } from './core/modes'
 
@@ -16,7 +17,8 @@ const HOURS = /^\d+(\.\d+)?h$/
 
 // /cockpit <verb> …: runs the sub-command and returns the command's answer. With no verb, or one it does not know,
 // it opens the pane
-export async function runCockpitCommand($: $, args: string) {
+// origin: where the run came from (the person's Enter is 'composer'), for the one sub-command only the person may give
+export async function runCockpitCommand($: $, args: string, origin = '') {
   const words = args.trim().split(/\s+/)
   const [verb = '', arg = ''] = words
   // The autopilot's two roles: task (also `autopilot`) works on one goal until it is achieved; product leads the
@@ -53,6 +55,7 @@ export async function runCockpitCommand($: $, args: string) {
     if (!asked) return { text: 'Open a project folder first' }
     return { text: `Asked Claude to write ${(await look($)).guide?.path ?? 'the codebase guide'}` }
   }
+  if (verb === 'restructure') return { text: await restructure($, words.slice(1), origin) }
   if (verb === 'theme') {
     if (!THEME_IDS.includes(arg as ThemeId)) return { text: `Themes: ${THEME_IDS.join(', ')}` }
     await setTheme($, arg as ThemeId)

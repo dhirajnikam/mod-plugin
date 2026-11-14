@@ -1,6 +1,6 @@
 # Cockpit docs
 
-- [Overview tab](overview.md): what Claude is doing now, the steps and the approach; the codebase guide; under More the
+- [Overview tab](overview.md): what Claude is doing now, the steps and the approach; the codebase guide; Restructure; under More the
   ring, agents as a neural view, context, decisions, Undo this turn, spend by day and the daily budget; the band,
   spinner and chat; Focus and themes
 - [Activity tab and codebase memory](activity.md): the live feed, the feature map, impact, features and the project tree

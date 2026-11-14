@@ -56,6 +56,30 @@ Once the file exists the row shows its path and when it was written, a **Refresh
 place and keeps your edits) and a box, "Ask Claude to change the guide…", whose text goes to Claude as
 `Edit docs/CODEBASE.md: <what you typed>`. Open only names the path: the host has no call to open a file.
 
+## Restructure
+
+`/cockpit restructure [what you want from it]` has the layout of a project decided by you and Claude together. It
+works on a new project (Claude proposes a starting scaffold from what you describe) and on an old one (the fewest
+moves that fix a real problem). It takes two commands, and only the second moves anything:
+
+1. **`/cockpit restructure`** hands Claude one prompt: read the project, start two or three agents that search the web
+   for what the stack's official docs recommend, how well-known projects of the same kind are laid out, and what makes
+   a codebase easy for coding agents to work in, then write a proposal to `.cockpit/restructure.md` (git-ignored). The
+   proposal holds its sources with their URLs, the layout now and proposed, every move with what else must change, what
+   stays, the risks and the checks, and open questions. Searches name the stack, never your project or its code.
+2. Read the proposal and change what you disagree with, in the file or by telling Claude. Run `/cockpit restructure`
+   again to have it revised; your edits are kept.
+3. **`/cockpit restructure agree`** is your yes. Claude reads the file as it now stands; if it disagrees with a change
+   of yours it moves nothing, says why and waits for you to agree again. Otherwise it applies the moves one at a time
+   on a new branch with `git mv`, fixing imports, config, CI and docs and running the proposal's checks after each. It
+   never commits or pushes: the diff is yours to review.
+
+The yes is a command so that only you can give it. `agree` is taken only when you send it yourself (at the prompt, or
+from your phone or web client): a run of it by a plugin, the [judges](judges.md)' next step among them, by a schedule
+or by another session is refused. Both commands are refused while the [autopilot](autopilot.md) runs, and `agree`
+until a proposal exists. The research agents and their web searches cost what any agents you start cost, and run
+under your own permission rules; Cockpit itself makes no model call for it.
+
 ## Around the prompt and in the chat
 
 - **Above the prompt**: Progress and Context bars; click either to open the Overview.
