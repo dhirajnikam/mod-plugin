@@ -59,6 +59,13 @@ export const register: Register = (on, options) => {
     return flow
   }
 
+  // Whether Cockpit's prompt.compose hook has run this session, and whether a main turn has ended. A hook above (a
+  // managed plugin's) may send that event on past this one: the memory then never reaches the system prompt, so the
+  // next prompt carries it once instead
+  let composed = false
+  let turnEnded = false
+  let carried = false
+
   // Agents finished while others of theirs still ran, for the one notice when the last is done
   const batch = new Set<string>()
 
@@ -150,7 +157,11 @@ export const register: Register = (on, options) => {
     // What the prompt brings to mind goes beside it, so Claude checks those features first
     const m = was.memory
     const cue = Object.keys(m.files).length ? recall(m.files, m.features ?? [], m.facts ?? {}, e.text, was.ops.slice(-30).map(o => memoryKey(m.files, o.path)).filter(Boolean)) : ''
-    const r = await next(cue ? { ...e, context: [...(e.context ?? []), cue] } : e)
+    // ponytail: carried once, in the conversation; a compaction may drop it, and the pages in .cockpit/memory stay
+    const lost = !composed && turnEnded && !carried && Object.keys(m.files).length > 0
+    if (lost) carried = true
+    const extra = [...(lost ? [memoryText(m.files, 2600, m.features)] : []), ...(cue ? [cue] : [])]
+    const r = await next(extra.length ? { ...e, context: [...(e.context ?? []), ...extra] } : e)
     // Refused beneath (a settings hook's block, the engine's limit): no turn runs, so no flow either
     if ('drop' in r && r.drop) {
       changesAtStart = null
@@ -238,6 +249,7 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('prompt.compose', async ($, e, next) => {
+    composed = true
     const r = await next(e)
     const m = (await look($)).memory
     if (!Object.keys(m.files).length) return r
@@ -293,6 +305,7 @@ export const register: Register = (on, options) => {
     const own = e.agentId ? undefined : turnFlows.get(e.turnId)
     const turn = { changed: changedThisTurn, atStart: changesAtStart, linesWere: linesAtStart, flow: own ?? turnFlow }
     if (!e.agentId) {
+      turnEnded = true
       changedThisTurn = false
       changesAtStart = null
       turnFlows.delete(e.turnId)

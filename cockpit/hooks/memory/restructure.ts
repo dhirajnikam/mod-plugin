@@ -1,7 +1,10 @@
 import type { $ } from '../core/core'
 import { cockpitDir } from '../core/repos'
 import { look } from '../core/core'
-import { memoryText } from './memory'
+import { memoryText, features, isTestFeature } from './memory'
+import type { Files } from './memory'
+import { loopUses } from './memory-map'
+import { plural } from '../core/text'
 import { quote, handOff } from './explain'
 
 // Restructure: the layout of a project, new or old, decided by the person and Claude together. Two prompts, each a
@@ -10,6 +13,16 @@ import { quote, handOff } from './explain'
 // question of Claude's, because the judges answer Claude's questions in auto mode and the autopilot keeps turns going.
 // `agree` is taken only from the person (the engine stamps where a command came from): a plugin's run of it, the
 // judges' next step among them, a schedule or another session is refused
+
+// What the codebase memory shows that a restructure could fix, for the Activity tab: features that use each other in a
+// loop, and features grown past a size one person holds in mind. Empty when it shows neither
+// ponytail: two signs read from imports and file counts; file lengths and tests far from their code are not looked at
+export function structureHints(files: Files, named: { name: string; what: string; files: string[] }[] = []) {
+  const fs = features(files, named).filter(f => !isTestFeature(f))
+  const loops = loopUses(fs)
+  const big = fs.filter(f => f.files.length > 12).sort((a, b) => b.files.length - a.files.length).slice(0, 2)
+  return [...(loops ? [`${plural(loops, 'use')} between features close${loops === 1 ? 's' : ''} a loop`] : []), ...big.map(f => `${f.name} holds ${f.files.length} files`)]
+}
 
 // What the proposal must hold, so the person can judge it and `agree` can be carried out from the file alone
 const PROPOSAL = [

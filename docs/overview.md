@@ -62,7 +62,8 @@ place and keeps your edits) and a box, "Ask Claude to change the guide…", whos
 works on a new project (Claude proposes a starting scaffold from what you describe) and on an old one (the fewest
 moves that fix a real problem). It takes two commands, and only the second moves anything:
 
-1. **`/cockpit restructure`** hands Claude one prompt: read the project, start two or three agents that search the web
+1. **`/cockpit restructure`** (or **Propose a structure** on the [Activity tab](activity.md), which names the
+   loops and oversized features its map shows) hands Claude one prompt: read the project, start two or three agents that search the web
    for what the stack's official docs recommend, how well-known projects of the same kind are laid out, and what makes
    a codebase easy for coding agents to work in, then write a proposal to `.cockpit/restructure.md` (git-ignored). The
    proposal holds its sources with their URLs, the layout now and proposed, every move with what else must change, what

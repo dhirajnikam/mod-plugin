@@ -12,6 +12,9 @@ heading.
 - **Feature map**: the codebase's features as a diagram. What uses another feature sits above it, with an arrow to it.
   In the terminal it is drawn in characters: boxes and lines ending in ▼, the feature being worked on in a heavy box, one a
   change reaches dashed. A use that loops back up is counted under the map instead of drawn.
+- **Structure**: under the map, what it shows a [restructure](overview.md#restructure) could fix: uses between
+  features that close a loop, and features holding more than twelve files. **Propose a structure** asks Claude for a
+  proposal aimed at those (agents research the web, nothing moves); applying it stays `/cockpit restructure agree`.
   The feature being worked on this moment is filled and breathes, the ones changed this flow are outlined in gold, the
   ones the last change reaches are dashed, and the arrows between them are lit; the rest are faint, and an arrow
   another path already implies is left out. Hovering a box says what the feature does. Test-only features are counted
@@ -38,9 +41,12 @@ of the files are new. Until then, or where no model can be asked, features are t
   most of its folder is in (else the one its imports are in), and a deleted one leaves its feature, with no reload.
 - **Claude reads it** every turn, as a short section of its system prompt with every feature on a line of its own and
   its page, so it can find the file to change without reading the code; **the testers get it** too: each brief lists
-  the files that import the changed ones.
+  the files that import the changed ones. Where another plugin's hook sends the system prompt on past Cockpit's (a
+  managed security plugin may), the same lines go beside your next prompt instead, once.
 - **Recall per prompt**: each prompt you send carries the features its words name (or that were worked on lately),
-  at most three, with their pages and files, so Claude checks them first. Files changed between turns, in your editor
+  at most three, with their pages and files, so Claude checks them first. A word names a feature when it is in the
+  feature's name, a file's name or an export; a word found only in the sentence of what the feature does is a hint,
+  and one hint alone recalls nothing, so a prompt about something else brings up no features. Files changed between turns, in your editor
   or by a checkout, join the memory when you send the next prompt.
 - **It is kept in the repository** (git-ignored): `.cockpit/memory.json`, the index `.cockpit/MEMORY.md` (the codebase
   in short, one row per feature, the folders), and one page per feature in `.cockpit/memory/`, its files by folder,

@@ -10,6 +10,16 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   write a proposed layout to `.cockpit/restructure.md`, for a new project or an old one, with its sources, every move
   and the checks. Nothing moves until you run `/cockpit restructure agree`; Claude then applies the file as you left
   it, one move at a time on a new branch, or says where it disagrees.
+- **Structure**: the Activity tab lists what the feature map shows a restructure could fix (loops between features,
+  features past twelve files) with a **Propose a structure** button aimed at them.
+
+### Changed
+- **Recall per prompt** no longer fires on a passing word: a word in a feature's name, a file's name or an export
+  names it; a word only in the sentence of what it does is a hint, and one hint alone recalls nothing.
+
+### Fixed
+- The codebase memory still reaches Claude when another plugin's hook sends the system prompt on past Cockpit's: it
+  goes beside your next prompt, once.
 
 ## [0.10.0] - 2026-11-14
 
