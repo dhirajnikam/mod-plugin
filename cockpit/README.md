@@ -30,9 +30,9 @@ Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit
 | File | Holds |
 |---|---|
 | `hooks/register.tsx` | event hooks, in order: prompts, tool calls, judges, turn ends, agents |
-| `hooks/commands.ts`, `acts.ts` | the `/cockpit` command; the actions another plugin can call by name |
-| `hooks/core/` | the state (declared in `core.ts`, first value in `state.ts`), repos, history, spend, notices, the themes |
-| `hooks/flows/` | flows, their steps and progress, a turn's start and end |
+| `hooks/commands.ts`, `acts.ts`, `turn-io.ts` | the `/cockpit` command; the actions another plugin can call by name; a turn's start and end |
+| `hooks/core/` | the state (declared in `core.ts`, first value in `state.ts`), repos, history, spend, notices, the themes, the experts table |
+| `hooks/flows/` | flows, their steps and progress |
 | `hooks/git/` | git, gh accounts, commits, the pull request, the commit graph, turn snapshots and undo, the Git tab |
 | `hooks/agents/` | the experts, pipelines, hand-offs, testers, worktrees, the model choice, the Agents tab |
 | `hooks/judges/` | the judges and the autopilot |

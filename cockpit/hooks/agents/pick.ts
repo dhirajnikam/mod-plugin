@@ -1,6 +1,6 @@
 // Chooses an agent's model, effort and helper count from the task: a small table of rules, nothing learned.
 // A level is a step on one ladder; the kind sets where it starts and the task's words and size move it.
-import { EXPERTS, shortType } from './experts'
+import { EXPERTS, shortType } from '../core/experts'
 
 const LADDER = [
   { model: 'haiku', effort: 'low' },

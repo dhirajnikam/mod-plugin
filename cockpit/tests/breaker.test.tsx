@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { openMore, ok, posix } from './more'
-import { parseCases, parseReport, verifyState } from '../hooks/agents/experts'
+import { parseCases, parseReport, verifyState } from '../hooks/core/experts'
 
 // Every feature driven end to end with the engine stood in: judges, testers, agents, files, commands, accounts, buttons
 const scroll = { offset: 0, bodyRows: 60 }

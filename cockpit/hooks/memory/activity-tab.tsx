@@ -9,7 +9,7 @@ import { fmt, plural } from '../core/text'
 import { buildMemory } from './memory-io'
 import { restructure, structureHints } from './restructure'
 import { tree, relTo } from './tree'
-import { expertGlyph } from '../agents/experts'
+import { expertGlyph } from '../core/experts'
 import type { V } from '../ui/shared'
 import { sp, Head, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
 

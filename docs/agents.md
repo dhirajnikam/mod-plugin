@@ -102,7 +102,7 @@ tab runs in a git worktree of its own, so two agents working at once never step 
 
 With **Choose model and effort for me** on (the default), Cockpit picks a model and an effort for each expert and agent
 it starts, and the row shows it, for example `haiku · low — light work (typo, docs)`. The rules are small:
-`hooks/agents/pick.ts` applies them and each expert's start is in its row of `hooks/agents/experts.ts`. The kind sets the start (planner and reviewer high on opus, builder and testers on sonnet, scribe on
+`hooks/agents/pick.ts` applies them and each expert's start is in its row of `hooks/core/experts.ts`. The kind sets the start (planner and reviewer high on opus, builder and testers on sonnet, scribe on
 haiku), light words (rename, typo, docs, readme) step down, hard words (refactor, architecture, security, debug, race)
 and a long brief or eight or more changed files step up. The model goes with the spawn; the effort goes on the expert's
 definition, which is registered again just before the start, because a spawn has no effort of its own. Pipelines run

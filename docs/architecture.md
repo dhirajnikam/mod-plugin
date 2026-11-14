@@ -18,13 +18,13 @@ Claude Code events ──▶ register.tsx (hooks) ──▶ a feature's folder (
 ```
 
 - **What Cockpit does** is in `cockpit/hooks/`, one folder per feature: `core/` (the state, `look()` and `set()`,
-  notes, paths, history, spend, finish notices and the daily budget, the themes), `flows/` (flows, their steps, a
-  turn's start and end), `git/` (git, gh, commits, accounts, the pull request, turn snapshots), `agents/` (experts,
+  notes, paths, history, spend, finish notices and the daily budget, the themes), `flows/` (flows, their steps and progress), `git/` (git, gh, commits, accounts, the pull request, turn snapshots), `agents/` (experts,
   pipelines, hand-offs, testers, worktrees), `judges/` (the judges and the autopilot), `memory/` (mapping the
   codebase, the feature map, the codebase guide), `rules/` (the Rules tab's files), `pane/` (the side pane, its header
   and the table of tabs), `ui/` (the pieces the tabs share) and `chat/` (the drawings around the chat). Beside
-  `register.tsx` sit `commands.ts` (the `/cockpit` command) and `acts.ts` (the actions callable by name). Where a
-  feature has the pair, `x.ts` is its pure logic and `x-io.ts` its engine I/O; `x-tab.tsx` is its tab. `core/` imports
+  `register.tsx` sit `commands.ts` (the `/cockpit` command), `acts.ts` (the actions callable by name) and `turn-io.ts`
+  (a turn's start and end, which reach every feature). Where a feature has the pair, `x.ts` is its pure logic and
+  `x-io.ts` its engine I/O; `x-tab.tsx` is its tab. `core/` imports
   nothing outside itself, and there are no import cycles.
 - **State** is one atom, its type `Ph` in `cockpit/types/index.d.ts`, its first value in `hooks/core/state.ts`. Claude
   Code lets an atom be used only in the file that declares it, so it is declared once, in `hooks/core/core.ts`;
@@ -32,7 +32,7 @@ Claude Code events ──▶ register.tsx (hooks) ──▶ a feature's folder (
   also saves the preferences that outlast a session. A drawing reads the state; a change to it redraws the readers.
 - **Pure helpers** live apart so they can be tested without the engine: `flows/flows.ts` and `flows/tools.ts` (flows,
   progress, steps), `git/git-form.ts` and `git/graph.ts` (branch and commit patterns, the commit graph),
-  `agents/experts.ts` and `agents/pick.ts` (the experts, an agent's model and effort), `judges/judges.ts` (the judges'
+  `core/experts.ts` and `agents/pick.ts` (the experts, an agent's model and effort), `judges/judges.ts` (the judges'
   tally), `memory/memory.ts`, `memory/memory-map.ts` and `memory/tree.ts` (imports, features, impact, the feature map,
   the file tree), `rules/rules.ts` (reading and changing settings and `CLAUDE.md`), `ui/svg.ts` (the SVG drawings),
   `core/theme.ts` (the themes).
@@ -71,7 +71,7 @@ Each tab is a `-tab.tsx` file in its feature's folder, its function called from 
 
 | Tab | Function | Uses |
 |---|---|---|
-| Overview (`pane/overview-tab.tsx`) | `Overview` | `progress()` from `flows/flows.ts`, `ringSvg()` and `neuralSvg()` from `ui/svg.ts`; `similarRuns()` from `agents/experts.ts` for the agents |
+| Overview (`pane/overview-tab.tsx`) | `Overview` | `progress()` from `flows/flows.ts`, `ringSvg()` and `neuralSvg()` from `ui/svg.ts`; `similarRuns()` from `core/experts.ts` for the agents |
 | Activity (`memory/activity-tab.tsx`) | `Files` | `FeatureMap`, `Memory` (impact and features), `tree()` from `memory/tree.ts`, `featureMapSvg()` from `memory/memory-map.ts` |
 | Agents (`agents/agents-tab.tsx`) | `Agents` | `Tracker` (an agent's task list), `AgentMap`, `agentGraph()` and `agentIconSvg()` from `agents/agents-view.ts`; starts go through `runExpert`, `startPipeline`, `spawnAgent` in `agents/agents.ts` |
 | Git (`git/git-tab.tsx`) | `Git` | `History` (the graph), `AccountBox`, `Setup`, `Options`; git and gh calls in `git/git.ts`, `git/accounts.ts` and `git/pr.ts` |

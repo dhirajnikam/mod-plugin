@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { parseReport, verifyState, PIPELINES, EXPERTS } from '../hooks/agents/experts'
+import { parseReport, verifyState, PIPELINES, EXPERTS } from '../hooks/core/experts'
 
 test('parseReport keeps REPORT and HANDOFF, defaults a missing HANDOFF, falls back to the last lines', async () => {
   expect(parseReport('blah\nREPORT: did x\nHANDOFF: run y\n')).toBe('REPORT: did x\nHANDOFF: run y')

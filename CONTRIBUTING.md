@@ -50,8 +50,8 @@ through the code.
 | Path | What it holds |
 |---|---|
 | `cockpit/hooks/register.tsx` | the event hooks, in order: prompts, tool calls, turns, agents, the judges |
-| `cockpit/hooks/commands.ts`, `acts.ts` | the `/cockpit` command; the actions another plugin can call by name |
-| `cockpit/hooks/core/` | the state (`core.ts`, the one file that declares it; the rest read it with `look()` and change it with `set()`), repos, history, spend, notices, text helpers, themes |
+| `cockpit/hooks/commands.ts`, `acts.ts`, `turn-io.ts` | the `/cockpit` command; the actions another plugin can call by name; a turn's start and end |
+| `cockpit/hooks/core/` | the state (`core.ts`, the one file that declares it; the rest read it with `look()` and change it with `set()`), repos, history, spend, notices, text helpers, themes, the experts table (`experts.ts`) |
 | `cockpit/hooks/flows/`, `git/`, `agents/`, `judges/`, `memory/`, `rules/` | one folder per feature; where a feature has the pair, `x.ts` is its pure logic and `x-io.ts` its engine I/O; `x-tab.tsx` is its tab in the pane |
 | `cockpit/hooks/pane/` | the side pane: the whole pane with the open tab (`full-pane.tsx`), its header and tab row, the Overview tab, and `tabs.ts`, the one table of tabs |
 | `cockpit/hooks/ui/` | `shared.tsx` for the pieces the tabs share, `svg.ts` for the SVG drawings |
