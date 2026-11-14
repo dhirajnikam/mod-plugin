@@ -5,6 +5,28 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Restructure**: `/cockpit restructure [what for]` has agents research the web for the stack's practices and Claude
+  write a proposed layout to `.cockpit/restructure.md`, for a new project or an old one, with its sources, every move
+  and the checks. Nothing moves until you run `/cockpit restructure agree`; Claude then applies the file as you left
+  it, one move at a time on a new branch, or says where it disagrees.
+
+## [0.10.0] - 2026-11-14
+
+### Added
+- **Setup on install**: installing Cockpit asks for its theme, the judges' mode and models, testing agents' work,
+  Verify after each turn, notices when work is done and a daily budget. The first session takes those choices and says
+  where to change them: each is a row in `/config`, and a change there applies at once. Upgrading keeps the settings
+  you saved.
+- **Judge models**: `judgeModels` in `/config` seats the judges on `fast` (all Haiku, the default), `mixed` (Haiku and
+  Sonnet in turn) or `wide` (Haiku, Sonnet and Opus in turn).
+
+### Changed
+- **Faster judging**: the summary the judges read is written while the decision's complexity is scored, not after.
+- **Decisions card**: redrawn as a courtroom bench. The judges sit as initials in a box, each lit in its vote's colour
+  over ✓, × or –, with the gavel's ruling under it; the roll below lists each judge with its model, its pick and its
+  reason. The chat's ⚖ card and the advice above the prompt show the bench on one line.
+
 ## [0.9.0] - 2026-11-13
 
 ### Added

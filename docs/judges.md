@@ -11,4 +11,10 @@ Claude asks you things two ways: its question box in the middle of a turn, and t
 
 Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; the choice is kept across sessions.
 
+**Judge models**: the judges vote on Haiku, the quickest model. `judgeModels` in `/config` (or on the install screen) puts bigger models on some seats: `mixed` seats Haiku and Sonnet in turn, `wide` Haiku, Sonnet and Opus. That is slower and costs more, but the panel no longer shares one model's blind spots.
+
+**Faster judging**: the summary the judges read is written while the decision's complexity is scored, not after it.
+
+**Decisions card**: open a decision in the Overview to see the bench: every judge as initials in a box, lit green with the leader (✓), red against it (×), dim while thinking (◌) or abstaining (–), and the gavel's ruling under it (🔨 4 of 6 · its pick, and what passing needs). The roll under the bench lists each judge with its model, its pick and its reason. The chat's ⚖ card and the advice above the prompt show the same bench on one line.
+
 [All docs](README.md) · [Project README](../README.md)

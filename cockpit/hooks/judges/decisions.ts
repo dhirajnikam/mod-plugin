@@ -1,7 +1,7 @@
 import type { Decision } from '../../types'
 import type { $ } from '../core/core'
 import { look, set, toast, note } from '../core/core'
-import { nJ, tally, SEATS } from './judges'
+import { nJ, tally, SEATS, seatModel } from './judges'
 
 // What the judges read where no evidence is given: a summary of the conversation, or the task where none comes
 async function recentContext($: $, task: string, q: string) {
@@ -43,6 +43,8 @@ export function openDecision($: $, id: string, q: string, opts: string[], at: nu
 // the judges read in place of a summary of the conversation (the autopilot's roadmap, commits and diff)
 export async function judge($: $, id: string, q: string, opts: { label: string; description?: string }[], act = true, evidence = '') {
   const s0 = await look($)
+  // The brief is the slow read (the session's own model): it runs while the complexity is scored
+  const briefing = evidence ? Promise.resolve(evidence) : recentContext($, s0.task, q)
   // privacy: judge-complexity (docs/privacy.md lists what it sends)
   const scoreR = await $.model
     .complete({
@@ -63,16 +65,16 @@ export async function judge($: $, id: string, q: string, opts: { label: string; 
   const n = nJ(score)
   await set($, s => ({
     activity: `Judging · ${n} judges`,
-    decisions: s.decisions.map(d => (d.id === id ? { ...d, score, signals, votes: Array(n).fill(-1), reasons: Array(n).fill(''), status: d.status === 'you' ? 'you' : 'voting' } : d)),
+    decisions: s.decisions.map(d => (d.id === id ? { ...d, score, signals, votes: Array(n).fill(-1), reasons: Array(n).fill(''), models: Array.from({ length: n }, (_, i) => seatModel(i)), status: d.status === 'you' ? 'you' : 'voting' } : d)),
   }))
-  const brief = evidence || (await recentContext($, s0.task, q))
+  const brief = await briefing
   const menu = opts.map((o, i) => `${i + 1}. ${o.label}${o.description ? ` — ${o.description}` : ''}`).join('\n')
   await Promise.all(
     Array.from({ length: n }, async (_, seat) => {
       // privacy: judge-votes (docs/privacy.md lists what it sends)
       const r = await $.model
         .complete({
-          model: 'haiku',
+          model: seatModel(seat),
           maxTokens: 90,
           system: `You are ${SEATS[seat % SEATS.length]!.persona} on a panel deciding for a coding agent. Judge from the context's facts, not from how confident a claim sounds. Reply on one line: the option number, then " - ", then your reason in at most 20 words.`,
           prompt: `Context: ${brief}\n\nQuestion: ${q}\n${menu}`,

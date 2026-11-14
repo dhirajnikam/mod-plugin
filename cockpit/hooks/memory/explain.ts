@@ -26,7 +26,7 @@ export function explainPrompt(a: { path: string; exists: boolean; memory: string
 }
 
 // A quoted block the text inside cannot close early: every tag of the same name in it is taken out
-function quote(tag: string, text: string) {
+export function quote(tag: string, text: string) {
   // Taken out until none is left: one pass would let `</me</memory>mory>` close up into a real tag
   const re = new RegExp(`</?${tag}\\s*>`, 'gi')
   let t = text
@@ -55,7 +55,7 @@ export async function loadGuide($: $) {
 }
 
 // One prompt to Claude; what to do first when it cannot go
-function handOff($: $, text: string, what: string, onFail?: () => void) {
+export function handOff($: $, text: string, what: string, onFail?: () => void) {
   submitPrompt($, text, () => (onFail?.(), void toast($, `Could not hand ${what} to Claude`)))
 }
 

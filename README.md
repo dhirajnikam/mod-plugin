@@ -21,7 +21,8 @@ Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, t
 ```
 
 Answer `y` to add this repository as a marketplace, then pick a scope: you everywhere, or one project. Cockpit loads
-at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
+at once; `/cockpit` opens its pane. **Setup on install**: the install asks how to set it up (theme, judges and their models, testing, a
+daily budget); every choice is a row in `/config` later. Later versions arrive with `claude plugin update cockpit`.
 
 ## A tour
 
@@ -58,6 +59,7 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 | `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |
 | `/cockpit test` | run the Verify pipeline now |
 | `/cockpit explain` | Claude writes (or refreshes) a [codebase guide](docs/overview.md#codebase-guide) at `docs/CODEBASE.md` that you can then ask it to change |
+| `/cockpit restructure [what for]` | agents research the web for your stack's practices and Claude [proposes a structure](docs/overview.md#restructure), for a new project or an old one; nothing moves until you run `/cockpit restructure agree` |
 | `/cockpit mode <auto\|ask\|off>` | the judges decide, advise, or stay off |
 | `/cockpit flow <plan\|task\|build\|docs\|check\|answer>` | put the current task on another [flow](docs/flows.md) (where its steps come from) |
 | `/cockpit focus [on\|off]` | hide or show Claude's tool activity in the chat |

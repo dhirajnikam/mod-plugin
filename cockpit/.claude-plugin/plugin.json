@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Cockpit: progress by flow, an autopilot that works until the judges agree it is done, agents with trackers, memory and testers, codebase memory with a feature map, a Rules tab for hooks and permissions, and a git graph, around the prompt and in a side pane",
   "types": "./types/index.d.ts",
   "author": {
@@ -19,5 +19,67 @@
     "permissions",
     "progress",
     "testing"
-  ]
+  ],
+  "userConfig": {
+    "theme": {
+      "type": "string",
+      "title": "Theme",
+      "description": "The pane's and band's colours. auto follows the terminal's background.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "paper",
+        "white",
+        "black",
+        "solarized",
+        "nord"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "title": "Judges",
+      "description": "auto: the judges decide, and only advise on what is hard to undo; ask: they advise, you decide; off: no judges.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "ask",
+        "off"
+      ]
+    },
+    "judgeModels": {
+      "type": "string",
+      "title": "Judge models",
+      "description": "fast: every judge on haiku, the quickest; mixed: haiku and sonnet in turn; wide: haiku, sonnet and opus in turn, slowest, with the most varied views.",
+      "default": "fast",
+      "options": [
+        "fast",
+        "mixed",
+        "wide"
+      ]
+    },
+    "testAgents": {
+      "type": "boolean",
+      "title": "Test agents' work",
+      "description": "Run the positive and the negative tester on each agent's run that changed files (spends tokens).",
+      "default": true
+    },
+    "autoVerify": {
+      "type": "boolean",
+      "title": "Verify every turn",
+      "description": "Run the Verify experts after each turn that changes files (spends tokens).",
+      "default": false
+    },
+    "notifyDone": {
+      "type": "boolean",
+      "title": "Tell me when work is done",
+      "description": "A notice for each finish while the pane is not watched.",
+      "default": true
+    },
+    "dailyBudget": {
+      "type": "number",
+      "title": "Daily budget ($)",
+      "description": "Warn when a day's spend nears or passes this many dollars. 0: no budget.",
+      "default": 0
+    }
+  }
 }

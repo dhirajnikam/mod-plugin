@@ -32,6 +32,8 @@ export type Decision = {
   advice?: string
   // Each seat's one-line reason for its vote, in seat order ('' while it has not voted)
   reasons?: string[]
+  // The model each seat voted with, in seat order
+  models?: string[]
   // question: Claude's question tool; next: the app's next-step box at the end of a turn
   kind?: 'question' | 'next'
 }

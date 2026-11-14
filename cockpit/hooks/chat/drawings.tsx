@@ -15,7 +15,7 @@ import { tally } from '../judges/judges'
 import { toOp } from '../flows/tools'
 import { showTab } from '../pane/tabs'
 import type { UI } from '../ui/shared'
-import { Segs, Diff } from '../ui/shared'
+import { Segs, Diff, benchLine } from '../ui/shared'
 import { CommitSkip } from '../git/git-tab'
 import { modeOf } from '../core/modes'
 
@@ -61,14 +61,6 @@ function Card({ ui, t, w, id, dashed, icon, left, right, onPress, tone }: { ui: 
       </Box>
     </Box>
   )
-}
-
-function seatDots(ui: ChatUI, t: Theme, d: Decision) {
-  const { Text } = ui
-  const top = tally(d).top
-  return d.votes.map((v, i) => (
-    <Text key={`dot-${d.id}-${i}`} color={v < 0 ? t.faint : v === top ? t.ok : t.dim}>{v < 0 || v !== top ? '○' : '●'}</Text>
-  ))
 }
 
 // Everything Cockpit draws around the chat: the spinner, the band above the prompt, the chat's cards and rows, and the
@@ -147,7 +139,8 @@ export function drawings(on: Parameters<Register>[0]) {
     const advice = adv && (
       <Text wrap="truncate-end">
         <Text color={t.accent}>{'⚖ '}</Text>
-        <Text color={t.text}>{adv.advice}</Text>
+        {benchLine({ Text }, t, adv)}
+        <Text color={t.text}>{`🔨 ${adv.advice}`}</Text>
       </Text>
     )
     const ask = s.pending && (
@@ -284,8 +277,8 @@ export function drawings(on: Parameters<Register>[0]) {
       const open = () => showTab($, 'overview', { openDec: d.id })
       if (d.status === 'you') return <Card ui={table} t={t} w={w} id={id} dashed={false} icon="⚖" left={<Text color={t.text}>You decided</Text>} right={d.result.replace(/^You chose · /, '')} onPress={open} />
       const tl = tally(d)
-      const left = [<Text key="jn" color={t.text}>{`${tl.n || '…'} judges `}</Text>, ...seatDots(table, t, d)]
-      const right = d.status === 'voting' ? `voting ${tl.revealed}/${tl.n}` : d.status === 'scoring' ? 'scoring…' : d.status === 'split' ? 'split · asking you' : `${tl.yes}/${tl.n} → ${d.opts[tl.top] ?? ''}`
+      const left = tl.n ? benchLine(table, t, d) : [<Text key="jn" color={t.text}>The bench is sitting…</Text>]
+      const right = d.status === 'voting' ? `voting ${tl.revealed}/${tl.n}` : d.status === 'scoring' ? 'scoring…' : d.status === 'split' ? 'split · asking you' : `🔨 ${tl.yes}/${tl.n} · ${d.opts[tl.top] ?? ''}`
       return <Card ui={table} t={t} w={w} id={id} dashed={false} icon="⚖" left={left} right={right} onPress={open} tone={d.status === 'split' || d.status === 'voting' || d.status === 'scoring' ? t.busy : undefined} />
     }
     if (p.tool === 'Agent' || p.tool === 'Task') {

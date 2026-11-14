@@ -5,7 +5,7 @@ import type { Ph, ThemeId } from '../../types'
 import { isWarned, standingWarning } from './spend'
 import { INITIAL, PANE } from './state'
 import { THEME_IDS } from './theme'
-import { MODES } from './modes'
+import { MODES, modeOf } from './modes'
 
 
 // The session's Cockpit state. The engine reads an atom only in the file that declares it, so this is the one place:
@@ -49,23 +49,46 @@ export async function storedPrefs($: $) {
   return (await $.store.get('prefs').catch(() => undefined)) as Partial<Ph> | undefined
 }
 
+// Each setting is taken only if it is of its kind: a store edited by hand cannot put a word where a switch goes
+const ok: Record<(typeof PREFS)[number], (v: unknown) => boolean> = {
+  theme: v => THEME_IDS.includes(v as ThemeId),
+  mode: v => MODES.some(m => m.id === v),
+  dailyBudget: v => typeof v === 'number' && Number.isFinite(v) && v > 0,
+  budgetWarned: isWarned,
+  focus: v => typeof v === 'boolean',
+  autoVerify: v => typeof v === 'boolean',
+  testAgents: v => typeof v === 'boolean',
+  notifyDone: v => typeof v === 'boolean',
+  chooseModel: v => typeof v === 'boolean',
+}
+
 export async function loadPrefs($: $) {
   const p = await storedPrefs($)
   if (!p || typeof p !== 'object') return
-  // Each saved setting is taken only if it is of its kind: a store edited by hand cannot put a word where a switch goes
-  const ok: Record<(typeof PREFS)[number], (v: unknown) => boolean> = {
-    theme: v => THEME_IDS.includes(v as ThemeId),
-    mode: v => MODES.some(m => m.id === v),
-    dailyBudget: v => typeof v === 'number' && Number.isFinite(v) && v > 0,
-    budgetWarned: isWarned,
-    focus: v => typeof v === 'boolean',
-    autoVerify: v => typeof v === 'boolean',
-    testAgents: v => typeof v === 'boolean',
-    notifyDone: v => typeof v === 'boolean',
-    chooseModel: v => typeof v === 'boolean',
-  }
   const pick = Object.fromEntries(PREFS.filter(k => k in p && p[k] !== undefined && ok[k](p[k])).map(k => [k, p[k]]))
   await update($, S, s => ({ ...s, ...pick }))
+}
+
+// The choices the install screen and /config set (plugin.json's userConfig). Each applies when it differs from the one
+// applied last, so a later /cockpit theme or mode stands until /config changes that same field. An upgrade (settings
+// saved, no options applied yet) keeps its settings; a first run takes them all and says where to change them
+const OPTIONS = ['theme', 'mode', 'testAgents', 'autoVerify', 'notifyDone', 'dailyBudget'] as const
+export async function applyOptions($: $, options: Readonly<Record<string, unknown>>) {
+  const last = (await $.store.get('appliedOptions').catch(() => undefined)) as Record<string, unknown> | undefined
+  const given = Object.fromEntries(OPTIONS.filter(k => k in options).map(k => [k, options[k]]))
+  const saved = await storedPrefs($)
+  if (!last && saved) return void (await $.store.set('appliedOptions', given).catch(() => null))
+  const patch: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(given)) {
+    if (last && last[k] === v) continue
+    // A budget of 0 is none
+    if (k === 'dailyBudget' && v === 0) patch[k] = undefined
+    else if (ok[k as (typeof OPTIONS)[number]](v)) patch[k] = v
+  }
+  if (Object.keys(patch).length) await set($, patch as Partial<Ph>)
+  await $.store.set('appliedOptions', given).catch(() => null)
+  const s = await look($)
+  if (!last) await note($, `Cockpit is set up: theme ${s.theme}, judges ${modeOf(s.mode).label}. Change these in /config, or with /cockpit theme and /cockpit mode; /cockpit opens the pane.`)
 }
 
 export async function toast($: $, text: string) {

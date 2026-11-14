@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Changed, Ph } from '../types'
 import { ACTS, act } from './acts'
 import { runCockpitCommand } from './commands'
-import { set, look, loadPrefs, openPane, paneShown, readTermBg } from './core/core'
+import { set, look, loadPrefs, applyOptions, openPane, paneShown, readTermBg } from './core/core'
 import { loadHistory, saveHistory } from './core/history'
 import { measure } from './core/session'
 import { syncAgents, registerExperts, discoverAgentTypes, isHandoff, takeHandoff, isOwnStart, agentSpawned, agentToolCall, agentToolDone, agentTurnEnd } from './agents/agents'
@@ -18,6 +18,7 @@ import { refreshRepo, loadGitPrefs } from './git/git'
 import { livePr } from './git/pr'
 import { snapTurn } from './git/turns-io'
 import { nextStep } from './judges/autopilot'
+import { setJudgeModels } from './judges/judges'
 import { personSpoke, judgeQuestions, personAnswered } from './judges/decisions'
 import { loadGuide } from './memory/explain'
 import { memoryText, recall, memoryKey } from './memory/memory'
@@ -26,7 +27,8 @@ import { fullPane } from './pane/full-pane'
 
 // The hooks module: every hook Cockpit registers, in the order the engine runs them for one event. Each hook keeps
 // its `next` here; the work around it lives with its feature (commands.ts, core/, flows/, agents/, judges/, git/, memory/)
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  setJudgeModels(options.judgeModels)
   // Root of the session's working directory, for relative paths
   let root = ''
   // The live-figure timers, so a second session.start (an enable) replaces them rather than doubling them
@@ -66,8 +68,8 @@ export const register: Register = on => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
-      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
+      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), restructure [what for] (agents research the web and propose a layout; restructure agree applies it), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | restructure [what for | agree] | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []
@@ -103,6 +105,8 @@ export const register: Register = on => {
       }
     }))
     await loadPrefs($)
+    // What the install screen or /config chose, over the saved settings where it changed
+    await applyOptions($, options).catch(() => null)
     await readTermBg($).catch(() => null)
     await loadHistory($)
     void buildMemory($).catch(() => null)
@@ -119,7 +123,7 @@ export const register: Register = on => {
   })
 
   // A sub-command that fails answers so, rather than failing the command
-  on('command.run', { command: 'cockpit' }, async ($, e) => runCockpitCommand($, e.args)).catch(() => ({ text: 'Cockpit could not run that: try again, or /cockpit alone to open the pane.' }))
+  on('command.run', { command: 'cockpit' }, async ($, e) => runCockpitCommand($, e.args, e.origin?.kind)).catch(() => ({ text: 'Cockpit could not run that: try again, or /cockpit alone to open the pane.' }))
 
   on('prompt.submit', async ($, e, next) => {
     // Cockpit's own hand-off of an agent start is no task of yours: no flow, no steps (turn.start drops the mark)

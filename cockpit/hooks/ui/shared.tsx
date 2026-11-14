@@ -1,6 +1,7 @@
 import type { ElementTable } from 'claude-code'
 
-import type { Ph } from '../../types'
+import type { Decision, Ph } from '../../types'
+import { tally, seatShort, voteMark, gavel } from '../judges/judges'
 import type { Theme } from '../core/theme'
 import { DARK_SURFACE } from '../core/theme'
 
@@ -131,3 +132,33 @@ export function Diff({ ui, t, add, del, size }: { ui: Pick<UI, 'Text'>; t: Theme
 // none), at the pane's own width so it is drawn at full size instead of shrunk to fit
 export const svgColors = (v: V) => ({ accent: v.t.accent, busy: v.t.busy, text: v.t.text, dim: v.t.dim, track: v.t.divider, bg: /^#/.test(v.t.surface) ? v.t.surface : v.s.termBg === 'light' ? '#f5f4ef' : DARK_SURFACE })
 export const svgWidth = (v: V) => Math.max(320, v.w * 8)
+
+// The judges on a bench: each seat's initials over its vote, lit in its vote's colour, in a box, and the gavel under it
+const markColor = (t: Theme, v: number, top: number) => (v < 0 ? t.faint : v === top ? t.ok : t.bad)
+export function Bench({ ui, t, d }: { ui: Pick<UI, 'Box' | 'Text'>; t: Theme; d: Decision }) {
+  const { Box, Text } = ui
+  const top = tally(d).top
+  const cells = d.votes.map((v, i) => ({ v, name: `(${seatShort(i)})` }))
+  const cw = Math.max(3, ...cells.map(c => c.name.length)) + 1
+  const centre = (x: string) => {
+    const l = Math.floor((cw - x.length) / 2)
+    return ' '.repeat(l) + x + ' '.repeat(cw - x.length - l)
+  }
+  return (
+    <Box flexDirection="column">
+      <Box borderStyle="round" borderColor={t.lo} paddingX={1} flexDirection="column" alignSelf="flex-start">
+        <Text color={t.dim} size="footnote" bold>THE BENCH</Text>
+        <Text mono>{cells.map((c, i) => <Text key={`bn-${d.id}-${i}`} color={c.v < 0 ? t.faint : t.text}>{centre(c.name)}</Text>)}</Text>
+        <Text mono>{cells.map((c, i) => <Text key={`bv-${d.id}-${i}`} color={markColor(t, c.v, top)}>{centre(voteMark(c.v, top))}</Text>)}</Text>
+      </Box>
+      <Text color={tally(d).passes ? t.text : t.busy}>{`🔨 ${gavel(d)}`}</Text>
+    </Box>
+  )
+}
+
+// The bench on one line, for the chat's card and the band: each seat's initials in its vote's colour
+export function benchLine(ui: Pick<UI, 'Text'>, t: Theme, d: Decision) {
+  const { Text } = ui
+  const top = tally(d).top
+  return d.votes.map((v, i) => <Text key={`bl-${d.id}-${i}`} color={markColor(t, v, top)}>{`${seatShort(i)} `}</Text>)
+}

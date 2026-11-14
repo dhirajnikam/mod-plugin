@@ -7,7 +7,7 @@ import { INITIAL } from '../core/state'
 import { STATUS_WORD } from '../agents/agents-view'
 import { set, setUi, inBackground } from '../core/core'
 import { sessionsNow, spendByDay, budgetLevel, todaySpend, costliest, dayOf } from '../core/spend'
-import { tally, thrOf, SEAT_NAMES } from '../judges/judges'
+import { tally, SEAT_NAMES, seatShort } from '../judges/judges'
 import { stopAutopilot, resumeAutopilot } from '../judges/autopilot'
 import { fmt, kTok, plural } from '../core/text'
 import { Guide } from '../memory/guide'
@@ -19,7 +19,7 @@ import { setBudget } from '../core/notify'
 import { compactNow, clearNow } from '../core/session'
 import type { $ } from '../core/core'
 import type { V } from '../ui/shared'
-import { sp, Bar, Seg, kindColor, Segs, Head, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
+import { sp, Bar, Seg, Bench, kindColor, Segs, Head, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
 import { Tracker } from '../agents/agents-tab'
 import { CommitSkip, prWords } from '../git/git-tab'
 import { ringSvg, ringRuns, neuralSvg } from '../ui/svg'
@@ -551,25 +551,18 @@ export function Overview($: $, v: V) {
                       <Text key={`sig-${d.id}-${sg}`} backgroundColor={t.track} color={t.dim}>{` ${sg} `}</Text>
                     ))}
                   </Box>
-                  {d.votes.length > 0 && (
-                    <Box gap={sp(v, 1)}>
-                      {d.votes.map((vote, i) => (
-                        <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>
-                          {vote === -2 ? '–' : vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
-                        </Text>
-                      ))}
-                      <Text color={t.dim}>{` ${tl.yes} for · ${tl.revealed - tl.yes} against · needs ${thrOf(tl.n)}`}</Text>
-                    </Box>
-                  )}
-                  <Text color={t.dim}>{d.opts.map((o, i) => `${i + 1}. ${o} (${tl.counts[i] ?? 0})`).join('   ')}</Text>
-                  {d.votes.map((vote, i) =>
-                    vote >= 0 && d.reasons?.[i] ? (
-                      <Text key={`why-${d.id}-${i}`} size="footnote" wrap="wrap">
-                        <Text color={vote === tl.top ? t.ok : t.bad}>{`${vote === tl.top ? '✓' : '×'} ${SEAT_NAMES[i % SEAT_NAMES.length]} · ${d.opts[vote] ?? ''}: `}</Text>
-                        <Text color={t.dim}>{d.reasons[i]}</Text>
+                  {d.votes.length > 0 && <Bench ui={v.ui} t={t} d={d} />}
+                  {/* The roll: each judge by initials and name, the model it sat on, its pick, and why under it */}
+                  {d.votes.map((vote, i) => (
+                    <Box key={`seat-${d.id}-${i}`} flexDirection="column">
+                      <Text wrap="truncate-end">
+                        <Text color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>{seatShort(i).padEnd(3)}</Text>
+                        <Text color={vote < 0 ? t.faint : t.text}>{SEAT_NAMES[i % SEAT_NAMES.length] ?? ''}</Text>
+                        <Text color={t.dim}>{`${d.models?.[i] ? ` · ${d.models[i]}` : ''} · ${vote >= 0 ? (d.opts[vote] ?? '') : vote === -2 ? 'abstained' : 'thinking…'}`}</Text>
                       </Text>
-                    ) : null,
-                  )}
+                      {vote >= 0 && d.reasons?.[i] && <Box paddingLeft={3}><Text color={t.faint} size="footnote" wrap="wrap">{d.reasons[i]}</Text></Box>}
+                    </Box>
+                  ))}
                 </Box>
               )}
             </Box>

@@ -753,7 +753,10 @@ test('a judge whose reply names no option abstains; it never counts for the firs
   await openMore(ui)
   await ui.press({ key: `decb-${'a1-0'}` })
   const d = JSON.stringify(await ui.drawn())
-  expect(d).toContain('"–"')
+  // On the bench an abstention is –, it counts as answered, and the roll says so
+  expect(d).toContain('" –  "')
+  expect(d).toContain(' · abstained')
+  expect(d).not.toContain('1 of 3 voted')
   await ui.unmount()
 })
 
