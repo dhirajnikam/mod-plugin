@@ -208,11 +208,19 @@ export function recall(files: Files, named: Named[], facts: Record<string, { exp
   const fs = features(files, named)
   const slugs = featureSlugs(fs.map(f => f.name))
   const hot = new Set(recent)
+  // A word in a feature's name, a file's name or an export names the feature (2). A word only in the prose of what it
+  // does is a hint (1), and none at all when three or more features' prose has it ("claude", "after"). One hint alone
+  // recalls nothing: a prompt about something else used to bring up three features on words like "work"
+  const naming = (f: Feature) => new Set(wordsOf([f.name, ...f.files.map(p => p.split('/').pop()!.replace(/\.[^.]+$/, '')), ...f.files.flatMap(p => facts[p]?.exports ?? [])].join(' ')))
+  const prose = fs.map(f => new Set(wordsOf(f.what)))
+  const common = (w: string) => prose.filter(p => p.has(w)).length >= 3
   const scored = fs
     .map((f, i) => {
-      const known = new Set(wordsOf([f.name, f.what, ...f.files.map(p => p.split('/').pop()!.replace(/\.[^.]+$/, '')), ...f.files.flatMap(p => facts[p]?.exports ?? [])].join(' ')))
-      const hits = [...cue].filter(w => known.has(w)).length
-      return { f, slug: slugs[i]!, score: hits * 2 + (f.files.some(p => hot.has(p)) ? 1 : 0) }
+      const strong = naming(f)
+      const hits = [...cue].reduce((a, w) => a + (strong.has(w) ? 2 : prose[i]!.has(w) && !common(w) ? 1 : 0), 0)
+      const isHot = f.files.some(p => hot.has(p))
+      // Recent work lifts a feature the prompt hints at; it recalls none by itself (Claude has that work in front of it)
+      return { f, slug: slugs[i]!, score: hits >= 2 ? hits + (isHot ? 1 : 0) : hits && isHot ? 2 : 0 }
     })
     .filter(x => x.score > 0 && !isTestFeature(x.f))
     .sort((a, b) => b.score - a.score)

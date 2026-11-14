@@ -44,6 +44,9 @@ Six experts ship with Cockpit: `cockpit:planner`, `builder`, `reviewer`, `prover
 in turn, each handed the task and the REPORT and HANDOFF lines of the experts before it. **Build** runs the planner,
 builder, reviewer, Prover, Breaker and scribe; **Verify** runs the Prover (proves the change works) then the Breaker (tries to break it),
 whose CASE lines show on their rows and as `tests ✓n/m` in the band; **Review** runs the reviewer.
+The builder works test-first: it runs the project's tests before it changes anything, writes the test for a bug or a
+change in behaviour and watches it fail, then makes it pass and says what the checks printed. The reviewer reads the
+task before the diff, so a change that is correct but not what was asked is its first finding.
 
 Every expert, and every agent you make, keeps a short task list (so Cockpit can track it), never commits, pushes or
 switches branches (Cockpit handles git) and never writes to `.cockpit/`; the testers keep throwaway scripts in the temp

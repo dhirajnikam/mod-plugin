@@ -62,7 +62,8 @@ place and keeps your edits) and a box, "Ask Claude to change the guide…", whos
 works on a new project (Claude proposes a starting scaffold from what you describe) and on an old one (the fewest
 moves that fix a real problem). It takes two commands, and only the second moves anything:
 
-1. **`/cockpit restructure`** hands Claude one prompt: read the project, start two or three agents that search the web
+1. **`/cockpit restructure`** (or **Propose a structure** on the [Activity tab](activity.md), which names the
+   loops and oversized features its map shows) hands Claude one prompt: read the project, start two or three agents that search the web
    for what the stack's official docs recommend, how well-known projects of the same kind are laid out, and what makes
    a codebase easy for coding agents to work in, then write a proposal to `.cockpit/restructure.md` (git-ignored). The
    proposal holds its sources with their URLs, the layout now and proposed, every move with what else must change, what
@@ -74,8 +75,8 @@ moves that fix a real problem). It takes two commands, and only the second moves
    on a new branch with `git mv`, fixing imports, config, CI and docs and running the proposal's checks after each. It
    never commits or pushes: the diff is yours to review.
 
-The yes is a command so that only you can give it. `agree` is taken only when you send it yourself (at the prompt, or
-from your phone or web client): a run of it by a plugin, the [judges](judges.md)' next step among them, by a schedule
+The yes is a command so that only you can give it. `agree` is taken only when you send it yourself (at the prompt, from
+your phone or web client, or through the app or script you drive Claude Code with): a run of it by a plugin, the [judges](judges.md)' next step among them, by a schedule
 or by another session is refused. Both commands are refused while the [autopilot](autopilot.md) runs, and `agree`
 until a proposal exists. The research agents and their web searches cost what any agents you start cost, and run
 under your own permission rules; Cockpit itself makes no model call for it.

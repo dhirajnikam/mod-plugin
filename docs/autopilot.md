@@ -10,7 +10,7 @@ is a flow in the Overview.
 is reached. The goal gets a roadmap of its own in `.cockpit/roadmap.md`: on the first cycle Claude studies the codebase
 and well-known open-source projects of the same kind and writes milestones, each with acceptance criteria a test or
 command can check. A roadmap another goal left behind is kept in `.cockpit/roadmaps/`. Each cycle then takes the next
-milestone: plan, build, verify with the tests and the Prover, Breaker and Reviewer, and tick it only when its criteria
+milestone: run the tests, plan, write the failing test, build, verify with the tests and the Prover, Breaker and Reviewer, and tick it only when its criteria
 pass.
 
 - **Each cycle knows what the earlier ones did**: its prompt lists them (lines changed, files, commits) and asks it not

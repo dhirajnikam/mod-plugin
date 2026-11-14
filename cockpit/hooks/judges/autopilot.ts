@@ -16,7 +16,7 @@ import { tally } from './judges'
 const SAFETY = '- Never push, publish, deploy, delete branches, or change settings, permissions or credentials. If the next step needs one of those, ask, and stop the cycle there.'
 const TASK_RULES = `How the task runs:
 - The roadmap lives in .cockpit/roadmap.md (git-ignored): milestones as "- [ ] <milestone>: <acceptance criteria a test or command can check>", under its title line, which you keep as it is. If it has no milestones yet, study the codebase and well-known open-source projects of the same kind for proven patterns, then write them. Tick a milestone ("- [x]") only when its criteria pass, and add milestones as you learn.
-- Each cycle, take the next unticked milestone: plan, build, then verify (run the project's tests and checks; use the cockpit:prover and cockpit:breaker agents for anything non-trivial, and cockpit:reviewer before you tick it). Keep your task list for the cycle.
+- Each cycle, take the next unticked milestone: run the project's tests first so you know what passed before you, plan, write the test for the milestone's criteria and watch it fail, build until it passes, then verify (run the project's tests and checks; use the cockpit:prover and cockpit:breaker agents for anything non-trivial, and cockpit:reviewer before you tick it). Keep your task list for the cycle.
 - Do not redo what the earlier cycles did. Every cycle ticks a milestone or changes code toward one; checking again what already passed is not a cycle's work.
 ${SAFETY}
 - End your answer with exactly one last line: "AUTOPILOT: CONTINUE <the next milestone>" or "AUTOPILOT: DONE <why every milestone's criteria pass>".`

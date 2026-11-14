@@ -4,9 +4,10 @@ import { workMarks } from './work-marks'
 import { loopUses, featureMapSvg, featureMapText } from './memory-map'
 import type { FeatureMark, MapTone } from './memory-map'
 import type { $ } from '../core/core'
-import { setUi, inBackground } from '../core/core'
+import { setUi, inBackground, toast } from '../core/core'
 import { fmt, plural } from '../core/text'
 import { buildMemory } from './memory-io'
+import { restructure, structureHints } from './restructure'
 import { tree, relTo } from './tree'
 import { expertGlyph } from '../agents/experts'
 import type { V } from '../ui/shared'
@@ -67,6 +68,25 @@ function FeatureMap($: $, v: V, marks: Record<string, FeatureMark>) {
           {[tests.length ? `${plural(tests.length, 'test feature')} not drawn` : '', fs.length > shown.length + tests.length ? `${fs.length - shown.length - tests.length} smaller left out` : '', loops ? `↺ ${plural(loops, 'use')} back up a loop not drawn` : ''].filter(Boolean).join(' · ')}
         </Text>
       )}
+    </Box>
+  )
+}
+
+// Structure: what the memory shows a restructure could fix, and the button that asks Claude to research and propose
+// one. It only proposes: applying is /cockpit restructure agree, the person's own command
+function Structure($: $, v: V) {
+  const { Box, Button, Text } = v.ui
+  const { s, t } = v
+  if (Object.keys(s.memory.files).length < 2) return null
+  const hints = structureHints(s.memory.files, s.memory.features ?? [])
+  return (
+    <Box flexDirection="column">
+      <Head v={v} label="Structure" {...(hints.length ? { note: plural(hints.length, 'sign'), color: t.busy } : {})} />
+      {hints.map((hint, i) => <Text key={`st-${i}`} color={t.text} size="footnote" wrap="wrap">{`• ${hint}`}</Text>)}
+      <Box columnGap={sp(v, 1)} alignItems="center" flexWrap="wrap">
+        <Button key="structure-propose" label="Propose a structure" onPress={() => inBackground($, 'structure', 'Asking Claude', async () => void toast($, await restructure($, hints.length ? [`fix what the feature map shows: ${hints.join('; ')}`] : [])))} />
+        <Text color={t.faint} size="footnote" wrap="wrap">{hints.length ? 'agents research the web, Claude proposes; nothing moves until /cockpit restructure agree' : 'no loops, no oversized feature · agents research the web, Claude proposes; nothing moves until you agree'}</Text>
+      </Box>
     </Box>
   )
 }
@@ -301,6 +321,7 @@ export function Files($: $, v: V) {
         {live && marquee()}
       </Box>
       {FeatureMap($, v, marks)}
+      {Structure($, v)}
       {Memory($, v, marks)}
       {rows_.length > 0 && (
         <Box flexDirection="column">
