@@ -59,8 +59,8 @@ export const register: Register = (on, options) => {
     return flow
   }
 
-  // Whether Cockpit's prompt.compose hook has run this session, and whether a main turn has ended. A hook above (a
-  // managed plugin's) may send that event on past this one: the memory then never reaches the system prompt, so the
+  // Whether Cockpit's prompt.compose hook has run this session, and whether a main turn has ended. A hook above may
+  // send that event on past this one: the memory then never reaches the system prompt, so the
   // next prompt carries it once instead
   let composed = false
   let turnEnded = false

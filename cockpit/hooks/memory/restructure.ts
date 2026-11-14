@@ -78,7 +78,8 @@ async function proposalPath($: $) {
 }
 
 // /cockpit restructure [what for] and /cockpit restructure agree: the command's answer
-// The person's own channels: Enter at the prompt, their phone or web client, the host app they type into
+// The person's own channels: Enter at the prompt, their phone or web client, and the host they drive Claude Code
+// with (the app they type into; a script of their own running claude -p counts as theirs too)
 const PERSON = ['composer', 'bridge', 'sdk']
 
 export async function restructure($: $, words: string[], origin = '') {
