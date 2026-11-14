@@ -1,19 +1,19 @@
-import type { Changed, FileOp, Ph } from '../../types'
-import type { $ } from '../core/core'
-import { look, set } from '../core/core'
-import { saveHistory } from '../core/history'
-import { tellDone, checkBudget } from '../core/notify'
-import { repoRoot } from '../core/repos'
-import { measure } from '../core/session'
-import { sessionsNow } from '../core/spend'
-import { syncAgents, startPipeline } from '../agents/agents'
-import { verifyState } from '../agents/experts'
-import { refreshRepo, followEdit, decideCommit } from '../git/git'
-import { snapTurn } from '../git/turns-io'
-import { stopAutopilot, autopilotTurnEnd } from '../judges/autopilot'
-import { updateMemory, loadProject, syncMemory } from '../memory/memory-io'
-import { flowOf } from './flows'
-import { stepOf, activityOf, isEditTool } from './tools'
+import type { Changed, FileOp, Ph } from '../types'
+import type { $ } from './core/core'
+import { look, set } from './core/core'
+import { saveHistory } from './core/history'
+import { tellDone, checkBudget } from './core/notify'
+import { repoRoot } from './core/repos'
+import { measure } from './core/session'
+import { sessionsNow } from './core/spend'
+import { syncAgents, startPipeline, holdEarlyPlan } from './agents/agents'
+import { verifyState } from './core/experts'
+import { refreshRepo, followEdit, decideCommit } from './git/git'
+import { snapTurn } from './git/turns-io'
+import { stopAutopilot, autopilotTurnEnd } from './judges/autopilot'
+import { updateMemory, loadProject, syncMemory } from './memory/memory-io'
+import { flowOf, applyPlan } from './flows/flows'
+import { stepOf, activityOf, isEditTool } from './flows/tools'
 
 // The repository's changes as one text: a turn changed files when it differs at the turn's end, however the turn
 // edited them (Edit and Write, a shell command, a script, a formatter)
@@ -160,4 +160,21 @@ export async function mainTurnEnd($: $, e: { isAborted?: boolean | undefined; du
   const sb = await look($)
   const at = await $.clock.now()
   await checkBudget($, sessionsNow(sb, at), at).catch(() => null)
+}
+
+// The plan after one of Claude's plan tools ran. A task list kept by the main loop is the current flow's; one a
+// subagent keeps is that agent's own, its progress
+export async function trackPlan($: $, e: { tool: string; agentId?: string }, r: unknown) {
+  const { tool, agentId } = e
+  // A refused or failed plan call changed no list: a failed TaskCreate has no id, and would leave a ghost task
+  if (typeof r !== 'object' || r === null || ('deny' in r && (r as { deny?: unknown }).deny) || ('isError' in r && (r as { isError?: unknown }).isError)) return
+  const result = 'result' in r ? (r as { result?: unknown }).result : undefined
+  if (agentId) {
+    const known = (await look($)).agents.some(a => a.id === agentId)
+    if (!known) return void holdEarlyPlan(agentId, held => applyPlan(held, tool, e as Record<string, unknown>, result))
+    return set($, s => ({ agents: s.agents.map(a => (a.id === agentId ? { ...a, plan: applyPlan(a.plan ?? [], tool, e as Record<string, unknown>, result) } : a)) }))
+  }
+  await set($, s => ({
+    flows: s.flows.map((f, i) => (i === s.flows.length - 1 ? { ...f, plan: applyPlan(f.plan ?? [], tool, e as Record<string, unknown>, result, s.flows.slice(0, -1).map(x => x.plan ?? [])) } : f)),
+  }))
 }

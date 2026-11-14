@@ -5,7 +5,7 @@ import { branchName, inferType, parseCommit, commitMsg, parsePr, baseFor } from 
 import { nJ, thrOf, tally } from '../hooks/judges/judges'
 import { flowOf, progressOf, parseSteps, applyPlan } from '../hooks/flows/flows'
 import { stepOf, stepWords } from '../hooks/flows/tools'
-import { parseCases } from '../hooks/agents/experts'
+import { parseCases } from '../hooks/core/experts'
 import { tree } from '../hooks/memory/tree'
 import { themeOf, chatThemeOf } from '../hooks/core/theme'
 

@@ -5,6 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-14
+
+### Changed
+- The folders under `cockpit/hooks/` no longer import each other in a loop (`agents`, `flows`, `git` and `memory`
+  did), and the feature map counts 3 uses that close a loop where it counted 10. `experts.ts`, the experts table every
+  feature reads, moved from `agents/` to `core/`; `turn-io.ts`, a turn's start and end, moved from `flows/` to sit
+  beside `register.tsx`, and took `trackPlan()` with it. Nothing a person sees or does changes.
+
 ## [0.11.0] - 2026-11-14
 
 ### Added
@@ -390,7 +398,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.1...main
+[0.11.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.8.1...v0.9.0

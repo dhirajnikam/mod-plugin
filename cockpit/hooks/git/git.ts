@@ -6,7 +6,7 @@ import type { $ } from '../core/core'
 import { look, set, toast, note, claim, release } from '../core/core'
 import { repoRoot, git, repoInfo, prefsKey, moveSaved, branchOf } from '../core/repos'
 import { TYPES, BASE_BRANCHES, parseCommit, baseFor, inferType, branchName, commitMsg } from './git-form'
-import { verifyState } from '../agents/experts'
+import { verifyState } from '../core/experts'
 import { INITIAL } from '../core/state'
 
 // The ticked files and their figures: a written commit stands while they stay the same

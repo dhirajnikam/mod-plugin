@@ -1,7 +1,7 @@
 import type { Agent } from '../../types'
 import { AUTO } from '../core/theme'
 import type { FeatureMark } from '../memory/memory-map'
-import { EXPERTS, isOwn } from './experts'
+import { EXPERTS, isOwn } from '../core/experts'
 
 // A run's state as the word the Agents tab and the chat's cards say
 export const STATUS_WORD = { running: 'Running', done: 'Done', stopped: 'Stopped', failed: 'Failed' } as const

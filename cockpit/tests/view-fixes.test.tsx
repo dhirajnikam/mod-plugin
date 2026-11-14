@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import { svgColors } from '../hooks/ui/shared'
 import { openMore, ok, posix } from './more'
 import { AUTO } from '../hooks/core/theme'
-import { passedOf } from '../hooks/agents/experts'
+import { passedOf } from '../hooks/core/experts'
 import { MODES } from '../hooks/core/modes'
 
 // One fact, one wording: what the pane, the band above the prompt, the line under it and /cockpit say of the same

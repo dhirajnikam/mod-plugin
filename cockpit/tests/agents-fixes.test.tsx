@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { openMore, posix, deskPane as pane } from './more'
 import { agentGraph } from '../hooks/agents/agents-view'
-import { agentName, parseReport, reportPart, recallOf } from '../hooks/agents/experts'
+import { agentName, parseReport, reportPart, recallOf } from '../hooks/core/experts'
 import { standingWarning } from '../hooks/core/spend'
 import { nJ, SEATS, SEAT_NAMES } from '../hooks/judges/judges'
 import { resolveMemory } from '../hooks/rules/rules'

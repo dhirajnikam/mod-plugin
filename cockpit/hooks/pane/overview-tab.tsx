@@ -1,7 +1,7 @@
 
 import type { Agent, Decision, SessionSpend } from '../../types'
 import { progress, FLOWS, planProgress, progressOf, stepNo, autopilotWords } from '../flows/flows'
-import { verifyState, similarRuns, recallOf, expertGlyph, passedOf } from '../agents/experts'
+import { verifyState, similarRuns, recallOf, expertGlyph, passedOf } from '../core/experts'
 import { ctxShades, ctxLevel, ctxColor } from '../core/theme'
 import { INITIAL } from '../core/state'
 import { STATUS_WORD } from '../agents/agents-view'
