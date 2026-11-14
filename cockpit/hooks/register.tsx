@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Changed, Ph } from '../types'
 import { ACTS, act } from './acts'
 import { runCockpitCommand } from './commands'
-import { set, look, loadPrefs, openPane, paneShown, readTermBg } from './core/core'
+import { set, look, loadPrefs, applyOptions, openPane, paneShown, readTermBg } from './core/core'
 import { loadHistory, saveHistory } from './core/history'
 import { measure } from './core/session'
 import { syncAgents, registerExperts, discoverAgentTypes, isHandoff, takeHandoff, isOwnStart, agentSpawned, agentToolCall, agentToolDone, agentTurnEnd } from './agents/agents'
@@ -18,6 +18,7 @@ import { refreshRepo, loadGitPrefs } from './git/git'
 import { livePr } from './git/pr'
 import { snapTurn } from './git/turns-io'
 import { nextStep } from './judges/autopilot'
+import { setJudgeModels } from './judges/judges'
 import { personSpoke, judgeQuestions, personAnswered } from './judges/decisions'
 import { loadGuide } from './memory/explain'
 import { memoryText, recall, memoryKey } from './memory/memory'
@@ -26,7 +27,8 @@ import { fullPane } from './pane/full-pane'
 
 // The hooks module: every hook Cockpit registers, in the order the engine runs them for one event. Each hook keeps
 // its `next` here; the work around it lives with its feature (commands.ts, core/, flows/, agents/, judges/, git/, memory/)
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  setJudgeModels(options.judgeModels)
   // Root of the session's working directory, for relative paths
   let root = ''
   // The live-figure timers, so a second session.start (an enable) replaces them rather than doubling them
@@ -103,6 +105,8 @@ export const register: Register = on => {
       }
     }))
     await loadPrefs($)
+    // What the install screen or /config chose, over the saved settings where it changed
+    await applyOptions($, options).catch(() => null)
     await readTermBg($).catch(() => null)
     await loadHistory($)
     void buildMemory($).catch(() => null)

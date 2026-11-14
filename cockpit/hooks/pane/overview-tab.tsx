@@ -551,25 +551,33 @@ export function Overview($: $, v: V) {
                       <Text key={`sig-${d.id}-${sg}`} backgroundColor={t.track} color={t.dim}>{` ${sg} `}</Text>
                     ))}
                   </Box>
-                  {d.votes.length > 0 && (
-                    <Box gap={sp(v, 1)}>
-                      {d.votes.map((vote, i) => (
-                        <Text key={`seat-${d.id}-${i}`} color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>
-                          {vote === -2 ? '–' : vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}
-                        </Text>
-                      ))}
-                      <Text color={t.dim}>{` ${tl.yes} for · ${tl.revealed - tl.yes} against · needs ${thrOf(tl.n)}`}</Text>
+                  {/* Each option's share of the panel, the leader starred once it clears two thirds */}
+                  {d.opts.map((o, i) => {
+                    const c = tl.counts[i] ?? 0
+                    const lead = i === tl.top && c > 0
+                    return (
+                      <Box key={`opt-${d.id}-${i}`} gap={sp(v, 1)} alignItems="center">
+                        <Box flexGrow={1} flexShrink={1}>
+                          <Text color={lead ? t.text : t.dim} wrap="truncate-end">{`${i + 1}. ${o}`}</Text>
+                        </Box>
+                        <Bar ui={v.ui} w={10} frac={tl.n ? c / tl.n : 0} fill={lead ? (tl.passes ? t.ok : t.accent) : t.faint} track={t.track} />
+                        <Text color={lead ? t.text : t.dim}>{`${c}/${tl.n}${lead && tl.passes ? ' ★' : '  '}`}</Text>
+                      </Box>
+                    )
+                  })}
+                  {d.votes.length > 0 && <Text color={t.faint} size="footnote">{`${tl.revealed}/${tl.n} voted · ${thrOf(tl.n)} to pass`}</Text>}
+                  {/* The panel, a row a seat: its vote, its name, the model it voted with, its pick and why */}
+                  {d.votes.map((vote, i) => (
+                    <Box key={`seat-${d.id}-${i}`} flexDirection="column">
+                      <Box gap={sp(v, 1)}>
+                        <Text color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>{vote === -2 ? '–' : vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}</Text>
+                        <Text color={vote < 0 ? t.faint : t.text}>{(SEAT_NAMES[i % SEAT_NAMES.length] ?? '').padEnd(11)}</Text>
+                        {d.models?.[i] && <Text backgroundColor={t.track} color={t.dim} size="footnote">{` ${d.models[i]} `}</Text>}
+                        <Text color={t.dim} wrap="truncate-end">{vote >= 0 ? (d.opts[vote] ?? '') : vote === -2 ? 'abstained' : 'thinking…'}</Text>
+                      </Box>
+                      {vote >= 0 && d.reasons?.[i] && <Box paddingLeft={2}><Text color={t.faint} size="footnote" wrap="wrap">{d.reasons[i]}</Text></Box>}
                     </Box>
-                  )}
-                  <Text color={t.dim}>{d.opts.map((o, i) => `${i + 1}. ${o} (${tl.counts[i] ?? 0})`).join('   ')}</Text>
-                  {d.votes.map((vote, i) =>
-                    vote >= 0 && d.reasons?.[i] ? (
-                      <Text key={`why-${d.id}-${i}`} size="footnote" wrap="wrap">
-                        <Text color={vote === tl.top ? t.ok : t.bad}>{`${vote === tl.top ? '✓' : '×'} ${SEAT_NAMES[i % SEAT_NAMES.length]} · ${d.opts[vote] ?? ''}: `}</Text>
-                        <Text color={t.dim}>{d.reasons[i]}</Text>
-                      </Text>
-                    ) : null,
-                  )}
+                  ))}
                 </Box>
               )}
             </Box>

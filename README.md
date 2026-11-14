@@ -21,7 +21,8 @@ Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session, t
 ```
 
 Answer `y` to add this repository as a marketplace, then pick a scope: you everywhere, or one project. Cockpit loads
-at once; `/cockpit` opens its pane. Later versions arrive with `claude plugin update cockpit`.
+at once; `/cockpit` opens its pane. The install asks how to set it up (theme, judges and their models, testing, a
+daily budget); every choice is a row in `/config` later. Later versions arrive with `claude plugin update cockpit`.
 
 ## A tour
 

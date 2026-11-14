@@ -14,6 +14,12 @@ export const SEATS = [
   { name: 'Minimalist', persona: 'a minimalist who prefers less code' },
 ]
 export const SEAT_NAMES = SEATS.map(s => s.name)
+// The models the seats vote with, in turn (the judgeModels setting): fast, all haiku; mixed and wide put bigger models
+// on some seats, slower but with fewer blind spots shared by the whole panel
+export const JUDGE_MODELS = { fast: ['haiku'], mixed: ['haiku', 'sonnet'], wide: ['haiku', 'sonnet', 'opus'] } as const
+let panel: readonly string[] = JUDGE_MODELS.fast
+export const setJudgeModels = (k: unknown) => void (panel = JUDGE_MODELS[k as keyof typeof JUDGE_MODELS] ?? JUDGE_MODELS.fast)
+export const seatModel = (seat: number) => panel[seat % panel.length]!
 // How many judges sit, by the decision's complexity: never more than there are seats
 export const nJ = (score: number) => Math.min(score <= 3 ? 3 : score <= 6 ? 6 : 9, SEATS.length)
 // The two-thirds bar

@@ -5,6 +5,19 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Setup on install**: installing Cockpit asks for its theme, the judges' mode and models, testing agents' work,
+  Verify after each turn, notices when work is done and a daily budget. The first session takes those choices and says
+  where to change them: each is a row in `/config`, and a change there applies at once. Upgrading keeps the settings
+  you saved.
+- **Judge models**: `judgeModels` in `/config` seats the judges on `fast` (all Haiku, the default), `mixed` (Haiku and
+  Sonnet in turn) or `wide` (Haiku, Sonnet and Opus in turn).
+
+### Changed
+- **Faster judging**: the summary the judges read is written while the decision's complexity is scored, not after.
+- **The Decisions card, redrawn**: an open decision shows each option's share of the panel as a bar, the winner starred
+  once it clears two thirds, and every judge on a row of its own with its model, its pick and its reason.
+
 ## [0.9.0] - 2026-11-13
 
 ### Added
