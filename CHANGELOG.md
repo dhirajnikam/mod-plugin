@@ -390,7 +390,11 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.8.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.0...main
+[0.11.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/dhirajnikam/mod-plugin/compare/9106182...v0.9.0
+[0.8.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.8.0...9106182
 [0.8.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.5.0...v0.6.0
