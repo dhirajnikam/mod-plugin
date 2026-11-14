@@ -7,7 +7,7 @@ import { INITIAL } from '../core/state'
 import { STATUS_WORD } from '../agents/agents-view'
 import { set, setUi, inBackground } from '../core/core'
 import { sessionsNow, spendByDay, budgetLevel, todaySpend, costliest, dayOf } from '../core/spend'
-import { tally, thrOf, SEAT_NAMES } from '../judges/judges'
+import { tally, SEAT_NAMES, seatShort } from '../judges/judges'
 import { stopAutopilot, resumeAutopilot } from '../judges/autopilot'
 import { fmt, kTok, plural } from '../core/text'
 import { Guide } from '../memory/guide'
@@ -19,7 +19,7 @@ import { setBudget } from '../core/notify'
 import { compactNow, clearNow } from '../core/session'
 import type { $ } from '../core/core'
 import type { V } from '../ui/shared'
-import { sp, Bar, Seg, kindColor, Segs, Head, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
+import { sp, Bar, Seg, Bench, kindColor, Segs, Head, Fold, More, Diff, svgColors, svgWidth } from '../ui/shared'
 import { Tracker } from '../agents/agents-tab'
 import { CommitSkip, prWords } from '../git/git-tab'
 import { ringSvg, ringRuns, neuralSvg } from '../ui/svg'
@@ -551,31 +551,16 @@ export function Overview($: $, v: V) {
                       <Text key={`sig-${d.id}-${sg}`} backgroundColor={t.track} color={t.dim}>{` ${sg} `}</Text>
                     ))}
                   </Box>
-                  {/* Each option's share of the panel, the leader starred once it clears two thirds */}
-                  {d.opts.map((o, i) => {
-                    const c = tl.counts[i] ?? 0
-                    const lead = i === tl.top && c > 0
-                    return (
-                      <Box key={`opt-${d.id}-${i}`} gap={sp(v, 1)} alignItems="center">
-                        <Box flexGrow={1} flexShrink={1}>
-                          <Text color={lead ? t.text : t.dim} wrap="truncate-end">{`${i + 1}. ${o}`}</Text>
-                        </Box>
-                        <Bar ui={v.ui} w={10} frac={tl.n ? c / tl.n : 0} fill={lead ? (tl.passes ? t.ok : t.accent) : t.faint} track={t.track} />
-                        <Text color={lead ? t.text : t.dim}>{`${c}/${tl.n}${lead && tl.passes ? ' ★' : '  '}`}</Text>
-                      </Box>
-                    )
-                  })}
-                  {d.votes.length > 0 && <Text color={t.faint} size="footnote">{`${tl.revealed}/${tl.n} voted · ${thrOf(tl.n)} to pass`}</Text>}
-                  {/* The panel, a row a seat: its vote, its name, the model it voted with, its pick and why */}
+                  {d.votes.length > 0 && <Bench ui={v.ui} t={t} d={d} />}
+                  {/* The roll: each judge by initials and name, the model it sat on, its pick, and why under it */}
                   {d.votes.map((vote, i) => (
                     <Box key={`seat-${d.id}-${i}`} flexDirection="column">
-                      <Box gap={sp(v, 1)}>
-                        <Text color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>{vote === -2 ? '–' : vote < 0 ? '◌' : vote === tl.top ? '✓' : '×'}</Text>
-                        <Text color={vote < 0 ? t.faint : t.text}>{(SEAT_NAMES[i % SEAT_NAMES.length] ?? '').padEnd(11)}</Text>
-                        {d.models?.[i] && <Text backgroundColor={t.track} color={t.dim} size="footnote">{` ${d.models[i]} `}</Text>}
-                        <Text color={t.dim} wrap="truncate-end">{vote >= 0 ? (d.opts[vote] ?? '') : vote === -2 ? 'abstained' : 'thinking…'}</Text>
-                      </Box>
-                      {vote >= 0 && d.reasons?.[i] && <Box paddingLeft={2}><Text color={t.faint} size="footnote" wrap="wrap">{d.reasons[i]}</Text></Box>}
+                      <Text wrap="truncate-end">
+                        <Text color={vote < 0 ? t.faint : vote === tl.top ? t.ok : t.bad}>{seatShort(i).padEnd(3)}</Text>
+                        <Text color={vote < 0 ? t.faint : t.text}>{SEAT_NAMES[i % SEAT_NAMES.length] ?? ''}</Text>
+                        <Text color={t.dim}>{`${d.models?.[i] ? ` · ${d.models[i]}` : ''} · ${vote >= 0 ? (d.opts[vote] ?? '') : vote === -2 ? 'abstained' : 'thinking…'}`}</Text>
+                      </Text>
+                      {vote >= 0 && d.reasons?.[i] && <Box paddingLeft={3}><Text color={t.faint} size="footnote" wrap="wrap">{d.reasons[i]}</Text></Box>}
                     </Box>
                   ))}
                 </Box>

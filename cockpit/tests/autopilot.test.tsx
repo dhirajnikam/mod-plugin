@@ -105,10 +105,12 @@ test('a finished roadmap the judges doubt ends in two claims, not a loop: their 
   await ui.press({ key: `decb-${id}` })
   // Each seat a row: its name, the model it voted with, its pick, and its reason under it
   const open = JSON.stringify(await ui.drawn())
-  expect(open).toContain('"Pragmatist "')
-  expect(open).toContain('" haiku "')
+  expect(open).toContain('THE BENCH')
+  expect(open).toContain('"(P) "')
+  expect(open).toContain('"Pragmatist"')
+  expect(open).toContain(' · haiku · Not done yet')
   expect(open).toContain('the header contrast in dark mode is not checked')
-  expect(open).toContain('3/3 ★')
+  expect(open).toContain('🔨 3 of 3 · Not done yet  (needs 2)')
   await ui.unmount()
 })
 

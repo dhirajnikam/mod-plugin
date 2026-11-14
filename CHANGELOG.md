@@ -17,8 +17,9 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - **Faster judging**: the summary the judges read is written while the decision's complexity is scored, not after.
-- **Decisions card**: redrawn; an open decision shows each option's share of the panel as a bar, the winner starred
-  once it clears two thirds, and every judge on a row of its own with its model, its pick and its reason.
+- **Decisions card**: redrawn as a courtroom bench. The judges sit as initials in a box, each lit in its vote's colour
+  over ✓, × or –, with the gavel's ruling under it; the roll below lists each judge with its model, its pick and its
+  reason. The chat's ⚖ card and the advice above the prompt show the bench on one line.
 
 ## [0.9.0] - 2026-11-13
 

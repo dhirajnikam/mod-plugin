@@ -15,6 +15,6 @@ Switch in the Overview's Decisions card or with `/cockpit mode auto|ask|off`; th
 
 **Faster judging**: the summary the judges read is written while the decision's complexity is scored, not after it.
 
-**Decisions card**: open a decision in the Overview to see each option's share of the panel as a bar (★ once it clears two thirds) and every judge on a row of its own with its model, its pick and its reason.
+**Decisions card**: open a decision in the Overview to see the bench: every judge as initials in a box, lit green with the leader (✓), red against it (×), dim while thinking (◌) or abstaining (–), and the gavel's ruling under it (🔨 4 of 6 · its pick, and what passing needs). The roll under the bench lists each judge with its model, its pick and its reason. The chat's ⚖ card and the advice above the prompt show the same bench on one line.
 
 [All docs](README.md) · [Project README](../README.md)
