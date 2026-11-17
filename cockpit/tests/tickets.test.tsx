@@ -10,12 +10,13 @@ const text = (t: string, isError = false) => ({ value: { content: [{ type: 'text
 const issues = { issues: [{ key: 'API-12', fields: { summary: 'Add rate limiting to login', status: { name: 'In Progress' }, description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Limit login to five tries a minute.' }] }] } } }, { key: 'API-13', fields: { summary: 'Fix the\u001b[31m footer', status: { name: 'To Do' }, description: null } }] }
 
 function stand(on: any, st: { auth?: boolean; issues?: unknown } = {}) {
-  const log = { store: {} as Record<string, unknown>, calls: [] as { server: string; tool: string; args: any }[], connects: [] as string[], prompts: [] as string[], notes: [] as string[] }
+  const log = { store: {} as Record<string, unknown>, calls: [] as { server: string; tool: string; args: any }[], connects: [] as string[], prompts: [] as string[], notes: [] as string[], asked: [] as string[] }
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('session.cwd', async () => ({ value: '/repo' }))
   on('ui.toast', async () => ({ value: undefined }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('agent.list', async () => ({ value: [] }))
+  on('prompt.submit', async (_: unknown, e: any) => (log.asked.push(String(e.text)), { text: e.text }) as never)
   on('prompt.compose', async () => ({ sections: [] }) as never)
   on('session.append', async (_: unknown, e: any, next: any) => (log.notes.push(JSON.stringify(e.message?.content ?? '')), next(e)))
   on('store.get', async (_: unknown, e: any) => ({ value: log.store[e.key] }))
@@ -94,6 +95,13 @@ test('Jira: connect, pick the project, tick a ticket: the Git tab, the Overview 
   const composed: any = await $.prompt.compose({ model: 'claude-x', promptModel: 'claude-x', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never)
   const told = composed.sections.find((x: any) => x.id === 'cockpit:tickets')
   expect(told.text).toContain('API-12 · Add rate limiting to login [In Progress] (https://acme.atlassian.net/browse/API-12)')
+  // Start work: Claude is asked for a plan, with the ticket as data and Cockpit's reading of it
+  await ui.press({ key: 'tab-tickets' })
+  expect(await drawn()).toContain('Start work on API-12')
+  await ui.press({ key: 'tk-start' })
+  await settle()
+  expect(log.asked.length).toBe(1)
+  for (const want of ['<ticket>', 'API-12 · Add rate limiting to login [In Progress]', 'Limit login to five tries a minute.', 'Stop brute-force logins', 'Change nothing until I say go']) expect(log.asked[0]).toContain(want)
   // Unticked: Claude is no longer told, and the Git tab's ticket goes with it
   await ui.press({ key: 'tab-tickets' })
   await ui.press({ key: 'tk-work-API-12' })

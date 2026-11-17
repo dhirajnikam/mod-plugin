@@ -1,11 +1,11 @@
 import type { Ticket, Tickets, TicketSource } from '../../types'
 import type { $ } from '../core/core'
-import { set, look, setUi, toast, inBackground } from '../core/core'
+import { set, look, setUi, toast, inBackground, submitPrompt } from '../core/core'
 import { repoRoot } from '../core/repos'
 import { cut, plain } from '../core/text'
 import { setGit } from '../git/git'
 import type { Result } from './tickets'
-import { EMPTY, SERVERS, SOURCES, TOOLS, textOf, jsonOf, unknownTool, jiraSite, jiraProjects, jql, jiraTickets, notionFound, dataSource, notionTickets, gitTicket, briefPrompt, parseBrief, savedOf, ticketTree } from './tickets'
+import { EMPTY, SERVERS, SOURCES, TOOLS, textOf, jsonOf, unknownTool, jiraSite, jiraProjects, jql, jiraTickets, notionFound, dataSource, notionTickets, gitTicket, startPrompt, briefPrompt, parseBrief, savedOf, ticketTree } from './tickets'
 
 // The Tickets tab's reading: Jira and Notion through their makers' own MCP servers, called with the session's own
 // connection and sign-in. Only when the tab opens or a button is pressed, never at a session's start or on a timer;
@@ -326,6 +326,19 @@ export async function ticketCommand($: $, key: string) {
   const work = (b.work ?? []).map(w => `- ${w.feature}: ${w.what}`).join('\n')
   const fresh = (b.fresh ?? []).map(n => `+ ${n}`).join('\n')
   return `${tk.type ? `${tk.type} ` : ''}${tk.key} · ${tk.title}${tk.status ? ` [${tk.status}]` : ''}\n${b.explain}${work ? `\nWork on existing features:\n${work}` : ''}${fresh ? `\nNew:\n${fresh}` : ''}${!work && !fresh ? '\nNo feature of the codebase memory fits it.' : ''}`
+}
+
+// Start work: the ticket is ticked (so the Git tab and every later turn carry it) and handed to Claude with what is
+// known of it, asking for a plan before any change
+export async function startWork($: $, id: string) {
+  const before = await now($)
+  if (!ticketOf(before, id)) return
+  if (!before.working.some(x => x.id === id)) await workOn($, id)
+  const t = await now($)
+  const tk = ticketOf(t, id)
+  if (!tk) return
+  submitPrompt($, startPrompt(tk, t.briefs[id]), () => void toast($, `Could not hand ${tk.key || 'the ticket'} to Claude`))
+  await toast($, `Asked Claude for a plan for ${tk.key || tk.title}`)
 }
 
 // Working on a ticket, or no longer: kept for this repository, and the first with a key is the Git tab's ticket, so

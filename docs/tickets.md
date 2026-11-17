@@ -37,7 +37,8 @@ list to pick another.
 ## The tickets
 
 For Jira: your open tickets in the project (**Mine**), or every open one (**All open**), newest change first, up to
-50. For Notion: the database's pages, up to 30. Each row has the ticket's key (Jira), title and status. **↻ Read
+50. For Notion: the database's pages, up to 30. Each row has the ticket's key (Jira) with its kind and status, and its title under them; the title, marked ›, opens
+the ticket. **↻ Read
 again** asks the tracker again.
 
 **Epics, stories, tasks and sub-tasks.** Each Jira ticket shows its kind, and the list is drawn as the hierarchy: a
@@ -69,6 +70,12 @@ Tick a ticket to say you are working on it. Ticked tickets are kept per reposito
   `{kind}/{ticket}-{slug}` or a message pattern like `{ticket} {type}: {subject}` carries it. Unticking it clears it.
   A Notion page has no key, so it does not fill the field.
 - **The Overview** shows the ticket under its first line, linking here, and the tab's name carries the count.
+
+**▶ Start work** is the step after the tick. It is under the tab's first line for the ticket you are working on, and
+in every opened ticket (where it ticks the ticket too). It hands the ticket to Claude as a prompt in your
+conversation: its kind, key, title, status, parent, link and description, marked as data from the tracker, with
+Cockpit's summary and the work it named, and asks for a short plan (the files, the steps, how it will be checked)
+before anything is changed. You read the plan and say go.
 
 ## What to know
 
