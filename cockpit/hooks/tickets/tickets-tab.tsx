@@ -4,7 +4,7 @@ import { set, setUi } from '../core/core'
 import { cut, plural } from '../core/text'
 import type { V } from '../ui/shared'
 import { sp, Seg, Head, Check, More } from '../ui/shared'
-import { EMPTY, SOURCES, ticketLabel } from './tickets'
+import { EMPTY, SOURCES, ticketLabel, ticketTree, ticketTypes } from './tickets'
 import { connect, forget, refresh, findProjects, setSource, pickProject, clearProject, openTicket, explain, workOn } from './tickets-io'
 
 // Tickets: Jira or Notion, through their makers' own MCP servers. The project this repository is for, its open
@@ -21,7 +21,12 @@ export function TicketsTab($: $, v: V) {
   const moreOpen = !!s.ui.collapsed['tickets-more']
   const isWorking = (id: string) => tk.working.some(x => x.id === id)
   // One list: the tickets being worked on first (as the tracker has them now, when it listed them), then the rest
-  const rows: Ticket[] = [...tk.working.map(w => tk.items.find(x => x.id === w.id) ?? w), ...tk.items.filter(x => !isWorking(x.id))]
+  const all: Ticket[] = [...tk.working.map(w => tk.items.find(x => x.id === w.id) ?? w), ...tk.items.filter(x => !isWorking(x.id))]
+  // By kind (Epic, Story, Task, Sub-task) when the list holds more than one, then as their hierarchy
+  const types = ticketTypes(all)
+  const type = types.includes(s.ui.ticketType ?? '') ? (s.ui.ticketType ?? '') : ''
+  const rows = type ? all.filter(x => x.type === type) : all
+  const tree = ticketTree(rows)
   const state = tk.working.length
     ? `Working on ${ticketLabel(tk.working[0]!)}${tk.working.length > 1 ? ` and ${tk.working.length - 1} more` : ''}`
     : p ? `${p.name} · ${plural(tk.items.length, 'open ticket')}`
@@ -36,7 +41,7 @@ export function TicketsTab($: $, v: V) {
     const b = tk.briefs[x.id]
     return (
       <Box flexDirection="column" paddingLeft={2} marginBottom={v.desk ? 'sm' : 1}>
-        {x.status !== '' && <Text color={t.dim} size="footnote" wrap="truncate-end">{x.status}</Text>}
+        {(x.type || x.status) && <Text color={t.dim} size="footnote" wrap="truncate-end">{[x.type, x.status, x.parent ? `under ${x.parent}${x.parentTitle ? ` · ${x.parentTitle}` : ''}` : ''].filter(Boolean).join(' · ')}</Text>}
         {x.url !== '' && <Text color={t.faint} size="footnote" wrap="truncate-end">{x.url}</Text>}
         <Text color={t.dim} wrap="wrap">{cut(x.text ?? '', 600) || (busy ? 'Reading…' : 'No description.')}</Text>
         {b && <Text color={t.text} wrap="wrap">{b.explain}</Text>}
@@ -88,8 +93,12 @@ export function TicketsTab($: $, v: V) {
       {rows.length > 0 && (
         <Box flexDirection="column">
           <Head v={v} label="Tickets" n={rows.length} note="tick the ones you are working on" />
-          {rows.map(x => (
-            <Box key={`tk-row-${x.id}`} flexDirection="column">
+          {types.length > 1 && <Seg v={v} id="tk-type" value={type} items={[['', 'All'], ...types.map((k): [string, string] => [k, k])]} onPick={k => setUi($, { ticketType: k })} />}
+          {tree.map((r, i) => 'head' in r ? (
+            // A parent the list does not hold: a heading over its children
+            <Text key={`tk-head-${i}`} color={t.dim} size="footnote" wrap="truncate-end">{`▾ ${r.head}`}</Text>
+          ) : ((x: Ticket) => (
+            <Box key={`tk-row-${x.id}`} flexDirection="column" paddingLeft={r.depth * 2}>
               <Box justifyContent="space-between" columnGap={sp(v, 1)}>
                 <Box flexShrink={1} columnGap={sp(v, 1)}>
                   <Check v={v} id={`tk-work-${x.id}`} on={isWorking(x.id)} label={x.key} onPress={() => workOn($, x.id)} />
@@ -98,11 +107,11 @@ export function TicketsTab($: $, v: V) {
                   </Button>
                 </Box>
                 {/* A narrow pane keeps the row to the key and the title: the status is in the opened ticket */}
-                {v.w >= 50 && <Text color={t.dim} size="footnote">{cut(x.status, 16)}</Text>}
+                {v.w >= 50 && <Text color={t.dim} size="footnote">{cut([x.type, x.status].filter(Boolean).join(' · '), 28)}</Text>}
               </Box>
               {s.ui.ticketOpen === x.id && detail(x)}
             </Box>
-          ))}
+          ))(r.t))}
         </Box>
       )}
       {!!c?.server && !!p && rows.length === 0 && !tk.error && <Text color={t.faint}>{busy ? 'Reading…' : s.ui.ticketAll || tk.source === 'notion' ? 'No open tickets.' : 'No open tickets assigned to you.'}</Text>}

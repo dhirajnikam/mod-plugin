@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { ok } from './more'
-import { jsonOf, jiraTickets, notionTickets, dataSource, jql, parseBrief, savedOf, ticketsText, EMPTY } from '../hooks/tickets/tickets'
+import { ticketTree, ticketTypes, jsonOf, jiraTickets, notionTickets, dataSource, jql, parseBrief, savedOf, ticketsText, EMPTY } from '../hooks/tickets/tickets'
 
 // The Tickets tab end to end with Jira's and Notion's MCP servers stood in: connect, the repository's project, its
 // tickets, the one worked on (the Git tab, the Overview and Claude all learn of it), and the explanation
@@ -9,7 +9,7 @@ const pane = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', reques
 const text = (t: string, isError = false) => ({ value: { content: [{ type: 'text', text: t }], isError } })
 const issues = { issues: [{ key: 'API-12', fields: { summary: 'Add rate limiting to login', status: { name: 'In Progress' }, description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Limit login to five tries a minute.' }] }] } } }, { key: 'API-13', fields: { summary: 'Fix the\u001b[31m footer', status: { name: 'To Do' }, description: null } }] }
 
-function stand(on: any, st: { auth?: boolean } = {}) {
+function stand(on: any, st: { auth?: boolean; issues?: unknown } = {}) {
   const log = { store: {} as Record<string, unknown>, calls: [] as { server: string; tool: string; args: any }[], connects: [] as string[], prompts: [] as string[], notes: [] as string[] }
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('session.cwd', async () => ({ value: '/repo' }))
@@ -35,7 +35,7 @@ function stand(on: any, st: { auth?: boolean } = {}) {
     // …and the engine refuses the call in these words
     if (e.tool === 'listJiraProjects') return text('$.mcp.call: no connected MCP tool "listJiraProjects" on a server named "claude_ai_Atlassian"', true)
     if (e.tool === 'getVisibleJiraProjects') return text(JSON.stringify({ values: [{ key: 'API', name: 'Public API' }, { key: 'WEB', name: 'Website' }] }))
-    if (e.tool === 'searchJiraIssuesUsingJql') return text(JSON.stringify(issues))
+    if (e.tool === 'searchJiraIssuesUsingJql') return text(JSON.stringify(st.issues ?? issues))
     return text('no such tool', true)
   })
   return log
@@ -137,6 +137,39 @@ test('/cockpit tickets connects, lists the projects, sets the project and lists 
   expect((log.store['tickets:/repo'] as any).project.id).toBe('API')
   expect(await run('tickets jira none')).toContain('no project now')
   expect((log.store['tickets:/repo'] as any).project).toBe(undefined)
+})
+
+test('epics, stories, tasks and sub-tasks: each kind read from Jira, listed under the one it belongs to, and filtered by kind', async ($, on) => {
+  // As Jira's server really answers: the kind and the parent ride with each ticket
+  const kind = (name: string) => ({ name, hierarchyLevel: 0 })
+  const real = { issues: { nodes: [
+    { key: 'E-3', fields: { summary: 'Sign-in tests', issuetype: kind('Sub-task'), parent: { key: 'E-2', fields: { summary: 'Sign in with Microsoft', issuetype: kind('Story') } } } },
+    { key: 'E-1', fields: { summary: 'Site Engineer', issuetype: kind('Epic') } },
+    { key: 'E-2', fields: { summary: 'Sign in with Microsoft', issuetype: kind('Story'), parent: { key: 'E-1', fields: { summary: 'Site Engineer', issuetype: kind('Epic') } } } },
+    { key: 'E-9', fields: { summary: 'Fix sync', issuetype: kind('Task'), parent: { key: 'E-7', fields: { summary: 'Offline', issuetype: kind('Epic') } } } },
+  ] } }
+  const items = jiraTickets(real, '')
+  expect(items[0]).toEqual({ id: 'E-3', key: 'E-3', title: 'Sign-in tests', status: '', url: '', source: 'jira', text: '', type: 'Sub-task', parent: 'E-2', parentTitle: 'Sign in with Microsoft', parentType: 'Story' })
+  const line = (r: any) => ('head' in r ? `# ${r.head}` : `${r.depth} ${r.t.key}`)
+  // The epic, its story, the story's sub-task; then a task whose epic is not in the list, under a heading for it
+  expect(ticketTree(items).map(line)).toEqual(['0 E-1', '1 E-2', '2 E-3', '# Epic E-7 · Offline', '1 E-9'])
+  expect(ticketTypes(items)).toEqual(['Epic', 'Story', 'Task', 'Sub-task'])
+  // Tickets that only point at each other are still listed
+  expect(ticketTree([{ ...items[0]!, parent: 'E-2' }, { ...items[2]!, parent: 'E-3' }]).length).toBe(2)
+  // In the tab: the kinds as a filter, a kind alone under headings for the parents it leaves out
+  stand(on, { issues: real })
+  await $.command.run({ command: 'cockpit', args: 'tickets jira API' } as never)
+  const ui = await $.ui.mount(pane as never)
+  let d = JSON.stringify(await ui.drawn())
+  for (const want of ['tk-type-Epic', 'tk-type-Sub-task', '▾ Epic E-7 · Offline', 'Story']) expect(d).toContain(want)
+  await ui.press({ key: 'tk-type-Sub-task' })
+  d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('▾ Story E-2 · Sign in with Microsoft')
+  expect(d).toContain('tk-open-E-3')
+  expect(d).not.toContain('tk-open-E-1')
+  const composed: any = await (async () => { await ui.press({ key: 'tk-work-E-3' }); return $.prompt.compose({ model: 'claude-x', promptModel: 'claude-x', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never) })()
+  expect(composed.sections.find((x: any) => x.id === 'cockpit:tickets').text).toContain('- Sub-task E-3 · Sign-in tests, under Story E-2 (Sign in with Microsoft)')
+  await ui.unmount()
 })
 
 test('what the servers answer is read leniently, and what is kept is checked', () => {

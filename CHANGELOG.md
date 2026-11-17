@@ -5,6 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-17
+
+### Added
+- **Epics, stories, tasks and sub-tasks** in the Tickets tab: each Jira ticket shows its kind and is listed under the
+  one it belongs to (a story under its epic, a sub-task under its story), with a heading for a parent the list does
+  not hold, and a filter by kind. `/cockpit tickets` lists them the same way, and Claude is told a ticked ticket's
+  kind and parent. The list reads up to 50 tickets.
+
 ## [0.12.2] - 2026-11-17
 
 ### Added
@@ -436,7 +444,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.2...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.13.0...main
+[0.13.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.1...v0.12.0
