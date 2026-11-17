@@ -5,6 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-17
+
+### Fixed
+- The Tickets tab's Connect uses a Jira or Notion server you are already signed in to (the claude.ai connector,
+  another plugin's, your own). It used to ask only for Cockpit's own server, and said a sign-in was wanted although
+  you had given one. Cockpit's own server joins a session only when no other answers.
+- A Jira ticket's link is the one Jira gives with it.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added
@@ -418,7 +426,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.1...main
+[0.12.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.10.0...v0.11.0

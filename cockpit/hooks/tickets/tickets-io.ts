@@ -26,9 +26,29 @@ async function storeKey($: $) {
   return `tickets:${await repoRoot($)}`
 }
 
-// The sources the person pressed Connect for, on this machine: only their servers join a session (register.tsx holds
-// the rest back)
+// The sources the person pressed Connect for, on this machine: the tab connects them again when it opens
 const ON = 'tickets:on'
+// And those for which Cockpit's own server was the one used: only these join a session (register.tsx holds the rest
+// back), so someone on the claude.ai connector never has a second server dialed beside it
+const OWN = 'tickets:own'
+export async function ownOn($: $): Promise<string[]> {
+  const own = await $.store.get(OWN).catch(() => undefined)
+  return Array.isArray(own) ? own.map(String) : []
+}
+// A server of the tracker this session already runs and is signed in to (the claude.ai connector, another plugin's,
+// one of your own): the one whose tools the session lists, by the name $.mcp.call takes; '' when there is none
+const PROBE: Record<TicketSource, readonly string[]> = { jira: TOOLS.sites, notion: ['notion-search', 'notion-fetch'] }
+const CONNECTORS: Record<TicketSource, string> = { jira: 'claude.ai Atlassian', notion: 'claude.ai Notion' }
+async function running($: $, source: TicketSource) {
+  const tools = await $.tool.list().catch(() => [])
+  for (const name of PROBE[source]) {
+    const t = tools.find(x => x.mcp && x.name.startsWith('mcp__') && x.name.endsWith(`__${name}`))
+    if (t) return t.name.slice(5, -(name.length + 2))
+  }
+  // Tools not listed until they are searched for: the claude.ai connector by its name
+  const c = await $.mcp.connect(CONNECTORS[source]).catch(() => null)
+  return c?.isConnected ? c.server : ''
+}
 export async function connected($: $): Promise<string[]> {
   const on = await $.store.get(ON).catch(() => undefined)
   return Array.isArray(on) ? on.map(String) : []
@@ -66,12 +86,19 @@ function bg($: $, label: string, work: () => Promise<unknown>) {
 function refused($: $, source: TicketSource, text: string) {
   return patch($, t => ({ conn: { ...t.conn, [source]: { why: text } } }))
 }
-// Connect: the server joins the session, and for Jira its site is found. A server that wants a sign-in says how
+// Connect: a server of the tracker you are already signed in to is used as it is; else Cockpit's own joins the
+// session. For Jira its site is found. With no sign-in anywhere, the tab says how to give one
 export function connect($: $, source: TicketSource) {
   bg($, `Connecting ${nameOf(source)}`, async () => {
     await $.store.set(ON, [...new Set([...(await connected($)), source])]).catch(() => null)
-    const c = await $.mcp.connect(SERVERS[source])
-    if (!c.isConnected) return refused($, source, c.reason === 'auth' ? `${nameOf(source)} wants a sign-in: run /mcp, pick its server and sign in, then press Connect again` : c.message)
+    let server = await running($, source)
+    if (!server) {
+      await $.store.set(OWN, [...new Set([...(await ownOn($)), source])]).catch(() => null)
+      const c = await $.mcp.connect(SERVERS[source])
+      if (!c.isConnected) return refused($, source, c.reason === 'auth' ? `No ${nameOf(source)} server is signed in: run /mcp, sign in to one (${CONNECTORS[source]}, or Cockpit's own), then press Connect again` : c.message)
+      server = c.server
+    }
+    const c = { server }
     let site = {}
     if (source === 'jira') {
       const r = await ask($, c.server, TOOLS.sites, {})
@@ -134,6 +161,7 @@ export async function loadTickets($: $) {
 // repository stays
 export async function forget($: $, source: TicketSource) {
   await $.store.set(ON, (await connected($)).filter(x => x !== source)).catch(() => null)
+  await $.store.set(OWN, (await ownOn($)).filter(x => x !== source)).catch(() => null)
   await set($, s => {
     const t = s.tickets ?? EMPTY
     const { [source]: _, ...conn } = t.conn

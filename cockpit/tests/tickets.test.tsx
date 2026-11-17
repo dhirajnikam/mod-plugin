@@ -24,6 +24,8 @@ function stand(on: any, st: { auth?: boolean } = {}) {
   on('model.complete', async (_: unknown, e: any) => (log.prompts.push(String(e.prompt)), { value: { isAnswered: true, text: '{"explain": "Stop brute-force logins: five tries a minute, then a wait.", "features": ["Invented feature"]}', usage: { inputTokens: 1, outputTokens: 1 } } }))
   on('mcp.connect', async (_: unknown, e: any) => {
     log.connects.push(String(e.server))
+    // Only Cockpit's own servers are listed here: the claude.ai connectors are not
+    if (!['atlassian', 'notion'].includes(e.server)) return { value: { isConnected: false, reason: 'unlisted', message: 'no such server' } }
     return { value: st.auth ? { isConnected: false, reason: 'auth', message: 'needs sign-in' } : { isConnected: true, server: `plugin:cockpit:${e.server}` } }
   })
   on('mcp.call', async (_: unknown, e: any) => {
@@ -50,8 +52,10 @@ test('Jira: connect, pick the project, tick a ticket: the Git tab, the Overview 
   expect(log.connects.length + log.calls.length).toBe(0)
   await ui.press({ key: 'tk-connect' })
   await settle()
-  expect(log.connects).toEqual(['atlassian'])
+  // No server of the session's answered, so Cockpit's own was brought in, and may join later sessions
+  expect(log.connects).toEqual(['claude.ai Atlassian', 'atlassian'])
   expect(log.store['tickets:on']).toEqual(['jira'])
+  expect(log.store['tickets:own']).toEqual(['jira'])
   expect(await drawn()).toContain('API · Public API')
   await ui.press({ key: 'tk-proj-API' })
   await settle()
@@ -103,12 +107,28 @@ test('a server that wants a sign-in says how to give it', async ($, on) => {
   await ui.unmount()
 })
 
+test('a Jira server the session is already signed in to is used as it is: Cockpit brings in none of its own', async ($, on) => {
+  const log = stand(on)
+  on('tool.list', async () => ({ value: [{ name: 'Read', description: '', mcp: false }, { name: 'mcp__claude_ai_Atlassian__getAccessibleAtlassianResources', description: '', mcp: true }] }) as never)
+  await $.command.run({ command: 'cockpit', args: 'tab tickets' } as never)
+  const ui = await $.ui.mount(pane as never)
+  await ui.press({ key: 'tk-connect' })
+  await settle()
+  expect(log.connects).toEqual([])
+  expect(log.calls.every(c => c.server === 'claude_ai_Atlassian')).toBe(true)
+  expect(log.store['tickets:own']).toBe(undefined)
+  expect(JSON.stringify(await ui.drawn())).toContain('API · Public API')
+  await ui.unmount()
+})
+
 test('what the servers answer is read leniently, and what is kept is checked', () => {
   // JSON inside words; a rich description as plain words; no site, no link
   expect(jiraTickets(jsonOf({ content: [{ type: 'text', text: `Found: ${JSON.stringify(issues)}` }], isError: false }), '')[0]).toEqual({ id: 'API-12', key: 'API-12', title: 'Add rate limiting to login', status: 'In Progress', url: '', source: 'jira', text: 'Limit login to five tries a minute.' })
   // A project key carries nothing into the query
   expect(jql('API" OR 1=1 --', true)).toBe('project = "APIOR11" AND statusCategory != Done ORDER BY updated DESC')
   // Notion: a search result, and a database row with its properties by name
+  // Jira's v1 server as it really answers: the issues under nodes, each with its own link
+  expect(jiraTickets({ issues: { nodes: [{ key: 'FSM-1', fields: { summary: 'S', description: null, status: { name: 'Code Review', statusCategory: { name: 'In Progress' } } }, webUrl: 'https://x.atlassian.net/browse/FSM-1' }] }, context: { featureFlags: {} } }, '')[0]).toEqual({ id: 'FSM-1', key: 'FSM-1', title: 'S', status: 'Code Review', url: 'https://x.atlassian.net/browse/FSM-1', source: 'jira', text: '' })
   expect(notionTickets({ results: [{ id: 'p1', title: 'Ship it', url: 'https://www.notion.so/p1' }] })[0]?.title).toBe('Ship it')
   expect(notionTickets({ results: [{ url: 'https://www.notion.so/p2', Name: 'Fix login', Status: 'Doing' }] })[0]).toEqual({ id: 'https://www.notion.so/p2', key: '', title: 'Fix login', status: 'Doing', url: 'https://www.notion.so/p2', source: 'notion' })
   expect(dataSource('<data-source url="collection://1a2b3c4d-0000-0000-0000-000000000000">')).toBe('collection://1a2b3c4d-0000-0000-0000-000000000000')

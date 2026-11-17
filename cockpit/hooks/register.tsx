@@ -25,7 +25,7 @@ import { memoryText, recall, memoryKey } from './memory/memory'
 import { buildMemory, loadProject, syncMemory } from './memory/memory-io'
 import { fullPane } from './pane/full-pane'
 import { ticketsText } from './tickets/tickets'
-import { connected, loadSaved } from './tickets/tickets-io'
+import { ownOn, loadSaved } from './tickets/tickets-io'
 
 // Auto mode's safety check gave no verdict on a call (it skipped it, and Claude Code then refuses the call): until
 // the session starts again, every call that would go to that check is put to the person in the permission dialog
@@ -342,11 +342,12 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  // Cockpit's own Jira and Notion servers stay out of a session until the person presses Connect in the Tickets tab:
+  // Cockpit's own Jira and Notion servers stay out of a session until the person presses Connect in the Tickets tab
+  // and no server they are already signed in to answers:
   // nobody who never uses them has two servers dialed, their tools listed and a sign-in asked for
   on('mcp.connect', async ($, e, next) => {
     const source = /^plugin:cockpit:(atlassian|notion)$/.exec(e.server)?.[1]
-    if (!source || (await connected($)).includes(source === 'atlassian' ? 'jira' : 'notion')) return next(e)
+    if (!source || (await ownOn($)).includes(source === 'atlassian' ? 'jira' : 'notion')) return next(e)
     return { value: { isConnected: false as const, reason: 'disabled' as const, message: 'Cockpit connects it when you press Connect in its Tickets tab' } }
   }).catch(($, e, next) => next(e))
 
