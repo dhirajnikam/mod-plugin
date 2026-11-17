@@ -37,7 +37,8 @@ export function jsonOf(r: Result): unknown {
   return null
 }
 // A server's "I have no such tool", by its words: the next name is tried
-export const unknownTool = (text: string) => /unknown tool|tool .{0,60}not found|no such tool|not a (valid|known) tool|method not found/i.test(text)
+// (the engine's own words when a server has no tool of that name: no connected MCP tool "x" on a server named "y")
+export const unknownTool = (text: string) => /unknown tool|no connected mcp tool|tool .{0,60}not found|no such tool|not a (valid|known) tool|method not found/i.test(text)
 
 type Row = Record<string, unknown>
 const isRow = (x: unknown): x is Row => !!x && typeof x === 'object' && !Array.isArray(x)

@@ -71,7 +71,11 @@ export async function loadSaved($: $) {
 // One of a server's tools, by the first name it knows
 async function ask($: $, server: string, names: readonly string[], args: Record<string, unknown>): Promise<Result> {
   let last: Result = { content: [{ type: 'text', text: 'no tool to ask' }], isError: true }
-  for (const name of names) {
+  // The names the session lists for that server go first, so a name the server never had is not asked for at all
+  const spelled = server.replace(/[^A-Za-z0-9_-]/g, '_')
+  const listed = new Set((await $.tool.list().catch(() => [])).map(t => t.name))
+  const known = names.filter(n => listed.has(`mcp__${spelled}__${n}`))
+  for (const name of known.length ? known : names) {
     last = await $.mcp.call(server, name, args).catch((e): Result => ({ content: [{ type: 'text', text: String((e as Error)?.message ?? e) }], isError: true }))
     if (!last.isError || !unknownTool(textOf(last))) return last
   }
