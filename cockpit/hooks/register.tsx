@@ -81,8 +81,8 @@ export const register: Register = (on, options) => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), restructure [what for] (agents research the web and propose a layout; restructure agree applies it), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules|tickets>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
-      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | restructure [what for | agree] | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
+      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), restructure [what for] (agents research the web and propose a layout; restructure agree applies it), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules|tickets>, tickets <jira|notion> [project] (connect and list the projects, or set the project of this repository and list its tickets), flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | restructure [what for | agree] | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | tickets <jira|notion> [project] | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []

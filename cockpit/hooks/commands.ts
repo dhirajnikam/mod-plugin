@@ -11,6 +11,7 @@ import { explainCodebase } from './memory/explain'
 import { restructure } from './memory/restructure'
 import { TABS, isTab, openTab, showTab } from './pane/tabs'
 import { MODES } from './core/modes'
+import { ticketsCommand } from './tickets/tickets-io'
 
 const BUDGET = /^\$\d+(\.\d+)?$/
 const HOURS = /^\d+(\.\d+)?h$/
@@ -48,6 +49,11 @@ export async function runCockpitCommand($: $, args: string, origin = '') {
     if (no) return { text: no }
     await showTab($, 'overview')
     return { text: `${name}: ${goal}${budget ? ` · $${budget}` : ' · no budget'}${hours ? ` · ${hours}h` : ''}` }
+  }
+  if (verb === 'tickets') {
+    const text = await ticketsCommand($, words.slice(1))
+    await showTab($, 'tickets').catch(() => null)
+    return { text }
   }
   if (verb === 'explain') {
     const asked = await explainCodebase($)

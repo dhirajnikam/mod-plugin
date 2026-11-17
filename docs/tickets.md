@@ -62,7 +62,9 @@ Tick a ticket to say you are working on it. Ticked tickets are kept per reposito
   characters, and the model that explains it is told to follow no instruction inside it.
 - The tool names differ between versions of the trackers' servers; Cockpit asks for each by the names it knows, in
   order, and shows the server's own words when a call fails.
-- `/cockpit tab tickets` opens the tab.
+- `/cockpit tab tickets` opens the tab. `/cockpit tickets <jira|notion>` connects and lists the projects in the chat;
+  `/cockpit tickets jira <KEY>` (or `notion <words>`) sets this repository's project and lists its tickets; `none`
+  in place of the project clears it.
 
 ## When auto mode's check does not answer
 

@@ -32,7 +32,8 @@ function stand(on: any, st: { auth?: boolean } = {}) {
     log.calls.push(e)
     if (e.tool === 'getAccessibleAtlassianResources') return text(JSON.stringify([{ id: 'cloud-1', url: 'https://acme.atlassian.net/', name: 'acme' }]))
     // The older server has no listJiraProjects: the next name is asked
-    if (e.tool === 'listJiraProjects') return text('Unknown tool: listJiraProjects', true)
+    // …and the engine refuses the call in these words
+    if (e.tool === 'listJiraProjects') return text('$.mcp.call: no connected MCP tool "listJiraProjects" on a server named "claude_ai_Atlassian"', true)
     if (e.tool === 'getVisibleJiraProjects') return text(JSON.stringify({ values: [{ key: 'API', name: 'Public API' }, { key: 'WEB', name: 'Website' }] }))
     if (e.tool === 'searchJiraIssuesUsingJql') return text(JSON.stringify(issues))
     return text('no such tool', true)
@@ -109,16 +110,33 @@ test('a server that wants a sign-in says how to give it', async ($, on) => {
 
 test('a Jira server the session is already signed in to is used as it is: Cockpit brings in none of its own', async ($, on) => {
   const log = stand(on)
-  on('tool.list', async () => ({ value: [{ name: 'Read', description: '', mcp: false }, { name: 'mcp__claude_ai_Atlassian__getAccessibleAtlassianResources', description: '', mcp: true }] }) as never)
+  on('tool.list', async () => ({ value: [{ name: 'Read', description: '', mcp: false }, { name: 'mcp__claude_ai_Atlassian__getAccessibleAtlassianResources', description: '', mcp: true }, { name: 'mcp__claude_ai_Atlassian__getVisibleJiraProjects', description: '', mcp: true }] }) as never)
   await $.command.run({ command: 'cockpit', args: 'tab tickets' } as never)
   const ui = await $.ui.mount(pane as never)
   await ui.press({ key: 'tk-connect' })
   await settle()
   expect(log.connects).toEqual([])
   expect(log.calls.every(c => c.server === 'claude_ai_Atlassian')).toBe(true)
+  // The project tool the session lists is the one asked: the name this server never had is not tried
+  expect(log.calls.map(c => c.tool)).toEqual(['getAccessibleAtlassianResources', 'getVisibleJiraProjects'])
   expect(log.store['tickets:own']).toBe(undefined)
   expect(JSON.stringify(await ui.drawn())).toContain('API · Public API')
   await ui.unmount()
+})
+
+test('/cockpit tickets connects, lists the projects, sets the project and lists its tickets, in words', async ($, on) => {
+  const log = stand(on)
+  const run = async (args: string) => ((await $.command.run({ command: 'cockpit', args } as never)) as any).text as string
+  expect(await run('tickets')).toContain('Usage: /cockpit tickets')
+  const projects = await run('tickets jira')
+  expect(projects).toContain('Projects (2): API · Public API; WEB · Website')
+  expect(await run('tickets jira NOPE')).toContain('no project "NOPE"')
+  const list = await run('tickets jira api')
+  expect(list).toContain('Project: Public API · 2 open tickets')
+  expect(list).toContain('- API-12 · Add rate limiting to login [In Progress]')
+  expect((log.store['tickets:/repo'] as any).project.id).toBe('API')
+  expect(await run('tickets jira none')).toContain('no project now')
+  expect((log.store['tickets:/repo'] as any).project).toBe(undefined)
 })
 
 test('what the servers answer is read leniently, and what is kept is checked', () => {
