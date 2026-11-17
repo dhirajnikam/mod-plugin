@@ -5,20 +5,22 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-17
+
 ### Added
 - **Tickets tab**: your Jira or Notion tickets beside the work, read through Atlassian's and Notion's own MCP servers
   with your sign-in. Pick the project this repository is for, see its open tickets, tick the ones you are working on,
   and open one for what it asks for and which features of the codebase memory it touches. A ticked ticket fills the
   Git tab's ticket, shows on the Overview, and is told to Claude every turn. Cockpit only reads a tracker, and its two
   servers stay out of a session until you press Connect. `/cockpit tab tickets` opens it.
-- **Git, repositories inside a repository**: a session in a repository that holds others (submodules, nested clones)
+- **Several repositories**, now inside a repository too: a session in a repository that holds others (submodules, nested clones)
   gets the Repo picker, itself first, and an edit inside a nested one follows the nearest. A single repository found
   under the session folder is named in the picker.
 - When auto mode's safety check gives no verdict on a call (Claude Code then refuses it), Cockpit says so once and,
   for the rest of the session, puts such calls to you in the permission dialog instead.
 
 ### Changed
-- **git init asks where first.** With no repository, the Git tab lists the session folder and the folders in it, and
+- **No repository yet**: git init asks where first. With no repository, the Git tab lists the session folder and the folders in it, and
   the init button appears only once you choose one; it used to initialise the session folder at one press.
 - **↻ Refresh** in the Git tab looks for repositories again, so one cloned, initialised or deleted during the session
   is found without a restart. A repository of the picker that git cannot read is named, with no init offered.
@@ -416,7 +418,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.1...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.0...main
+[0.12.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.9.0...v0.10.0
