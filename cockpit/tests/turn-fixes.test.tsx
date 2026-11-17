@@ -113,7 +113,7 @@ test('/cockpit tab with a word that is no tab names the tabs and opens nothing',
   const log = await stand($, on)
   const was = log.opened
   const r: any = await $.command.run({ command: 'cockpit', args: 'tab nowhere' } as never)
-  expect(r.text).toBe('Tabs: overview, files (Activity), agents, git, rules')
+  expect(r.text).toBe('Tabs: overview, files (Activity), agents, git, rules, tickets')
   expect(log.opened).toBe(was)
   expect(((await $.command.run({ command: 'cockpit', args: 'tab git' } as never)) as any).text).toBe('Cockpit pane opened.')
   expect(log.opened).toBe(was + 1)

@@ -40,6 +40,9 @@ Cockpit runs inside Claude Code with the same reach as Claude Code itself, so th
   The autopilot's roadmap, `.cockpit/roadmap.md`, and the product owner's `.cockpit/product.md` are written by Claude
   at Cockpit's request; Cockpit writes only the roadmap's title when a goal starts, keeping the one before in
   `.cockpit/roadmaps/`.
+- **Reads Jira and Notion, when you press Connect in the Tickets tab**: through Atlassian's and Notion's own MCP
+  servers, over Claude Code's connection and your sign-in. Only tools that read are called; a ticket's text is
+  stripped of control characters before it is drawn, and is given to a model only as data.
 - **Keeps preferences in Claude Code's plugin store**: theme, Focus, the judges' mode, Git settings, the accounts you
   saved (a name, an email and a gh login, never a token), and the agents you made with **+ New agent**, which it also
   registers with Claude Code.

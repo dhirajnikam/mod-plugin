@@ -9,6 +9,7 @@ import { Agents } from '../agents/agents-tab'
 import { Git } from '../git/git-tab'
 import { Rules } from '../rules/rules-tab'
 import { Files } from '../memory/activity-tab'
+import { TicketsTab } from '../tickets/tickets-tab'
 import type { V, UI } from '../ui/shared'
 
 // What the pane's views draw with; null on a surface with no fields
@@ -41,6 +42,7 @@ export function fullPane(on: Parameters<Register>[0], rootOf: () => string) {
         {s.tab === 'agents' && Agents($, v)}
         {s.tab === 'git' && Git($, v)}
         {s.tab === 'rules' && Rules($, v)}
+        {s.tab === 'tickets' && TicketsTab($, v)}
       </Box>
     )
   })

@@ -10,7 +10,8 @@ the [security policy](../SECURITY.md).
   the codebase memory (`memory.json`, `MEMORY.md`, the feature pages in `memory/`), hand-off briefs, and the
   autopilot's roadmap. The folder has its own `.gitignore` of `*`, so none of it is committed, auto-commit included.
 - **In Claude Code's plugin store**, across sessions: Focus, the theme, the judges' mode and the Agents settings; the
-  Git settings and account, per repository; the agents you made. No token or password is stored: a token you paste
+  Git settings and account, per repository; the Tickets tab's project, ticked tickets and explanations, per
+  repository, and which of Jira and Notion you connected; the agents you made. No token or password is stored: a token you paste
   goes straight to `gh auth login`, and one typed but not added is dropped when the account box closes.
 
 ## Every model call
@@ -26,7 +27,18 @@ has no row here.
 | `judge-complexity` | each question or next step Claude asks you | Haiku | the question and its options | `/cockpit mode off` |
 | `judge-context` | each judged decision but the autopilot's | a fork of the session's model | the whole conversation so far, asked for a 120-word summary | `/cockpit mode off` |
 | `judge-votes` | each judged decision, 3, 6 or 9 times | Haiku; with `judgeModels` mixed or wide, Sonnet and Opus on some seats | that summary, the question and its options; for the autopilot's claim of done, the roadmap, the commits since it began, the uncommitted diffstat and the end of Claude's answer; for the product owner's next goal, the vision, the goals built and its study | `/cockpit mode off` |
+| `ticket-explain` | **Explain** on a ticket in the Tickets tab | Haiku | the ticket's key, title, status and description (cut to 6,000 characters), and the name and one line of each feature in the codebase memory | (only when you press it) |
 | `agent-definition` | **+ New agent** | Sonnet | the description you typed | (only when you press it) |
+
+## Jira and Notion
+
+The Tickets tab reads your tickets through Atlassian's MCP server (`https://mcp.atlassian.com/v2/mcp`) and Notion's
+(`https://mcp.notion.com/mcp`), over Claude Code's own connection and with the sign-in you give in `/mcp`: Cockpit
+never sees a token. Neither server joins a session until you press **Connect** for it. What Cockpit sends them is
+what it asks for: the project's key in a search, the words you type into Find, a page's address. It calls only tools
+that read. A ticket you tick is told to Claude each turn (key, title, status, link), so it reaches the model like the
+rest of your conversation. The project, the ticked tickets and their explanations are kept per repository in the
+plugin store. Each service's own terms cover what it does with a request.
 
 ## Every command it runs
 

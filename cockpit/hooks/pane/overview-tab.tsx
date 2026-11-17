@@ -24,6 +24,7 @@ import { Tracker } from '../agents/agents-tab'
 import { CommitSkip, prWords } from '../git/git-tab'
 import { ringSvg, ringRuns, neuralSvg } from '../ui/svg'
 import { openTab } from './tabs'
+import { ticketLabel } from '../tickets/tickets'
 import type { Neuron } from '../ui/svg'
 import { modeOf, MODES } from '../core/modes'
 
@@ -144,6 +145,16 @@ export function Overview($: $, v: V) {
       {/* Now: one plain sentence of what Claude is doing, then the few rows that matter */}
       <Box flexDirection="column" gap={sp(v, 1)}>
         <Text color={t.text} bold wrap="wrap">{nowLine}</Text>
+        {/* The tickets being worked on, from the Tickets tab */}
+        {!!s.tickets?.working.length && (
+          <Button key="ov-tickets" plain onPress={() => openTab($, 'tickets')}>
+            <Text color={t.dim} wrap="truncate-end">
+              {'Ticket: '}
+              <Text color={t.accent}>{ticketLabel(s.tickets.working[0]!)}</Text>
+              {s.tickets.working.length > 1 ? ` and ${s.tickets.working.length - 1} more` : ''}
+            </Text>
+          </Button>
+        )}
         <Box flexDirection="column">
           {changed > 0 && (
             <Box columnGap={sp(v, 1)} flexWrap="wrap">

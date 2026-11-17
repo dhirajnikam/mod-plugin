@@ -10,6 +10,8 @@
   with its checks, kept live while a check runs
 - [Rules tab](rules.md): what loads every session, hooks, permission rules, MCP servers, skills and instructions, for
   the repository or for you
+- [Tickets tab](tickets.md): Jira and Notion through their own MCP servers: the project this repository is for, its
+  tickets, the ones you are working on, and what each asks for and touches
 - [Flows and progress](flows.md): where a flow's steps come from and how progress is counted
 - [Decisions by judges](judges.md): how the judges vote, and what always comes to you
 - [Autopilot](autopilot.md): a task worked on cycle after cycle until it is done, and a product owner that picks each next goal

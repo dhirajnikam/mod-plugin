@@ -12,6 +12,8 @@ with an arrow only where it folds.
 A simpler Overview: since 0.8 it opens on **Now** (one sentence, then changed files, checks, agents and the pull request), then **Steps** (a plain checklist,
 the current one in bold) and **Approach** (the last three decisions as sentences). Everything described below sits behind **More**, folded by default.
 
+- **Ticket**, under the first sentence, once you tick one in the [Tickets tab](tickets.md): the ticket being worked
+  on (and how many more), linking to that tab.
 - **Needs you**: the attention card, for a question Claude is waiting on or a commit Cockpit proposes (Commit, Skip).
 - **Autopilot**, once one has started and until you clear it (×): its cycle (and for the product owner its round, vision and goals built), the milestones ticked, what the judges said is missing, the spend and the time, with ■ Stop and ▶ Resume.
   See [Autopilot](autopilot.md).

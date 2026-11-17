@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Changed, Ph } from '../types'
 import { ACTS, act } from './acts'
 import { runCockpitCommand } from './commands'
-import { set, look, loadPrefs, applyOptions, openPane, paneShown, readTermBg } from './core/core'
+import { set, look, note, loadPrefs, applyOptions, openPane, paneShown, readTermBg } from './core/core'
 import { loadHistory, saveHistory } from './core/history'
 import { measure } from './core/session'
 import { syncAgents, registerExperts, discoverAgentTypes, isHandoff, takeHandoff, isOwnStart, agentSpawned, agentToolCall, agentToolDone, agentTurnEnd } from './agents/agents'
@@ -24,6 +24,19 @@ import { loadGuide } from './memory/explain'
 import { memoryText, recall, memoryKey } from './memory/memory'
 import { buildMemory, loadProject, syncMemory } from './memory/memory-io'
 import { fullPane } from './pane/full-pane'
+import { ticketsText } from './tickets/tickets'
+import { connected, loadSaved } from './tickets/tickets-io'
+
+// Auto mode's safety check gave no verdict on a call (it skipped it, and Claude Code then refuses the call): until
+// the session starts again, every call that would go to that check is put to the person in the permission dialog
+// instead, so the work goes on with their yes rather than stopping at a check that does not answer
+let noVerdict = false
+async function sawRefusal($: Parameters<typeof note>[0], tool: string, r: { deny?: string | undefined; isError?: boolean | undefined; result?: unknown }) {
+  const text = r.deny ?? (r.isError ? (typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? '')) : '')
+  if (noVerdict || !/classifier gave no verdict/i.test(text)) return
+  noVerdict = true
+  await note($, `Auto mode's safety check gave no verdict on ${tool}, so Claude Code refused it. For the rest of this session Cockpit puts such calls to you in the permission dialog instead: Claude can try again.`)
+}
 
 // The hooks module: every hook Cockpit registers, in the order the engine runs them for one event. Each hook keeps
 // its `next` here; the work around it lives with its feature (commands.ts, core/, flows/, agents/, judges/, git/, memory/)
@@ -68,13 +81,14 @@ export const register: Register = (on, options) => {
     // The command and the timers first: a load below that fails must not leave /cockpit unregistered
     await $.command.register({
       name: 'cockpit',
-      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), restructure [what for] (agents research the web and propose a layout; restructure agree applies it), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
+      description: 'Open the Cockpit pane; or: task|autopilot [$budget] [hours h] <goal> (stop, resume), product [$budget] [hours h] <vision> (stop, resume), focus [on|off], explain (Claude writes a codebase guide), restructure [what for] (agents research the web and propose a layout; restructure agree applies it), theme <auto|paper|white|black|solarized|nord>, mode <auto|ask|off>, tab <overview|files|agents|git|rules|tickets>, flow <plan|task|build|docs|check|answer>, run <agents> [-- task], test',
       argumentHint: '[task [$budget] [hours h] <goal> | product [$budget] [hours h] <vision> | explain | restructure [what for | agree] | focus [on|off] | theme <name> | mode <auto|ask|off> | tab <name> | flow <name> | run <agents> [-- task] | test]',
     })
     for (const t of timers) t.cancel()
     timers = []
     // Background work does not outlive a load of the mod (its promises went with the old module): its names go too
     await set($, { busy: {} })
+    noVerdict = false
     // Live figures: a redraw a few times a second while anything runs; the repo and usage read again every 15 s while the pane is shown
     timers.push($.clock.every(400, async () => {
       const s = await look($)
@@ -113,6 +127,8 @@ export const register: Register = (on, options) => {
     void loadGuide($).catch(() => null)
     await refreshRepo($)
     await loadGitPrefs($)
+    // The tickets being worked on in this repository, as saved: no tracker is asked until the Tickets tab is
+    await loadSaved($).catch(() => null)
     await loadAccounts($)
     await measure($)
     void registerExperts($)
@@ -222,12 +238,14 @@ export const register: Register = (on, options) => {
       await agentToolCall($, e.agentId, e.tool, input, now)
       const r = await next(e)
       if (!r.deny && !r.isError) await agentToolDone($, e.tool, input, op)
+      else await sawRefusal($, e.tool, r)
       return r
     }
     await toolStarted($, e.tool, input, op)
     const r = await next(e)
     // A refused or failed edit changed nothing: no tests, no commit, no re-read for it
     if (r.deny || r.isError) {
+      await sawRefusal($, e.tool, r)
       await toolFailed($, e.tool, r.deny, r.result, now)
       return r
     }
@@ -239,9 +257,16 @@ export const register: Register = (on, options) => {
 
   on('prompt.compose', async ($, e, next) => {
     const r = await next(e)
-    const m = (await look($)).memory
-    if (!Object.keys(m.files).length) return r
-    return { ...r, sections: [...r.sections, { id: 'cockpit:memory', text: memoryText(m.files, 2600, m.features), scope: 'session' as const }] }
+    const s = await look($)
+    const m = s.memory
+    // The tickets being worked on, so Claude knows what the work is for
+    const tickets = ticketsText(s.tickets)
+    const sections = [
+      ...r.sections,
+      ...(Object.keys(m.files).length ? [{ id: 'cockpit:memory', text: memoryText(m.files, 2600, m.features), scope: 'session' as const }] : []),
+      ...(tickets ? [{ id: 'cockpit:tickets', text: tickets, scope: 'session' as const }] : []),
+    ]
+    return sections.length === r.sections.length ? r : { ...r, sections }
   }).catch(($, e, next) => next(e))
 
   // Claude's own task list: while it keeps one, the current flow's steps are its tasks, live
@@ -280,6 +305,13 @@ export const register: Register = (on, options) => {
     return { decision: 'ask', reason: `Cockpit pane: you asked it to start the ${expertName(String(i.subagent_type ?? 'general-purpose'))} agent` }
   }).catch(($, e, next) => next(e))
 
+  // While auto mode's check does not answer: a call it would have decided is the person's to decide
+  on('tool.check', async (_$, e, next) => {
+    const v = await next(e)
+    if (!noVerdict || v.decision !== 'ask') return v
+    return { decision: 'ask', reason: `Auto mode's safety check is not answering, so Cockpit asks you${v.reason ? `: ${v.reason}` : ` about ${e.tool}`}` }
+  }).catch((_$, e, next) => next(e))
+
   // Subagents the model or anyone else starts show in the Agents tab
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
@@ -309,6 +341,14 @@ export const register: Register = (on, options) => {
     if (!e.agentId) await set($, { isWorking: false, waiting: '' }).catch(() => null)
     return next(e)
   })
+
+  // Cockpit's own Jira and Notion servers stay out of a session until the person presses Connect in the Tickets tab:
+  // nobody who never uses them has two servers dialed, their tools listed and a sign-in asked for
+  on('mcp.connect', async ($, e, next) => {
+    const source = /^plugin:cockpit:(atlassian|notion)$/.exec(e.server)?.[1]
+    if (!source || (await connected($)).includes(source === 'atlassian' ? 'jira' : 'notion')) return next(e)
+    return { value: { isConnected: false as const, reason: 'disabled' as const, message: 'Cockpit connects it when you press Connect in its Tickets tab' } }
+  }).catch(($, e, next) => next(e))
 
   // A session that ends keeps its spend: the figures measured once more and the history saved
   on('session.end', async ($, e, next) => {

@@ -5,6 +5,15 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Tickets tab**: your Jira or Notion tickets beside the work, read through Atlassian's and Notion's own MCP servers
+  with your sign-in. Pick the project this repository is for, see its open tickets, tick the ones you are working on,
+  and open one for what it asks for and which features of the codebase memory it touches. A ticked ticket fills the
+  Git tab's ticket, shows on the Overview, and is told to Claude every turn. Cockpit only reads a tracker, and its two
+  servers stay out of a session until you press Connect. `/cockpit tab tickets` opens it.
+- When auto mode's safety check gives no verdict on a call (Claude Code then refuses it), Cockpit says so once and,
+  for the rest of the session, puts such calls to you in the permission dialog instead.
+
 ## [0.11.1] - 2026-11-14
 
 ### Changed

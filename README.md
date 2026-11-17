@@ -35,6 +35,7 @@ Every tab opens on one plain sentence of what is happening and the few things yo
 | [**Agents**](docs/agents.md) | Build, Verify and Review pipelines; the **model and effort** for each agent chosen from its task; six experts and agents you describe in plain words; each agent's progress, who started it, and two testers on every change; agents **in their own worktree** (Claude Code's isolation) with Bring back and Remove; a notice when work is done while you are not watching |
 | [**Git**](docs/git.md) | **Several repositories** in one folder, with a picker; the next commit, written from the diff; commit modes from manual to automatic; a git graph of every branch; the branch's **pull request** with its review and CI checks, kept live while a check runs, and Fix failing checks |
 | [**Rules**](docs/rules.md) | What loads into every session, with its estimated tokens; the hooks, permission rules, MCP servers, skills and `CLAUDE.md` instructions of the repository or of you, to add, edit, delete or switch |
+| [**Tickets**](docs/tickets.md) | Your **Jira** or **Notion** tickets, read through their makers' own MCP servers: the project this repository is for, its open tickets, the ones you are working on (Claude, the Git tab and the Overview all know), and for each what it asks for and which features it touches |
 
 Around the prompt: a Progress and Context band, a spinner that says what is happening, and tool activity as cards in
 the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
@@ -53,7 +54,7 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 | Command | Does |
 |---|---|
 | `/cockpit` | open the pane |
-| `/cockpit tab <overview\|files\|agents\|git\|rules>` | open a tab (`files` is Activity) |
+| `/cockpit tab <overview\|files\|agents\|git\|rules\|tickets>` | open a tab (`files` is Activity) |
 | `/cockpit task [$budget] [hours h] <goal>` | work on a goal until the judges agree it is done (`autopilot` is the same); `stop`, `resume` |
 | `/cockpit product [$budget] [hours h] <vision>` | lead the product toward a vision, goal after goal, the judges choosing each; `stop`, `resume` |
 | `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |

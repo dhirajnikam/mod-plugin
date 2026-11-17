@@ -14,7 +14,7 @@ test('every tab opens on its first lines with More folded, and each fold opens i
   on('fs.list', async () => ({ value: [] }) as never)
   on('model.complete', async () => ({ value: { isAnswered: false, reason: 'empty-reply' } }) as never)
   on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
-  const cases = [['overview', 'Ready', 'fold-more', 'ctx-compact'], ['git', 'Working tree clean', 'fold-more-git', 'git-more'], ['agents', 'No agents running', 'fold-more-agents', 'spawn-toggle'], ['files', 'No edits yet this session', 'fold-more-activity', 'fold-feats'], ['rules', 'load before you type', 'fold-more-rules', 'rules-reload']] as const
+  const cases = [['overview', 'Ready', 'fold-more', 'ctx-compact'], ['git', 'Working tree clean', 'fold-more-git', 'git-more'], ['agents', 'No agents running', 'fold-more-agents', 'spawn-toggle'], ['files', 'No edits yet this session', 'fold-more-activity', 'fold-feats'], ['rules', 'load before you type', 'fold-more-rules', 'rules-reload'], ['tickets', 'Connect Jira or Notion', 'fold-more-tickets', 'never changes a ticket']] as const
   expect(cases.map(c => c[0]).sort()).toEqual(TABS.map(t => t.id).sort())
   for (const [tab, sentence, fold, hidden] of cases) {
     await $.command.run({ command: 'cockpit', args: `tab ${tab}` } as never)
