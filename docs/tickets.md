@@ -39,7 +39,8 @@ list to pick another.
 For Jira: your open tickets in the project (**Mine**), or every open one (**All open**), newest change first, up to
 50. For Notion: the database's pages, up to 30. Each row has the ticket's key (Jira) with its kind and status, and its title under them; the title, marked ›, opens
 the ticket. **↻ Read
-again** asks the tracker again.
+again** asks the tracker again. **Mine** is the account Jira says is signed in, which the tab names ("Signed in as
+…") and asks again with every reading, since a sign-in can change under a session; an empty list says whose it is.
 
 **Epics, stories, tasks and sub-tasks.** Each Jira ticket shows its kind, and the list is drawn as the hierarchy: a
 story under its epic, a sub-task under its story or task. A parent the list does not hold (someone else's, already

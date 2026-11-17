@@ -9,7 +9,7 @@ const pane = { plugin: 'cockpit', surface: 'terminal', component: 'Pane', reques
 const text = (t: string, isError = false) => ({ value: { content: [{ type: 'text', text: t }], isError } })
 const issues = { issues: [{ key: 'API-12', fields: { summary: 'Add rate limiting to login', status: { name: 'In Progress' }, description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Limit login to five tries a minute.' }] }] } } }, { key: 'API-13', fields: { summary: 'Fix the\u001b[31m footer', status: { name: 'To Do' }, description: null } }] }
 
-function stand(on: any, st: { auth?: boolean; issues?: unknown } = {}) {
+function stand(on: any, st: { auth?: boolean; issues?: unknown | (() => unknown) } = {}) {
   const log = { store: {} as Record<string, unknown>, calls: [] as { server: string; tool: string; args: any }[], connects: [] as string[], prompts: [] as string[], notes: [] as string[], asked: [] as string[] }
   on('clock.now', async () => ({ value: 1_000_000 }))
   on('session.cwd', async () => ({ value: '/repo' }))
@@ -31,12 +31,13 @@ function stand(on: any, st: { auth?: boolean; issues?: unknown } = {}) {
   })
   on('mcp.call', async (_: unknown, e: any) => {
     log.calls.push(e)
+    if (e.tool === 'atlassianUserInfo') return text(JSON.stringify({ account_id: 'a1', name: 'Dev One', email: 'dev@x.io' }))
     if (e.tool === 'getAccessibleAtlassianResources') return text(JSON.stringify([{ id: 'cloud-1', url: 'https://acme.atlassian.net/', name: 'acme' }]))
     // The older server has no listJiraProjects: the next name is asked
     // …and the engine refuses the call in these words
     if (e.tool === 'listJiraProjects') return text('$.mcp.call: no connected MCP tool "listJiraProjects" on a server named "claude_ai_Atlassian"', true)
     if (e.tool === 'getVisibleJiraProjects') return text(JSON.stringify({ values: [{ key: 'API', name: 'Public API' }, { key: 'WEB', name: 'Website' }] }))
-    if (e.tool === 'searchJiraIssuesUsingJql') return text(JSON.stringify(st.issues ?? issues))
+    if (e.tool === 'searchJiraIssuesUsingJql') return text(JSON.stringify((typeof st.issues === 'function' ? st.issues() : st.issues) ?? issues))
     return text('no such tool', true)
   })
   return log
@@ -115,7 +116,7 @@ test('Jira: connect, pick the project, tick a ticket: the Git tab, the Overview 
   await settle()
   expect((log.store['tickets:/repo'] as any).project.id).toBe('WEB')
   // No tool that writes was ever asked for
-  expect(log.calls.every(c => /^(get|list|search)/.test(c.tool))).toBe(true)
+  expect(log.calls.every(c => /^(get|list|search|atlassianUserInfo)/.test(c.tool))).toBe(true)
   await ui.unmount()
 })
 
@@ -139,7 +140,7 @@ test('a Jira server the session is already signed in to is used as it is: Cockpi
   expect(log.connects).toEqual([])
   expect(log.calls.every(c => c.server === 'claude_ai_Atlassian')).toBe(true)
   // The project tool the session lists is the one asked: the name this server never had is not tried
-  expect(log.calls.map(c => c.tool)).toEqual(['getAccessibleAtlassianResources', 'getVisibleJiraProjects'])
+  expect(log.calls.map(c => c.tool)).toEqual(['getAccessibleAtlassianResources', 'atlassianUserInfo', 'getVisibleJiraProjects'])
   expect(log.store['tickets:own']).toBe(undefined)
   expect(JSON.stringify(await ui.drawn())).toContain('API · Public API')
   await ui.unmount()
@@ -195,6 +196,16 @@ test('epics, stories, tasks and sub-tasks: each kind read from Jira, listed unde
   expect(d).not.toContain('tk-open-E-1')
   const composed: any = await (async () => { await ui.press({ key: 'tk-work-E-3' }); return $.prompt.compose({ model: 'claude-x', promptModel: 'claude-x', surfaces: ['terminal'], tools: [], outputStyle: null, traits: [] } as never) })()
   expect(composed.sections.find((x: any) => x.id === 'cockpit:tickets').text).toContain('- Sub-task E-3 · Sign-in tests, under Story E-2 (Sign in with Microsoft)')
+  await ui.unmount()
+})
+
+test('the tab names the account Jira says is signed in, and an empty Mine says whose it is', async ($, on) => {
+  stand(on, { issues: { issues: { nodes: [] } } })
+  expect(((await $.command.run({ command: 'cockpit', args: 'tickets jira API' } as never)) as any).text).toContain('signed in as Dev One')
+  const ui = await $.ui.mount(pane as never)
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('Signed in as Dev One')
+  expect(d).toContain('No open tickets assigned to Dev One')
   await ui.unmount()
 })
 

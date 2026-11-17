@@ -5,7 +5,7 @@ import { repoRoot } from '../core/repos'
 import { cut, plain } from '../core/text'
 import { setGit } from '../git/git'
 import type { Result } from './tickets'
-import { EMPTY, SERVERS, SOURCES, TOOLS, textOf, jsonOf, unknownTool, jiraSite, jiraProjects, jql, jiraTickets, notionFound, dataSource, notionTickets, gitTicket, startPrompt, briefPrompt, parseBrief, savedOf, ticketTree } from './tickets'
+import { EMPTY, SERVERS, SOURCES, TOOLS, textOf, jsonOf, unknownTool, jiraSite, jiraWho, jiraProjects, jql, jiraTickets, notionFound, dataSource, notionTickets, gitTicket, startPrompt, briefPrompt, parseBrief, savedOf, ticketTree } from './tickets'
 
 // The Tickets tab's reading: Jira and Notion through their makers' own MCP servers, called with the session's own
 // connection and sign-in. Only when the tab opens or a button is pressed, never at a session's start or on a timer;
@@ -117,6 +117,15 @@ async function connectNow($: $, source: TicketSource) {
     await read($)
   }
 }
+// Who Jira says is signed in, asked again with every reading: the sign-in can change under a session (/mcp), and
+// "mine" is that account's. A server that cannot say leaves the name as it was
+async function readWho($: $) {
+  const c = (await now($)).conn.jira
+  if (!c?.server) return
+  const r = await ask($, c.server, TOOLS.who, c.site ? { cloudId: c.site } : {})
+  const who = r.isError ? '' : jiraWho(jsonOf(r))
+  if (who && who !== c.who) await patch($, t => ({ conn: { ...t.conn, jira: { ...t.conn.jira, who } } }))
+}
 
 // The projects to pick from: Jira's own list, or what a Notion search for the typed words finds
 async function readProjects($: $, find = '') {
@@ -148,6 +157,7 @@ async function readItems($: $) {
 // What the tab shows for the source it is on: its project's tickets, else the projects to pick one from
 async function read($: $) {
   const t = await now($)
+  if (t.source === 'jira') await readWho($).catch(() => null)
   return t.project?.source === t.source ? readItems($) : readProjects($)
 }
 export function refresh($: $) {
@@ -239,7 +249,7 @@ export async function ticketsCommand($: $, words: string[]) {
     await pickNow($, p)
   } else if (t.project?.source !== source) await readProjects($)
   t = await now($)
-  const head = `${nameOf(source)} via ${c.server}${c.siteUrl ? ` · ${c.siteUrl}` : ''}`
+  const head = `${nameOf(source)} via ${c.server}${c.siteUrl ? ` · ${c.siteUrl}` : ''}${t.conn[source]?.who ? ` · signed in as ${t.conn[source]?.who}` : ''}`
   if (t.error) return `${head}\n${t.error}`
   if (t.project?.source !== source) return `${head}\nProjects (${t.projects.length}): ${t.projects.map(x => (source === 'jira' ? `${x.id} · ${x.name}` : x.name)).join('; ') || 'none'}\nSet this repository's project: /cockpit tickets ${source} <project>`
   return `${head}\nProject: ${t.project.name} · ${t.items.length} open ticket${t.items.length === 1 ? '' : 's'}\n${ticketTree(t.items).map(r => ('head' in r ? `▾ ${r.head}` : `${'  '.repeat(r.depth)}- ${r.t.type ? `${r.t.type} ` : ''}${r.t.key ? `${r.t.key} · ` : ''}${r.t.title}${r.t.status ? ` [${r.t.status}]` : ''}`)).join('\n')}`
