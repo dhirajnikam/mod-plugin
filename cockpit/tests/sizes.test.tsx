@@ -307,7 +307,7 @@ test('the Tickets tab with its tickets fits every width', { timeoutMs: 20_000 },
   on('session.cwd', async () => ({ value: '/repo' }))
   on('process.run', async (_, e) => ({ value: { exitCode: 0, stdout: (e as unknown as { argv: string[] }).argv.join(' ') === 'git rev-parse --show-toplevel' ? '/repo\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('model.complete', async () => ({ value: { isAnswered: true, text: '{"explain": "Limit how often a person may try to sign in, so a guessed password cannot be tried forever.", "features": []}', usage: { inputTokens: 1, outputTokens: 1 } } }) as never)
-  on('mcp.connect', async () => ({ value: { isConnected: true, server: 'plugin:cockpit:atlassian-with-a-long-name' } }) as never)
+  on('mcp.connect', async (_: unknown, e: any) => ({ value: e.server === 'atlassian' ? { isConnected: true, server: 'plugin:cockpit:atlassian-with-a-long-name' } : { isConnected: false, reason: 'unlisted', message: 'no' } }) as never)
   on('mcp.call', async (_: unknown, e: any) => {
     if (e.tool === 'getAccessibleAtlassianResources') return say([{ id: 'c1', url: 'https://a-company-with-a-long-name.atlassian.net' }]) as never
     if (e.tool === 'listJiraProjects') return say({ values: [{ key: 'PLATFORM', name: 'The platform team and everything it looks after' }] }) as never

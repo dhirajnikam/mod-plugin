@@ -12,12 +12,14 @@ reads: it never creates, edits, moves or comments on a ticket.
 
 ## Connecting
 
-Pick **Jira** or **Notion** and press **Connect**. Cockpit asks Claude Code to bring that server into the session; where
-Claude Code finds you already run the same server under another name, it answers with that one. If the server
-wants a sign-in the tab says so: run `/mcp`, pick the server, sign in, and press **Connect** again.
+Pick **Jira** or **Notion** and press **Connect**. A server of that tracker you are already signed in to (the
+claude.ai Atlassian or Notion connector, another plugin's, one of your own) is used as it is. Only when there is none
+does Cockpit bring its own into the session. If no
+server is signed in the tab says so: run `/mcp`, sign in to one (the claude.ai connector, or Cockpit's own), and press
+**Connect** again.
 
 Cockpit ships both servers in its manifest, and holds them back when a session starts: neither is dialed, lists its
-tools or asks for a sign-in until you have pressed **Connect** for it. (A headless plugin install or reload does not
+tools or asks for a sign-in until you have pressed **Connect** and no server you are signed in to answered. (A headless plugin install or reload does not
 ask Cockpit first, so a server can be dialed then; it still waits on your sign-in.) After that it joins your sessions by itself, and the tab
 reconnects when you open it. **Forget** (under More) undoes that: the server stays out of your next sessions.
 

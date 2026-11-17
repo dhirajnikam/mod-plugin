@@ -80,7 +80,7 @@ export function jiraTickets(json: unknown, siteUrl: string): Ticket[] {
   return rowsOf(json).filter(r => typeof r.key === 'string' && r.key).map(r => {
     const f = isRow(r.fields) ? r.fields : r
     const key = clean(r.key, 40)
-    return { id: key, key, title: clean(f.summary, 200), status: clean(f.status, 40), url: siteUrl ? `${siteUrl}/browse/${key}` : '', source: 'jira' as const, text: clean(f.description, 4000) }
+    return { id: key, key, title: clean(f.summary, 200), status: clean(f.status, 40), url: typeof r.webUrl === 'string' && /^https:/.test(r.webUrl) ? plain(r.webUrl) : siteUrl ? `${siteUrl}/browse/${key}` : '', source: 'jira' as const, text: clean(f.description, 4000) }
   }).slice(0, 50)
 }
 
