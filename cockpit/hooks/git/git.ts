@@ -3,8 +3,8 @@ import { loadPr } from './pr'
 import { loadAccounts, ghUse, gh } from './accounts'
 import { base, firstLine } from '../core/text'
 import type { $ } from '../core/core'
-import { look, set, toast, note, claim, release } from '../core/core'
-import { repoRoot, git, repoInfo, prefsKey, moveSaved, branchOf } from '../core/repos'
+import { look, set, setUi, toast, note, claim, release } from '../core/core'
+import { repoRoot, git, repoInfo, prefsKey, moveSaved, branchOf, rediscover, SKIP } from '../core/repos'
 import { TYPES, BASE_BRANCHES, parseCommit, baseFor, inferType, branchName, commitMsg } from './git-form'
 import { verifyState } from '../core/experts'
 import { INITIAL } from '../core/state'
@@ -58,7 +58,7 @@ async function writeCommit($: $, s: Ph, sig: string) {
 export async function refreshRepo($: $) {
   // -z: paths come unquoted whatever they hold; a rename is "R  new\0old\0"
   const st = await git($, ['status', '--porcelain=v1', '-z', '-b'])
-  if (st.exitCode !== 0) return set($, { repo: INITIAL.repo })
+  if (st.exitCode !== 0) return set($, { repo: INITIAL.repo, initDirs: await initChoices($) })
   const [head = '', ...rest] = st.stdout.split('\0')
   const current = branchOf(head).replace(/^HEAD \(no branch\)$/, '')
   const ahead = Number(head.match(/ahead (\d+)/)?.[1] ?? 0)
@@ -122,10 +122,28 @@ export async function pullNow($: $) {
   await refreshRepo($)
 }
 
-export async function gitInit($: $) {
-  const r = await git($, ['init'])
-  await toast($, r.exitCode === 0 ? 'Initialised a git repository' : `git init failed: ${r.stderr.trim()}`)
-  await refreshRepo($)
+// Where git init may run when the session folder holds no repository: the folder itself, then the folders in it
+// ponytail: the first 30 folders, one level; a deeper one is a `git init` in a terminal, then Refresh
+async function initChoices($: $) {
+  const cwd = await $.session.cwd().catch(() => '')
+  if (!cwd) return []
+  const subs = (await $.fs.list(cwd).catch(() => [])).filter(e => e.kind === 'dir' && !SKIP(e.name)).map(e => `${cwd}/${e.name}`).sort()
+  return [cwd, ...subs.slice(0, 30)]
+}
+// git init, in the folder the person chose and nowhere else: never a guess, and only a folder the tab offered
+export async function gitInit($: $, dir = '') {
+  const s = await look($)
+  const to = dir || s.ui.initDir || ''
+  if (!to || !(s.initDirs ?? []).includes(to)) return toast($, 'Choose the folder to make a repository in first')
+  const r = await $.process.run(['git', 'init'], { cwd: to }).catch(e => ({ exitCode: 1, stdout: '', stderr: String(e) }))
+  await toast($, r.exitCode === 0 ? `Initialised a git repository in ${to}` : `git init failed: ${firstLine(r)}`)
+  if (r.exitCode === 0) await setUi($, { initDir: '' })
+  await rereadGit($)
+}
+// Refresh: the repositories are looked for again (one cloned, initialised or deleted since), then the tab is read
+export async function rereadGit($: $) {
+  rediscover()
+  await refreshGit($)
 }
 
 // What the next commit would be: its type (from the diff unless you chose Manual), branch, message and files
@@ -279,6 +297,7 @@ export async function followEdit($: $, file: string) {
   await repoRoot($)
   const s = await look($)
   if (s.repoHand || s.repos.length < 2) return
-  const to = s.repos.find(r => file.startsWith(`${r.dir}/`))
+  // The nearest repository holding the file: one inside another is the longer path
+  const to = s.repos.filter(r => file.startsWith(`${r.dir}/`)).sort((a, b) => b.dir.length - a.dir.length)[0]
   if (to) await pickRepo($, to.dir, false)
 }

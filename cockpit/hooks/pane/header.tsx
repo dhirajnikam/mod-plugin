@@ -53,6 +53,7 @@ export function Tabs($: $, v: V) {
     agents: running ? String(running) : vs.fail ? `✗${vs.fail}` : '',
     git: s.repo.changed.length ? String(s.repo.changed.length) : '',
     rules: '',
+    tickets: s.tickets?.working.length ? String(s.tickets.working.length) : '',
   }
   const all = TABS.map(({ id, label }): [Tab, string, string] => [id, label, badge[id]])
   const tabs = s.tabsAvailable ? all.filter(([id]) => s.tabsAvailable?.includes(id)) : all

@@ -294,3 +294,44 @@ test("the Overview's spend by day and costliest sessions fit every width", { tim
   }
   expect(bad).toEqual([])
 })
+
+// The Tickets tab with a project, long tickets, one ticked and opened with its explanation, and More open
+test('the Tickets tab with its tickets fits every width', { timeoutMs: 20_000 }, async ($, on) => {
+  const store: Record<string, unknown> = {}
+  const say = (x: unknown) => ({ value: { content: [{ type: 'text', text: JSON.stringify(x) }], isError: false } })
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('store.get', async (_: unknown, e: any) => ({ value: store[e.key] }))
+  on('store.set', async (_: unknown, e: any) => ((store[e.key] = e.value), { value: undefined }))
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('process.run', async (_, e) => ({ value: { exitCode: 0, stdout: (e as unknown as { argv: string[] }).argv.join(' ') === 'git rev-parse --show-toplevel' ? '/repo\n' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('model.complete', async () => ({ value: { isAnswered: true, text: '{"explain": "Limit how often a person may try to sign in, so a guessed password cannot be tried forever.", "features": []}', usage: { inputTokens: 1, outputTokens: 1 } } }) as never)
+  on('mcp.connect', async () => ({ value: { isConnected: true, server: 'plugin:cockpit:atlassian-with-a-long-name' } }) as never)
+  on('mcp.call', async (_: unknown, e: any) => {
+    if (e.tool === 'getAccessibleAtlassianResources') return say([{ id: 'c1', url: 'https://a-company-with-a-long-name.atlassian.net' }]) as never
+    if (e.tool === 'listJiraProjects') return say({ values: [{ key: 'PLATFORM', name: 'The platform team and everything it looks after' }] }) as never
+    return say({ issues: [{ key: 'PLATFORM-12345', fields: { summary: 'Add rate limiting to the login endpoint and every other endpoint that takes a password', status: { name: 'Waiting for a second review' }, description: 'Limit sign-in to five tries a minute for each account and each address.' } }, { key: 'PLATFORM-9', fields: { summary: 'Short', status: { name: 'To Do' } } }] }) as never
+  })
+  const settle = () => new Promise(res => (globalThis as any).setTimeout(res, 30))
+  await $.command.run({ command: 'cockpit', args: 'tab tickets' } as never)
+  const first = await $.ui.mount({ plugin: 'cockpit', surface: 'terminal', component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: 100, placement: 'dock', scroll, view: {} } } as never)
+  for (const key of ['tk-connect', 'tk-proj-PLATFORM', 'tk-work-PLATFORM-12345', 'tk-open-PLATFORM-12345', 'tk-explain-PLATFORM-12345']) {
+    await first.press({ key })
+    await settle()
+  }
+  await openMore(first)
+  await first.unmount()
+  const bad: string[] = []
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const w of WIDTHS) {
+      const pane = await $.ui.mount({ plugin: 'cockpit', surface, component: 'Pane', requestId: 'cockpit', props: { title: 'Cockpit', isFocused: true, bodyColumns: w, placement: 'dock', scroll: { offset: 0, bodyRows: 120 }, view: {} } } as never)
+      const drawn = await pane.drawn()
+      const text = JSON.stringify(drawn)
+      for (const want of ['PLATFORM-12345', 'Add rate limiting', 'a guessed password', 'All open', 'CONNECTIONS', 'Forget']) if (!text.includes(want)) bad.push(`${surface} @${w}: no ${want}`)
+      for (const n of wide(drawn, w)) bad.push(`${surface} tickets @${w}: ${n}`)
+      await pane.unmount()
+    }
+  }
+  expect(bad).toEqual([])
+})

@@ -1,7 +1,7 @@
 export type Palette = 'paper' | 'white' | 'black' | 'solarized' | 'nord'
 // 'auto' follows Claude Code's own light or dark theme
 export type ThemeId = 'auto' | Palette
-export type Tab = 'overview' | 'files' | 'agents' | 'git' | 'rules'
+export type Tab = 'overview' | 'files' | 'agents' | 'git' | 'rules' | 'tickets'
 export type Line = { t: string; k: 'a' | 'd' | 'c' }
 
 // One file operation seen in a tool call
@@ -68,6 +68,27 @@ export type Agent = {
   worktree?: { path: string; branch: string; base: string; claude?: boolean; before?: string[]; nothing?: boolean; snap?: string; files?: string[]; add?: number; del?: number; removed?: boolean; back?: boolean }
   // The model and effort Cockpit chose for it, with why: "sonnet · medium — small docs change"
   pick?: string
+}
+
+// Where tickets come from: Jira through Atlassian's own MCP server, Notion through Notion's
+export type TicketSource = 'jira' | 'notion'
+// One ticket as its tracker gave it. key: the Jira key (API-12), '' for a Notion page; text: its description, cut
+export type Ticket = { id: string; key: string; title: string; status: string; url: string; source: TicketSource; text?: string }
+// The Tickets tab. conn: each source's server as $.mcp.call takes it once connected, or why it is not, and for Jira
+// the site (cloud id and address). project, working and briefs are kept per repository in the store; the rest is read
+// again from the tracker
+export type Tickets = {
+  conn: Partial<Record<TicketSource, { server?: string; why?: string; site?: string; siteUrl?: string }>>
+  source: TicketSource
+  projects: { id: string; name: string }[]
+  // The project this repository is for
+  project?: { source: TicketSource; id: string; name: string }
+  items: Ticket[]
+  // The tickets being worked on here: the first one fills the Git tab's ticket, and Claude is told of all of them
+  working: Ticket[]
+  // What a model said of a ticket, by ticket id: what it asks for, and the features of the codebase memory it touches
+  briefs: Record<string, { explain: string; features: string[] }>
+  error?: string
 }
 
 export type RuleFiles = { settingsPath: string; settings: string; mdPath: string; md: string }
@@ -219,6 +240,8 @@ export type Ph = {
   autopilot?: Autopilot
   // The Rules tab's files as last read, for the repository and the user: settings.json (hooks, permissions) and CLAUDE.md
   rules?: { repo: RuleFiles; user: RuleFiles; mcp?: McpFiles; skills?: { repo: SkillFile[]; user: SkillFile[] }; load?: StartupLoad }
+  // The Tickets tab: Jira and Notion, the project this repository is for and the tickets being worked on
+  tickets?: Tickets
   // Slow work a press started, running past the press: its kind and the words that say it ("Pushing")
   busy?: Record<string, string>
   // The main loop's last tool call that failed or was refused: the Overview shows it while its flow is current
@@ -288,6 +311,8 @@ export type Ph = {
   creating: string
   // Several repos under the session folder (empty otherwise): the chosen one, and whether the person picked it by hand
   repos: { dir: string; name: string; branch: string; changed: number }[]
+  // With no repository here: the folders git init may run in (the session folder first, then the folders in it)
+  initDirs?: string[]
   repoDir: string
   repoHand: boolean
   git: GitForm
@@ -355,6 +380,13 @@ export type Ph = {
     ruleA?: string
     ruleB?: string
     ruleC?: string
+    // The Tickets tab: the ticket opened, what is typed to find a Notion database, and every open ticket of the
+    // project shown instead of yours alone
+    ticketOpen?: string
+    ticketFind?: string
+    ticketAll?: boolean
+    // The folder chosen for git init: nothing is initialised until one is
+    initDir?: string
     acctOpen: boolean
     // The account whose Remove was pressed, waiting for its confirmation
     acctRemove?: string

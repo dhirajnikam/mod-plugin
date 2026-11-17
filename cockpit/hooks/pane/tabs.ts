@@ -6,9 +6,10 @@ import { refreshGit } from '../git/git'
 import { loadProject } from '../memory/memory-io'
 import { loadGuide } from '../memory/explain'
 import { loadRules } from '../rules/rules-io'
+import { loadTickets } from '../tickets/tickets-io'
 
 // The pane's tabs, in the order they are drawn; the stored id 'files' is the Activity tab
-const LABELS: Record<Tab, string> = { overview: 'Overview', files: 'Activity', agents: 'Agents', git: 'Git', rules: 'Rules' }
+const LABELS: Record<Tab, string> = { overview: 'Overview', files: 'Activity', agents: 'Agents', git: 'Git', rules: 'Rules', tickets: 'Tickets' }
 export const TABS = (Object.keys(LABELS) as Tab[]).map(id => ({ id, label: LABELS[id] }))
 export const isTab = (x: string): x is Tab => Object.hasOwn(LABELS, x)
 
@@ -25,6 +26,8 @@ async function loadTab($: $, tab: Tab): Promise<unknown> {
       return refreshGit($)
     case 'rules':
       return loadRules($)
+    case 'tickets':
+      return loadTickets($)
   }
 }
 

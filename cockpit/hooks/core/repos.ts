@@ -21,7 +21,8 @@ export async function repoInfo($: $) {
 // Folders no walk goes into
 export const SKIP = (n: string) => n.startsWith('.') || n === 'node_modules'
 // The git repos one or two levels under a folder that is not itself in one (a folder with a .git directory or file)
-// ponytail: two levels and 20 repos; deeper layouts pick by hand or open the session in the repo
+// ponytail: two levels and 20 repos; deeper layouts pick by hand or open the session in the repo. Under a repository
+// (below) the same walk finds the repos it holds: submodules and nested clones
 async function findRepos($: $, cwd: string) {
   const out: string[] = []
   const isRepo = (d: string) => $.fs.exists(`${d}/.git`).catch(() => false)
@@ -37,21 +38,36 @@ async function findRepos($: $, cwd: string) {
 // The repository's top folder, per session folder: git names changed files from there, so a session working in a
 // subfolder (cockpit/) must run git there too, or `git add cockpit/x` looks for cockpit/cockpit/x
 const roots = new Map<string, { top: string; repos: string[] }>()
+// What was found is forgotten, so the next reading looks again: after a git init, and on Refresh (a clone made
+// meanwhile, a repository deleted)
+export function rediscover() {
+  roots.clear()
+}
 export async function repoRoot($: $) {
   const cwd = await $.session.cwd().catch(() => '')
   let k = roots.get(cwd)
+  const fresh = k === undefined
   if (k === undefined) {
     const r = await $.process.run(['git', 'rev-parse', '--show-toplevel']).catch(() => ({ exitCode: 1, stdout: '', stderr: '' }))
     const inRepo = r.exitCode === 0 && /^([A-Za-z]:)?[\\/]/.test(r.stdout.trim())
-    k = { top: inRepo ? r.stdout.trim() : cwd, repos: inRepo || !cwd ? [] : await findRepos($, cwd) }
+    const top = inRepo ? r.stdout.trim() : cwd
+    // The repos under it: a folder of repos, or a repository that holds others, itself first
+    const under = top ? await findRepos($, top) : []
+    k = { top, repos: inRepo ? (under.length ? [top, ...under] : []) : under }
     roots.set(cwd, k)
   }
-  if (!k.repos.length) return k.top
+  const found = k
+  if (!found.repos.length) {
+    // One repository, or none: a picker left from before a git init or a Refresh goes
+    if (fresh && (await look($)).repos.length) await set($, { repos: [], repoDir: '' })
+    return found.top
+  }
   const s = await look($)
-  if (s.repoDir && k.repos.includes(s.repoDir)) return s.repoDir
+  if (!fresh && s.repoDir && found.repos.includes(s.repoDir)) return s.repoDir
   const saved = await $.store.get(`repo:${cwd}`).catch(() => undefined)
-  const dir = k.repos.find(d => d === saved) ?? k.repos[0] ?? cwd
-  await set($, st => ({ repoDir: dir, repos: k.repos.map(d => st.repos.find(r => r.dir === d) ?? { dir: d, name: d.slice(cwd.length + 1), branch: '', changed: 0 }) }))
+  const dir = found.repos.find(d => d === s.repoDir) ?? found.repos.find(d => d === saved) ?? found.repos[0] ?? cwd
+  const name = (d: string) => (d === found.top ? d.replace(/^.*[\\/]/, '') : d.slice(found.top.length + 1))
+  await set($, st => ({ repoDir: dir, repos: found.repos.map(d => st.repos.find(r => r.dir === d) ?? { dir: d, name: name(d), branch: '', changed: 0 }) }))
   return dir
 }
 export async function git($: $, args: string[]) {

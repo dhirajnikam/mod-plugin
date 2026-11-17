@@ -84,3 +84,63 @@ test('a plain repository behaves as before: no picker, git runs at its top folde
   expect(statusCwds(ran)).toEqual(['/solo'])
   await ui.unmount()
 })
+
+// A stand of its own: which folders are repositories changes while the test runs
+function folders($: any, on: any, root: string, kids: string[], repos: Set<string>) {
+  const ran: { cmd: string; cwd: string }[] = []
+  on('clock.now', async () => ({ value: 1_000_000 }))
+  on('session.cwd', async () => ({ value: root }))
+  on('store.get', async (_: unknown, e: any) => ({ value: String(e.key).startsWith('git:') ? SETUP : undefined }))
+  on('store.set', async () => ({ value: undefined }))
+  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.open', async () => ({ value: { isPlaced: true } }))
+  on('tool.call', async () => ({ result: 'ok' }))
+  on('fs.list', async (_: unknown, e: any) => ({ value: e.path === root ? [...kids, 'node_modules', '.cache'].map(name => ({ name, kind: 'dir' })) : [] }))
+  on('fs.exists', async (_: unknown, e: any) => ({ value: [...repos].some(r => e.path === `${r}/.git`) }))
+  on('process.run', async (_: unknown, e: any) => {
+    const cmd = (Object.values(e as object).find(Array.isArray) as string[]).join(' ')
+    const cwd = String(e.cwd ?? e.init?.cwd ?? '')
+    ran.push({ cmd, cwd })
+    if (cmd === 'git rev-parse --show-toplevel') return repos.has(root) ? ok(`${root}\n`) : ok('', 128)
+    if (cmd === 'git init') return (repos.add(cwd), ok('Initialized\n'))
+    if (cmd.startsWith('git status')) return repos.has(cwd || root) ? ok(`## main${cmd.includes(' -z') ? '\0' : '\n'}`) : ok('', 128)
+    return ok('')
+  })
+  return ran
+}
+
+test('with no repository, git init waits for you to choose the folder, runs there only, and the new repository is found', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran = folders($, on, '/empty', ['app', 'docs'], new Set())
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const ui = await $.ui.mount(PANE as never)
+  const d = JSON.stringify(await ui.drawn())
+  expect(d).toContain('choose the folder first')
+  // The session folder and the folders in it are offered; nothing is chosen, so there is no init to press
+  expect(d).toContain('This folder (empty)')
+  expect(d).toContain('app/')
+  expect(d).not.toContain('node_modules')
+  expect(await ui.find({ key: 'git-init' })).toBeFalsy()
+  await (ui as any).select({ key: 'git-init-dir', value: '/empty/app' })
+  expect((await ui.find({ key: 'git-init' }))?.props.label).toBe('git init in app')
+  expect(ran.some(r => r.cmd === 'git init')).toBe(false)
+  await ui.press({ key: 'git-init' })
+  expect(ran.filter(r => r.cmd === 'git init').map(r => r.cwd)).toEqual(['/empty/app'])
+  // Found again: it is the repository git runs in, named above the tab
+  expect(await picked(ui)).toBe('/empty/app')
+  expect(JSON.stringify(await ui.drawn())).toContain('⎇ main')
+  await ui.unmount()
+})
+
+test('a repository holding another lists both, itself first, and an Edit inside the inner one follows it', { timeoutMs: 20_000 }, async ($, on) => {
+  const ran = folders($, on, '/mono', ['libs', 'src'], new Set(['/mono', '/mono/libs']))
+  await $.command.run({ command: 'cockpit', args: 'tab git' } as never)
+  const ui = await $.ui.mount(PANE as never)
+  expect(await picked(ui)).toBe('/mono')
+  const options = ((await ui.find({ key: 'git-repo' })) as any)?.props.options.map((o: any) => o.value)
+  expect(options).toEqual(['/mono', '/mono/libs'])
+  // Both hold the file's path; the nearer one is its repository
+  await $.tool.call({ tool: 'Edit', file_path: '/mono/libs/x.ts', old_string: 'a', new_string: 'b', tool_use_id: 'n1' } as never)
+  expect(await picked(ui)).toBe('/mono/libs')
+  expect(ran.some(r => r.cmd.startsWith('git status') && r.cwd === '/mono/libs')).toBe(true)
+  await ui.unmount()
+})

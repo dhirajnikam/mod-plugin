@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
-  "version": "0.11.1",
-  "description": "Cockpit: progress by flow, an autopilot that works until the judges agree it is done, agents with trackers, memory and testers, codebase memory with a feature map, a Rules tab for hooks and permissions, and a git graph, around the prompt and in a side pane",
+  "version": "0.12.0",
+  "description": "Cockpit: progress by flow, an autopilot that works until the judges agree it is done, agents with trackers, memory and testers, codebase memory with a feature map, a Rules tab for hooks and permissions, a Tickets tab for Jira and Notion, and a git graph, around the prompt and in a side pane",
   "types": "./types/index.d.ts",
   "author": {
     "name": "Dhiraj Nikam"
@@ -9,6 +9,7 @@
   "homepage": "https://github.com/dhirajnikam/mod-plugin",
   "repository": "https://github.com/dhirajnikam/mod-plugin",
   "license": "MIT",
+  "privacyPolicyUrl": "https://github.com/dhirajnikam/mod-plugin/blob/main/docs/privacy.md",
   "keywords": [
     "agents",
     "autopilot",
@@ -18,8 +19,13 @@
     "memory",
     "permissions",
     "progress",
-    "testing"
+    "testing",
+    "tickets"
   ],
+  "mcpServers": {
+    "atlassian": { "type": "http", "url": "https://mcp.atlassian.com/v2/mcp" },
+    "notion": { "type": "http", "url": "https://mcp.notion.com/mcp" }
+  },
   "userConfig": {
     "theme": {
       "type": "string",

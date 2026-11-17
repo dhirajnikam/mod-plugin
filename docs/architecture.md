@@ -20,7 +20,8 @@ Claude Code events ──▶ register.tsx (hooks) ──▶ a feature's folder (
 - **What Cockpit does** is in `cockpit/hooks/`, one folder per feature: `core/` (the state, `look()` and `set()`,
   notes, paths, history, spend, finish notices and the daily budget, the themes), `flows/` (flows, their steps and progress), `git/` (git, gh, commits, accounts, the pull request, turn snapshots), `agents/` (experts,
   pipelines, hand-offs, testers, worktrees), `judges/` (the judges and the autopilot), `memory/` (mapping the
-  codebase, the feature map, the codebase guide), `rules/` (the Rules tab's files), `pane/` (the side pane, its header
+  codebase, the feature map, the codebase guide), `rules/` (the Rules tab's files), `tickets/` (Jira and Notion
+  through their MCP servers), `pane/` (the side pane, its header
   and the table of tabs), `ui/` (the pieces the tabs share) and `chat/` (the drawings around the chat). Beside
   `register.tsx` sit `commands.ts` (the `/cockpit` command), `acts.ts` (the actions callable by name) and `turn-io.ts`
   (a turn's start and end, which reach every feature). Where a feature has the pair, `x.ts` is its pure logic and
@@ -76,6 +77,7 @@ Each tab is a `-tab.tsx` file in its feature's folder, its function called from 
 | Agents (`agents/agents-tab.tsx`) | `Agents` | `Tracker` (an agent's task list), `AgentMap`, `agentGraph()` and `agentIconSvg()` from `agents/agents-view.ts`; starts go through `runExpert`, `startPipeline`, `spawnAgent` in `agents/agents.ts` |
 | Git (`git/git-tab.tsx`) | `Git` | `History` (the graph), `AccountBox`, `Setup`, `Options`; git and gh calls in `git/git.ts`, `git/accounts.ts` and `git/pr.ts` |
 | Rules (`rules/rules-tab.tsx`) | `Rules` | `rules/rules.ts` for the changes; `loadRules`, `writeSettings`, `writeInstructions` in `rules/rules-io.ts` |
+| Tickets (`tickets/tickets-tab.tsx`) | `TicketsTab` | `tickets/tickets.ts` to read what the servers answer; `connect`, `refresh`, `pickProject`, `explain`, `workOn` in `tickets/tickets-io.ts`, the only callers of `$.mcp` |
 
 Shared drawing pieces in `ui/shared.tsx`: `Bar`, `Segs`, `Seg` (a segmented choice), `Check`, `Head` (a section heading),
 `Fold` (a heading that folds what is under it), `More` (the fold a tab keeps everything past its first screen under),
