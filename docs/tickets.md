@@ -36,8 +36,14 @@ The choice is kept per repository, across sessions. **Change** picks another.
 ## The tickets
 
 For Jira: your open tickets in the project (**Mine**), or every open one (**All open**), newest change first, up to
-30. For Notion: the database's pages, up to 30. Each row has the ticket's key (Jira), title and status. **↻ Read
+50. For Notion: the database's pages, up to 30. Each row has the ticket's key (Jira), title and status. **↻ Read
 again** asks the tracker again.
+
+**Epics, stories, tasks and sub-tasks.** Each Jira ticket shows its kind, and the list is drawn as the hierarchy: a
+story under its epic, a sub-task under its story or task. A parent the list does not hold (someone else's, already
+done) is a dim heading over its children, so you still see what they belong to. When the list holds more than one
+kind, a row of buttons (**All**, Epic, Story, Task, Sub-task) keeps one kind only. Claude is told a ticked ticket's
+kind and what it sits under.
 
 Press a title to open the ticket: its link, its description, and **✦ Explain it and name its features**. Explain makes
 one small model call with the ticket's title and description and the names of the features in the

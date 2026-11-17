@@ -5,7 +5,7 @@ import { repoRoot } from '../core/repos'
 import { cut, plain } from '../core/text'
 import { setGit } from '../git/git'
 import type { Result } from './tickets'
-import { EMPTY, SERVERS, SOURCES, TOOLS, textOf, jsonOf, unknownTool, jiraSite, jiraProjects, jql, jiraTickets, notionFound, dataSource, notionTickets, gitTicket, briefPrompt, parseBrief, savedOf } from './tickets'
+import { EMPTY, SERVERS, SOURCES, TOOLS, textOf, jsonOf, unknownTool, jiraSite, jiraProjects, jql, jiraTickets, notionFound, dataSource, notionTickets, gitTicket, briefPrompt, parseBrief, savedOf, ticketTree } from './tickets'
 
 // The Tickets tab's reading: Jira and Notion through their makers' own MCP servers, called with the session's own
 // connection and sign-in. Only when the tab opens or a button is pressed, never at a session's start or on a timer;
@@ -136,7 +136,7 @@ async function readItems($: $) {
   const p = t.project
   if (!c?.server || p?.source !== t.source) return
   let r: Result
-  if (t.source === 'jira') r = await ask($, c.server, TOOLS.issues, { cloudId: c.site, jql: jql(p.id, !!s.ui.ticketAll), fields: ['summary', 'status', 'description'], maxResults: 30 })
+  if (t.source === 'jira') r = await ask($, c.server, TOOLS.issues, { cloudId: c.site, jql: jql(p.id, !!s.ui.ticketAll), fields: ['summary', 'status', 'description', 'issuetype', 'parent'], maxResults: 50 })
   else {
     r = await ask($, c.server, TOOLS.rows, { mode: 'rows', data_source_url: p.id, limit: 30 })
     // A server without the rows tool, or a project that is no database: its pages by search
@@ -242,7 +242,7 @@ export async function ticketsCommand($: $, words: string[]) {
   const head = `${nameOf(source)} via ${c.server}${c.siteUrl ? ` · ${c.siteUrl}` : ''}`
   if (t.error) return `${head}\n${t.error}`
   if (t.project?.source !== source) return `${head}\nProjects (${t.projects.length}): ${t.projects.map(x => (source === 'jira' ? `${x.id} · ${x.name}` : x.name)).join('; ') || 'none'}\nSet this repository's project: /cockpit tickets ${source} <project>`
-  return `${head}\nProject: ${t.project.name} · ${t.items.length} open ticket${t.items.length === 1 ? '' : 's'}\n${t.items.map(x => `- ${x.key ? `${x.key} · ` : ''}${x.title}${x.status ? ` [${x.status}]` : ''}`).join('\n')}`
+  return `${head}\nProject: ${t.project.name} · ${t.items.length} open ticket${t.items.length === 1 ? '' : 's'}\n${ticketTree(t.items).map(r => ('head' in r ? `▾ ${r.head}` : `${'  '.repeat(r.depth)}- ${r.t.type ? `${r.t.type} ` : ''}${r.t.key ? `${r.t.key} · ` : ''}${r.t.title}${r.t.status ? ` [${r.t.status}]` : ''}`)).join('\n')}`
 }
 export async function clearProject($: $) {
   await set($, s => {

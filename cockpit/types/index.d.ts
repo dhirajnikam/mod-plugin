@@ -73,7 +73,9 @@ export type Agent = {
 // Where tickets come from: Jira through Atlassian's own MCP server, Notion through Notion's
 export type TicketSource = 'jira' | 'notion'
 // One ticket as its tracker gave it. key: the Jira key (API-12), '' for a Notion page; text: its description, cut
-export type Ticket = { id: string; key: string; title: string; status: string; url: string; source: TicketSource; text?: string }
+// type: what kind of work item it is (Epic, Story, Task, Sub-task); parent: the key of the one it sits under (a
+// story's epic, a sub-task's story), with that one's title and type, which the list may not hold itself
+export type Ticket = { id: string; key: string; title: string; status: string; url: string; source: TicketSource; text?: string; type?: string; parent?: string; parentTitle?: string; parentType?: string }
 // The Tickets tab. conn: each source's server as $.mcp.call takes it once connected, or why it is not, and for Jira
 // the site (cloud id and address). project, working and briefs are kept per repository in the store; the rest is read
 // again from the tracker
@@ -385,6 +387,8 @@ export type Ph = {
     ticketOpen?: string
     ticketFind?: string
     ticketAll?: boolean
+    // Only the tickets of this type are listed ('' or absent: all)
+    ticketType?: string
     // The folder chosen for git init: nothing is initialised until one is
     initDir?: string
     acctOpen: boolean
