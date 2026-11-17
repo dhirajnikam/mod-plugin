@@ -5,6 +5,18 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-17
+
+### Added
+- Opening an epic, a story or any ticket in the Tickets tab writes, by itself and once, **a short summary**, the
+  **Work on existing features** (each feature it touches, with what has to change there) and what is **New**. An
+  epic or story is read with the tickets under it. `/cockpit ticket <KEY>` gives the same in the chat.
+- **‹ Projects** beside the project's name goes back to the project list.
+
+### Changed
+- A ticket's summary is written when it is first opened, where it took a press of Explain before: one small model
+  call per ticket, kept afterwards.
+
 ## [0.13.0] - 2026-11-17
 
 ### Added
@@ -444,7 +456,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.13.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.14.0...main
+[0.14.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.0...v0.12.1

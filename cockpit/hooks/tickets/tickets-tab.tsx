@@ -1,4 +1,4 @@
-import type { Ticket } from '../../types'
+import type { Ticket, Tickets } from '../../types'
 import type { $ } from '../core/core'
 import { set, setUi } from '../core/core'
 import { cut, plural } from '../core/text'
@@ -37,6 +37,8 @@ export function TicketsTab($: $, v: V) {
       <Text color={color} size="footnote">{label}</Text>
     </Button>
   )
+  // A brief kept from before the work was written per feature names its features only
+  const work = (b: Tickets['briefs'][string]) => b.work ?? b.features.map(f => ({ feature: f, what: '' }))
   const detail = (x: Ticket) => {
     const b = tk.briefs[x.id]
     return (
@@ -44,14 +46,20 @@ export function TicketsTab($: $, v: V) {
         {(x.type || x.status) && <Text color={t.dim} size="footnote" wrap="truncate-end">{[x.type, x.status, x.parent ? `under ${x.parent}${x.parentTitle ? ` · ${x.parentTitle}` : ''}` : ''].filter(Boolean).join(' · ')}</Text>}
         {x.url !== '' && <Text color={t.faint} size="footnote" wrap="truncate-end">{x.url}</Text>}
         <Text color={t.dim} wrap="wrap">{cut(x.text ?? '', 600) || (busy ? 'Reading…' : 'No description.')}</Text>
+        {!b && !!busy && <Text color={t.busy} size="footnote">Writing the summary…</Text>}
         {b && <Text color={t.text} wrap="wrap">{b.explain}</Text>}
-        {b && (
-          <Box columnGap={sp(v, 1)} flexWrap="wrap" alignItems="center">
-            <Text color={t.dim} size="footnote">{b.features.length ? 'Features it touches:' : 'No feature of the codebase memory fits it.'}</Text>
-            {b.features.map(f => link(`tk-feat-${x.id}-${f}`, f, () => set($, st => ({ tab: 'files', ui: { ...st.ui, openFeature: f } }))))}
+        {/* What has to change in each existing feature (a link to it in the Activity tab), then what is new */}
+        {b && work(b).length > 0 && <Head v={v} label="Work on existing features" />}
+        {b && work(b).map(w => (
+          <Box key={`tk-work-on-${x.id}-${w.feature}`} flexDirection="column">
+            {link(`tk-feat-${x.id}-${w.feature}`, w.feature, () => set($, st => ({ tab: 'files', ui: { ...st.ui, openFeature: w.feature } })))}
+            {w.what !== '' && <Text color={t.dim} wrap="wrap">{w.what}</Text>}
           </Box>
-        )}
-        {link(`tk-explain-${x.id}`, b ? '↻ Explain again' : '✦ Explain it and name its features', () => explain($, x.id))}
+        ))}
+        {b && !!b.fresh?.length && <Head v={v} label="New" />}
+        {b && (b.fresh ?? []).map((n, i) => <Text key={`tk-new-${x.id}-${i}`} color={t.text} wrap="wrap">{`+ ${n}`}</Text>)}
+        {b && !work(b).length && !b.fresh?.length && <Text color={t.dim} size="footnote" wrap="wrap">No feature of the codebase memory fits it.</Text>}
+        {link(`tk-explain-${x.id}`, b ? '↻ Write it again' : '✦ Summarise it and name the work', () => explain($, x.id))}
       </Box>
     )
   }
@@ -81,11 +89,14 @@ export function TicketsTab($: $, v: V) {
       )}
       {!!c?.server && !!p && (
         <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" columnGap={sp(v, 1)}>
-          <Head v={v} label="Project" note={p.name} />
+          <Box columnGap={sp(v, 1)} alignItems="center" flexShrink={1}>
+            {/* Back to the projects, to pick another for this repository */}
+            {link('tk-change', '‹ Projects', () => clearProject($))}
+            <Head v={v} label="Project" note={p.name} />
+          </Box>
           <Box columnGap={sp(v, 1)} alignItems="center" flexWrap="wrap">
             {tk.source === 'jira' && <Seg v={v} id="tk-whose" value={s.ui.ticketAll ? 'all' : 'mine'} items={[['mine', 'Mine'], ['all', 'All open']]} onPick={k => Promise.resolve(setUi($, { ticketAll: k === 'all' })).then(() => refresh($))} />}
             {link('tk-refresh', busy ?? '↻ Read again', () => refresh($), t.dim)}
-            {link('tk-change', 'Change', () => clearProject($), t.dim)}
           </Box>
         </Box>
       )}

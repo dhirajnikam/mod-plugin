@@ -31,7 +31,8 @@ Nothing is asked of a tracker at a session's start or on a timer: only when the 
 - **Notion** has no projects or tickets of its own, so a **database is the project and its pages are the tickets**.
   Type a few words into **Find**, press Enter, and pick your tasks database from what the search finds.
 
-The choice is kept per repository, across sessions. **Change** picks another.
+The choice is kept per repository, across sessions. **‹ Projects**, beside the project's name, goes back to the
+list to pick another.
 
 ## The tickets
 
@@ -45,11 +46,18 @@ done) is a dim heading over its children, so you still see what they belong to. 
 kind, a row of buttons (**All**, Epic, Story, Task, Sub-task) keeps one kind only. Claude is told a ticked ticket's
 kind and what it sits under.
 
-Press a title to open the ticket: its link, its description, and **✦ Explain it and name its features**. Explain makes
-one small model call with the ticket's title and description and the names of the features in the
-[codebase memory](activity.md); the answer is a short explanation of what the ticket asks for and what done looks
-like, and up to four features the work will most likely touch. Each feature is a link to it in the Activity tab. Only
-features the memory really has are shown. The explanation is kept with the repository.
+Press a title to open an epic, a story or any ticket. Opening it is asking what it is, so the first time Cockpit
+writes, by itself:
+
+- **a short summary**: what the ticket asks for and what done looks like;
+- **Work on existing features**: each feature of the [codebase memory](activity.md) the work touches, as a link to
+  it in the Activity tab, with a line saying what has to change there. Only features the memory really has are named;
+- **New**: what has to be built that belongs to no feature yet.
+
+It is one small model call with the ticket's kind, title, status, description and what it sits under, the titles of
+the tickets under it (an epic's stories, a story's sub-tasks), and the name and one line of each feature. The answer
+is kept with the repository, so opening the ticket again asks nothing; **↻ Write it again** asks afresh.
+`/cockpit ticket <KEY>` gives the same for one Jira ticket in the chat, reading it if the list does not hold it.
 
 ## Working on a ticket
 

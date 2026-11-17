@@ -88,8 +88,10 @@ export type Tickets = {
   items: Ticket[]
   // The tickets being worked on here: the first one fills the Git tab's ticket, and Claude is told of all of them
   working: Ticket[]
-  // What a model said of a ticket, by ticket id: what it asks for, and the features of the codebase memory it touches
-  briefs: Record<string, { explain: string; features: string[] }>
+  // What a model said of a ticket when it was opened, by ticket id: a short summary, and the features of the
+  // codebase memory it touches
+  // work: what has to change in each existing feature; fresh: what is new, belonging to no feature yet
+  briefs: Record<string, { explain: string; features: string[]; work?: { feature: string; what: string }[]; fresh?: string[] }>
   error?: string
 }
 
