@@ -34,11 +34,17 @@ The first time you open the Git tab in a repository it asks five things, once: t
 
 ## Several repositories
 
-When the session's folder is not itself a repository but holds some, one or two levels down (`~/work/` with `api/` and `web/`), the tab finds them (folders with a `.git`, skipping `node_modules` and dot folders; at most 20) and shows a **Repo** picker above everything else, each name with its branch and changed-file count. With one repository, or a session inside one, there is no picker and nothing changes.
+When the session's folder is not itself a repository but holds some, one or two levels down (`~/work/` with `api/` and `web/`), the tab finds them (folders with a `.git`, skipping `node_modules` and dot folders; at most 20) and shows a **Repo** picker above everything else, each name with its branch and changed-file count. A session inside a repository that holds others (submodules, nested clones) gets the same picker, the repository itself first. A single repository found under the folder is named in the picker too, so you can see where git runs. A plain repository with none inside has no picker and nothing changes.
 
 - The chosen repository is where every git and gh command runs (status, commit, push, pull, pull request, turn snapshots), and its settings are kept as for any repository. The choice is remembered per session folder; the first time it is the first repository found.
 - **Auto-follow**: when Claude edits or writes a file inside another found repository, the tab switches to it. A repository you pick by hand stays chosen for the rest of the session.
 - A turn that edited several repositories commits only the chosen one; switch and commit the others.
+- **Auto-follow picks the nearest repository** holding the file, so an edit inside a nested one follows it, not its parent.
+- **↻ Refresh looks for the repositories again**, so one cloned, initialised or deleted since the session started shows without a restart.
+
+## No repository yet
+
+When the folder holds no repository, the tab says so and offers **git init**, but never where you did not choose: a **Folder** picker lists the session folder and the folders in it (the first 30, skipping `node_modules` and dot folders), and the **git init in …** button appears only once you have picked one. It runs `git init` in that folder and nowhere else, then finds the new repository. For a deeper folder, run `git init` in a terminal and press **Refresh**. If a repository in the picker cannot be read by git, the tab says which and offers Refresh, not an init.
 
 ## Accounts
 

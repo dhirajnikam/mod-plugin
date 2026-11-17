@@ -11,8 +11,17 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and open one for what it asks for and which features of the codebase memory it touches. A ticked ticket fills the
   Git tab's ticket, shows on the Overview, and is told to Claude every turn. Cockpit only reads a tracker, and its two
   servers stay out of a session until you press Connect. `/cockpit tab tickets` opens it.
+- **Git, repositories inside a repository**: a session in a repository that holds others (submodules, nested clones)
+  gets the Repo picker, itself first, and an edit inside a nested one follows the nearest. A single repository found
+  under the session folder is named in the picker.
 - When auto mode's safety check gives no verdict on a call (Claude Code then refuses it), Cockpit says so once and,
   for the rest of the session, puts such calls to you in the permission dialog instead.
+
+### Changed
+- **git init asks where first.** With no repository, the Git tab lists the session folder and the folders in it, and
+  the init button appears only once you choose one; it used to initialise the session folder at one press.
+- **↻ Refresh** in the Git tab looks for repositories again, so one cloned, initialised or deleted during the session
+  is found without a restart. A repository of the picker that git cannot read is named, with no init offered.
 
 ## [0.11.1] - 2026-11-14
 

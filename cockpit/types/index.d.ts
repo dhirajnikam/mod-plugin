@@ -311,6 +311,8 @@ export type Ph = {
   creating: string
   // Several repos under the session folder (empty otherwise): the chosen one, and whether the person picked it by hand
   repos: { dir: string; name: string; branch: string; changed: number }[]
+  // With no repository here: the folders git init may run in (the session folder first, then the folders in it)
+  initDirs?: string[]
   repoDir: string
   repoHand: boolean
   git: GitForm
@@ -383,6 +385,8 @@ export type Ph = {
     ticketOpen?: string
     ticketFind?: string
     ticketAll?: boolean
+    // The folder chosen for git init: nothing is initialised until one is
+    initDir?: string
     acctOpen: boolean
     // The account whose Remove was pressed, waiting for its confirmation
     acctRemove?: string

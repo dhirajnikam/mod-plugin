@@ -1,7 +1,7 @@
 
 import type { GitForm, Ph, PrStatus } from '../../types'
 import type { $ } from '../core/core'
-import { pickRepo, gitInit, refreshGit, planCommit, pullNow, pushNow, commit, suggestCommit, showCommit, setGit, confirmPending, skipPending } from './git'
+import { pickRepo, gitInit, rereadGit, planCommit, pullNow, pushNow, commit, suggestCommit, showCommit, setGit, confirmPending, skipPending } from './git'
 import { inBackground, set, setUi } from '../core/core'
 import { COMMIT_MODES, AUTO_WHENS, TYPES, BRANCH_PRESETS, branchName, MSG_PRESETS, commitMsg, GIT_OPTS } from './git-form'
 import { graphRows, graphSvg, graphText, graphWidth } from './graph'
@@ -9,7 +9,7 @@ import { loadAccounts, useAccount, applyAccount, removeAccount, ghLoginToken, gh
 import { fixChecks } from './pr'
 import type { V, UI } from '../ui/shared'
 import { sp, Seg, kindColor, Rule, Check, grow, More } from '../ui/shared'
-import { plural } from '../core/text'
+import { base, plural } from '../core/text'
 
 // Commit and Skip for the commit that waits for a yes, wherever it is asked: a tab, or the band above the prompt
 export function CommitSkip($: $, ui: Pick<UI, 'Box' | 'Button'>, id: string, gap: number | 'sm' | 'md' | 'lg') {
@@ -28,11 +28,11 @@ function GitField($: $, v: V, field: 'branch' | 'branchPattern' | 'msgPattern' |
   return <v.ui.Input key={`git-${id}`} label={label} value={v.s.git[field]} onInput={val => save(val)} onSubmit={val => save(val)} {...more} />
 }
 
-// With several repos under the session folder, a picker above the tab
+// With repos under the session folder (or inside its repository), a picker above the tab; one found alone is named too
 export function Git($: $, v: V) {
   const { Box, Select } = v.ui
   const { repos, repoDir } = v.s
-  if (repos.length < 2) return GitBody($, v)
+  if (repos.length < 1) return GitBody($, v)
   const label = (r: Ph['repos'][number]) => `${r.name}${r.branch ? `  ⎇ ${r.branch}` : ''}${r.changed ? `  ·  ${r.changed} changed` : ''}`
   return (
     <Box flexDirection="column" gap={sp(v, 1)}>
@@ -47,12 +47,19 @@ function GitBody($: $, v: V) {
   const { s, t } = v
   const g = s.git
   if (!s.repo.isRepo) {
+    const { Select } = v.ui
+    const dirs = s.repos.length ? [] : (s.initDirs ?? [])
+    const pick = s.ui.initDir && dirs.includes(s.ui.initDir) ? s.ui.initDir : ''
     return (
       <Box flexDirection="column" gap={sp(v, 1)}>
-        <Text color={t.dim}>This folder is not a git repository.</Text>
-        <Box gap={sp(v, 1)}>
-          <Button key="git-init" label="git init" variant="primary" onPress={() => gitInit($)} />
-          <Button key="git-refresh" label="Refresh" onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
+        {/* A repository of the picker that git cannot read is not one to initialise: pick another, or Refresh */}
+        <Text color={t.dim} wrap="wrap">{s.repos.length ? `git could not read ${base(s.repoDir)}. Pick another repository above, or Refresh.` : dirs.length ? 'No git repository here. To make one, choose the folder first:' : 'No git repository here.'}</Text>
+        {dirs.length > 0 && (
+          <Select key="git-init-dir" label="Folder" value={pick} options={[{ value: '', label: 'Choose a folder…' }, ...dirs.map((d, i) => ({ value: d, label: i === 0 ? `This folder (${base(d)})` : `${base(d)}/` }))]} onSelect={val => setUi($, { initDir: val })} />
+        )}
+        <Box gap={sp(v, 1)} flexWrap="wrap">
+          {pick !== '' && <Button key="git-init" label={`git init in ${base(pick)}`} variant="primary" onPress={() => gitInit($)} />}
+          <Button key="git-refresh" label="Refresh" onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => rereadGit($))} />
         </Box>
       </Box>
     )
@@ -149,7 +156,7 @@ function GitBody($: $, v: V) {
       {moreOpen && (
         <Box flexDirection="column" gap={sp(v, 1)}>
           <Box gap={sp(v, 1)} flexWrap="wrap">
-            <Button key="git-refresh" label="↻ Refresh" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => refreshGit($))} />
+            <Button key="git-refresh" label="↻ Refresh" plain onPress={() => inBackground($, 'git-refresh', 'Reading the repository', () => rereadGit($))} />
             <Button key="git-setup" label="⚙ Setup" plain onPress={() => Promise.all([setGit($, { setupDone: false }), setUi($, { gitStep: 0 })])} />
           </Box>
           <Text color={t.dim} size="footnote" wrap="truncate-end">{`${acct ? `${acct.label} <${acct.email}>` : 'no account'}  ·  ${mode}${when}`}</Text>
