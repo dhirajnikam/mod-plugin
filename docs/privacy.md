@@ -27,7 +27,7 @@ has no row here.
 | `judge-complexity` | each question or next step Claude asks you | Haiku | the question and its options | `/cockpit mode off` |
 | `judge-context` | each judged decision but the autopilot's | a fork of the session's model | the whole conversation so far, asked for a 120-word summary | `/cockpit mode off` |
 | `judge-votes` | each judged decision, 3, 6 or 9 times | Haiku; with `judgeModels` mixed or wide, Sonnet and Opus on some seats | that summary, the question and its options; for the autopilot's claim of done, the roadmap, the commits since it began, the uncommitted diffstat and the end of Claude's answer; for the product owner's next goal, the vision, the goals built and its study | `/cockpit mode off` |
-| `ticket-explain` | **Explain** on a ticket in the Tickets tab | Haiku | the ticket's key, title, status and description (cut to 6,000 characters), and the name and one line of each feature in the codebase memory | (only when you press it) |
+| `ticket-explain` | the first time you open a ticket in the Tickets tab (kept after that), **↻ Write it again**, and `/cockpit ticket` | Haiku | the ticket's kind, key, title, status, parent and description (cut to 6,000 characters), the titles of up to 20 tickets under it, and the name and one line of each feature in the codebase memory | (only when you open a ticket) |
 | `agent-definition` | **+ New agent** | Sonnet | the description you typed | (only when you press it) |
 
 ## Jira and Notion

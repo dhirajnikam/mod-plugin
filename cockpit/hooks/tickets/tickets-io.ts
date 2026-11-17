@@ -270,27 +270,62 @@ async function readText($: $, id: string) {
 export async function openTicket($: $, id: string) {
   const open = (await look($)).ui.ticketOpen === id
   await setUi($, { ticketOpen: open ? '' : id })
-  // Only a Notion page not read yet has anything to fetch: a press that fetches nothing must not hold the lock an
-  // Explain pressed next would wait on
-  const tk = ticketOf(await now($), id)
-  if (!open && tk?.source === 'notion' && !tk.text) bg($, 'Reading the ticket', () => readText($, id))
+  if (open) return
+  // Opening is asking what it is: the summary and the work it means are written now, once, and kept; a ticket
+  // explained before only reads its words when they are not here yet (a Notion page)
+  const t = await now($)
+  const tk = ticketOf(t, id)
+  if (!tk) return
+  if (!t.briefs[id]) explain($, id)
+  else if (tk.source === 'notion' && !tk.text) bg($, 'Reading the ticket', () => readText($, id))
 }
 
-// Explain: a model says what the ticket asks for and which features of the codebase memory it touches
+// Explain: a model says in short what the ticket asks for, what has to change in which features of the codebase
+// memory, and what is new. An epic or a story is read with the tickets under it
 export function explain($: $, id: string) {
-  bg($, 'Explaining the ticket', async () => {
+  bg($, 'Explaining the ticket', () => explainNow($, id))
+}
+async function explainNow($: $, id: string) {
+  {
     await readText($, id)
     const s = await look($)
     const tk = ticketOf(s.tickets ?? EMPTY, id)
     if (!tk) return
     const features = s.memory.features ?? []
     // privacy: ticket-explain (docs/privacy.md lists what it sends)
-    const r = await $.model.complete({ model: 'haiku', maxTokens: 700, system: 'You explain tickets to the developer about to work on them. Answer with one JSON object and nothing else.', prompt: briefPrompt(tk, features) })
+    const r = await $.model.complete({ model: 'haiku', maxTokens: 700, system: 'You explain tickets to the developer about to work on them. Answer with one JSON object and nothing else.', prompt: briefPrompt(tk, features, (s.tickets?.items ?? []).filter(x => x.parent === tk.id)) })
     const brief = r.isAnswered ? parseBrief(r.text, features) : null
     if (!brief) return toast($, `Could not explain it: ${r.isAnswered ? 'the answer came back unreadable' : r.reason}`)
     await patch($, t => ({ briefs: { ...t.briefs, [id]: brief } }))
     await save($)
-  })
+  }
+}
+
+// /cockpit ticket <KEY>: one Jira ticket by its key, read if the list does not hold it, with its summary and the work
+// it means, in words
+export async function ticketCommand($: $, key: string) {
+  const id = key.toUpperCase().replace(/[^A-Z0-9_-]/g, '')
+  if (!id) return 'Usage: /cockpit ticket <KEY>, e.g. /cockpit ticket API-12: what the ticket asks for, the work on existing features and what is new'
+  await loadSaved($)
+  if (!ticketOf(await now($), id)) {
+    await patch($, t => (t.source === 'jira' ? {} : { source: 'jira', projects: [], items: [], error: '' }))
+    if (!(await now($)).conn.jira?.server) await connectNow($, 'jira')
+    const c = (await now($)).conn.jira
+    if (!c?.server) return `Jira is not connected: ${c?.why ?? 'no reason given'}`
+    const r = await ask($, c.server, TOOLS.issues, { cloudId: c.site, jql: `key = "${id}"`, fields: ['summary', 'status', 'description', 'issuetype', 'parent'], maxResults: 1 })
+    const found = r.isError ? [] : jiraTickets(jsonOf(r), c.siteUrl ?? '')
+    if (!found.length) return `No ticket ${id}${r.isError ? `: ${why(r)}` : ''}`
+    await patch($, t => ({ items: [...t.items.filter(x => x.id !== id), ...found] }))
+  }
+  await explainNow($, id)
+  const t = await now($)
+  const tk = ticketOf(t, id)
+  const b = t.briefs[id]
+  if (!tk || !b) return `${id}: the summary could not be written`
+  await setUi($, { ticketOpen: id })
+  const work = (b.work ?? []).map(w => `- ${w.feature}: ${w.what}`).join('\n')
+  const fresh = (b.fresh ?? []).map(n => `+ ${n}`).join('\n')
+  return `${tk.type ? `${tk.type} ` : ''}${tk.key} · ${tk.title}${tk.status ? ` [${tk.status}]` : ''}\n${b.explain}${work ? `\nWork on existing features:\n${work}` : ''}${fresh ? `\nNew:\n${fresh}` : ''}${!work && !fresh ? '\nNo feature of the codebase memory fits it.' : ''}`
 }
 
 // Working on a ticket, or no longer: kept for this repository, and the first with a key is the Git tab's ticket, so
