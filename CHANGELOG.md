@@ -5,6 +5,17 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-17
+
+### Added
+- **▶ Start work** in the Tickets tab, the step after ticking a ticket: it hands the ticket to Claude (as data from
+  the tracker, with Cockpit's summary and the work it named) and asks for a short plan before anything is changed.
+  The tab also says what a tick does.
+
+### Fixed
+- A long ticket title no longer runs into its status: the title sits under the key, wraps, and carries an arrow
+  showing that it opens the ticket.
+
 ## [0.14.0] - 2026-11-17
 
 ### Added
@@ -456,7 +467,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.14.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.15.0...main
+[0.15.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.1...v0.12.2

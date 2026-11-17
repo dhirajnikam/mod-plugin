@@ -5,7 +5,7 @@ import { cut, plural } from '../core/text'
 import type { V } from '../ui/shared'
 import { sp, Seg, Head, Check, More } from '../ui/shared'
 import { EMPTY, SOURCES, ticketLabel, ticketTree, ticketTypes } from './tickets'
-import { connect, forget, refresh, findProjects, setSource, pickProject, clearProject, openTicket, explain, workOn } from './tickets-io'
+import { connect, forget, refresh, startWork, findProjects, setSource, pickProject, clearProject, openTicket, explain, workOn } from './tickets-io'
 
 // Tickets: Jira or Notion, through their makers' own MCP servers. The project this repository is for, its open
 // tickets, the ones being worked on (ticked), and for an opened ticket what it asks for and the features it touches.
@@ -59,13 +59,23 @@ export function TicketsTab($: $, v: V) {
         {b && !!b.fresh?.length && <Head v={v} label="New" />}
         {b && (b.fresh ?? []).map((n, i) => <Text key={`tk-new-${x.id}-${i}`} color={t.text} wrap="wrap">{`+ ${n}`}</Text>)}
         {b && !work(b).length && !b.fresh?.length && <Text color={t.dim} size="footnote" wrap="wrap">No feature of the codebase memory fits it.</Text>}
-        {link(`tk-explain-${x.id}`, b ? '↻ Write it again' : '✦ Summarise it and name the work', () => explain($, x.id))}
+        <Box columnGap={sp(v, 2)} flexWrap="wrap">
+          {link(`tk-start-${x.id}`, '▶ Start work: ask Claude for a plan', () => startWork($, x.id))}
+          {link(`tk-explain-${x.id}`, b ? '↻ Write it again' : '✦ Summarise it and name the work', () => explain($, x.id), t.dim)}
+        </Box>
       </Box>
     )
   }
   return (
     <Box flexDirection="column" gap={v.desk ? 'md' : 1}>
       <Text color={t.text} bold wrap="wrap">{state}</Text>
+      {/* What a tick does, and the step after it */}
+      {tk.working.length > 0 && (
+        <Box flexDirection="column">
+          <Text color={t.dim} size="footnote" wrap="wrap">Claude is told this ticket every turn, and the Git tab's branch and commits carry its key. Press a title for its summary.</Text>
+          {link('tk-start', `▶ Start work${tk.working[0]!.key ? ` on ${tk.working[0]!.key}` : ''}: ask Claude for a plan`, () => startWork($, tk.working[0]!.id))}
+        </Box>
+      )}
       <Seg v={v} id="tk-src" value={tk.source} items={SOURCES} onPick={k => setSource($, k)} />
       {!c?.server && (
         <Box flexDirection="column">
@@ -110,15 +120,19 @@ export function TicketsTab($: $, v: V) {
             <Text key={`tk-head-${i}`} color={t.dim} size="footnote" wrap="truncate-end">{`▾ ${r.head}`}</Text>
           ) : ((x: Ticket) => (
             <Box key={`tk-row-${x.id}`} flexDirection="column" paddingLeft={r.depth * 2}>
+              {/* The tick and the key, with the kind and status at the right; the title under them, wrapping, so a long
+                  one never runs into the status. The title opens the ticket: its arrow says so */}
               <Box justifyContent="space-between" columnGap={sp(v, 1)}>
-                <Box flexShrink={1} columnGap={sp(v, 1)}>
-                  <Check v={v} id={`tk-work-${x.id}`} on={isWorking(x.id)} label={x.key} onPress={() => workOn($, x.id)} />
-                  <Button key={`tk-open-${x.id}`} plain onPress={() => openTicket($, x.id)}>
-                    <Text color={t.text} wrap="truncate-end">{x.title}</Text>
-                  </Button>
-                </Box>
-                {/* A narrow pane keeps the row to the key and the title: the status is in the opened ticket */}
-                {v.w >= 50 && <Text color={t.dim} size="footnote">{cut([x.type, x.status].filter(Boolean).join(' · '), 28)}</Text>}
+                <Check v={v} id={`tk-work-${x.id}`} on={isWorking(x.id)} label={x.key || 'Work on it'} onPress={() => workOn($, x.id)} />
+                {v.w >= 40 && <Text color={t.dim} size="footnote" wrap="truncate-end">{[x.type, x.status].filter(Boolean).join(' · ')}</Text>}
+              </Box>
+              <Box paddingLeft={2}>
+                <Button key={`tk-open-${x.id}`} plain onPress={() => openTicket($, x.id)}>
+                  <Text color={t.text} wrap="wrap">
+                    <Text color={t.faint}>{s.ui.ticketOpen === x.id ? '⌄ ' : '› '}</Text>
+                    {x.title}
+                  </Text>
+                </Button>
               </Box>
               {s.ui.ticketOpen === x.id && detail(x)}
             </Box>
