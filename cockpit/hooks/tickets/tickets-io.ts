@@ -93,7 +93,10 @@ function refused($: $, source: TicketSource, text: string) {
 // Connect: a server of the tracker you are already signed in to is used as it is; else Cockpit's own joins the
 // session. For Jira its site is found. With no sign-in anywhere, the tab says how to give one
 export function connect($: $, source: TicketSource) {
-  bg($, `Connecting ${nameOf(source)}`, async () => {
+  bg($, `Connecting ${nameOf(source)}`, () => connectNow($, source))
+}
+async function connectNow($: $, source: TicketSource) {
+  {
     await $.store.set(ON, [...new Set([...(await connected($)), source])]).catch(() => null)
     let server = await running($, source)
     if (!server) {
@@ -112,7 +115,7 @@ export function connect($: $, source: TicketSource) {
     }
     await patch($, t => ({ conn: { ...t.conn, [source]: { server: c.server, ...site } }, error: '' }))
     await read($)
-  })
+  }
 }
 
 // The projects to pick from: Jira's own list, or what a Notion search for the typed words finds
@@ -183,7 +186,10 @@ export async function setSource($: $, source: TicketSource) {
 
 // This repository is for that project. A Notion database's rows are asked for by its data source, which it names
 export function pickProject($: $, p: { id: string; name: string }) {
-  bg($, 'Reading tickets', async () => {
+  bg($, 'Reading tickets', () => pickNow($, p))
+}
+async function pickNow($: $, p: { id: string; name: string }) {
+  {
     const t = await now($)
     const c = t.conn[t.source]
     let id = p.id
@@ -194,7 +200,49 @@ export function pickProject($: $, p: { id: string; name: string }) {
     await patch($, () => ({ project: { source: t.source, id, name: p.name }, projects: [], items: [] }))
     await save($)
     await readItems($)
-  })
+  }
+}
+
+// /cockpit tickets <jira|notion> [project]: the same reading as the tab's buttons, waited for, and answered in words.
+// With no project it connects and lists the projects; with one (a Jira key, or words to find a Notion database by) it
+// makes that the repository's project and lists its tickets
+export async function ticketsCommand($: $, words: string[]) {
+  const source = SOURCES.find(([id]) => id === (words[0] ?? '').toLowerCase())?.[0]
+  if (!source) return 'Usage: /cockpit tickets <jira|notion> [project | none]: connect and list the projects, or set this repository\'s project and list its tickets'
+  await loadSaved($)
+  await patch($, t => (t.source === source ? {} : { source, projects: [], items: [], error: '' }))
+  if (!(await now($)).conn[source]?.server) await connectNow($, source)
+  let t = await now($)
+  const c = t.conn[source]
+  if (!c?.server) return `${nameOf(source)} is not connected: ${c?.why ?? 'no reason given'}`
+  const want = words.slice(1).join(' ').trim()
+  // none: this repository is for no project
+  if (want.toLowerCase() === 'none') {
+    await set($, st => {
+      const { project: _, ...rest } = st.tickets ?? EMPTY
+      return { tickets: { ...rest, items: [] } }
+    })
+    await save($)
+    return `${nameOf(source)}: this repository has no project now`
+  }
+  if (want) {
+    if (t.project?.source === source) {
+      await set($, s => {
+        const { project: _, ...rest } = s.tickets ?? EMPTY
+        return { tickets: { ...rest, items: [] } }
+      })
+    }
+    await readProjects($, want)
+    t = await now($)
+    const p = t.projects.find(x => x.id.toLowerCase() === want.toLowerCase()) ?? (source === 'notion' ? t.projects[0] : undefined)
+    if (!p) return `${nameOf(source)} via ${c.server}: no project "${want}"${t.error ? ` (${t.error})` : ''}. Projects: ${t.projects.map(x => x.id).join(', ') || 'none'}`
+    await pickNow($, p)
+  } else if (t.project?.source !== source) await readProjects($)
+  t = await now($)
+  const head = `${nameOf(source)} via ${c.server}${c.siteUrl ? ` · ${c.siteUrl}` : ''}`
+  if (t.error) return `${head}\n${t.error}`
+  if (t.project?.source !== source) return `${head}\nProjects (${t.projects.length}): ${t.projects.map(x => (source === 'jira' ? `${x.id} · ${x.name}` : x.name)).join('; ') || 'none'}\nSet this repository's project: /cockpit tickets ${source} <project>`
+  return `${head}\nProject: ${t.project.name} · ${t.items.length} open ticket${t.items.length === 1 ? '' : 's'}\n${t.items.map(x => `- ${x.key ? `${x.key} · ` : ''}${x.title}${x.status ? ` [${x.status}]` : ''}`).join('\n')}`
 }
 export async function clearProject($: $) {
   await set($, s => {

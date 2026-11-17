@@ -5,6 +5,16 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-17
+
+### Added
+- `/cockpit tickets <jira|notion> [project | none]`: connect and list the projects in the chat, or set this
+  repository's project and list its tickets.
+
+### Fixed
+- The Tickets tab lists Jira's projects on Atlassian's v1 server too (the claude.ai connector): it asks a server only
+  for tools the session lists for it, and no longer stops at "no connected MCP tool listJiraProjects".
+
 ## [0.12.1] - 2026-11-17
 
 ### Fixed
@@ -426,7 +436,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.1...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.2...main
+[0.12.2]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.11.0...v0.11.1

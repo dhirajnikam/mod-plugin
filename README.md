@@ -55,6 +55,7 @@ the chat ([Focus](docs/overview.md#focus-colours-and-live-figures) hides them).
 |---|---|
 | `/cockpit` | open the pane |
 | `/cockpit tab <overview\|files\|agents\|git\|rules\|tickets>` | open a tab (`files` is Activity) |
+| `/cockpit tickets <jira\|notion> [project \| none]` | connect and list the projects, or set this repository's project and list its tickets |
 | `/cockpit task [$budget] [hours h] <goal>` | work on a goal until the judges agree it is done (`autopilot` is the same); `stop`, `resume` |
 | `/cockpit product [$budget] [hours h] <vision>` | lead the product toward a vision, goal after goal, the judges choosing each; `stop`, `resume` |
 | `/cockpit run <agents> [-- task]` | run [the experts](docs/agents.md#the-experts) at once: planner, builder, reviewer, prover, breaker, scribe |

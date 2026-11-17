@@ -124,6 +124,21 @@ test('a Jira server the session is already signed in to is used as it is: Cockpi
   await ui.unmount()
 })
 
+test('/cockpit tickets connects, lists the projects, sets the project and lists its tickets, in words', async ($, on) => {
+  const log = stand(on)
+  const run = async (args: string) => ((await $.command.run({ command: 'cockpit', args } as never)) as any).text as string
+  expect(await run('tickets')).toContain('Usage: /cockpit tickets')
+  const projects = await run('tickets jira')
+  expect(projects).toContain('Projects (2): API · Public API; WEB · Website')
+  expect(await run('tickets jira NOPE')).toContain('no project "NOPE"')
+  const list = await run('tickets jira api')
+  expect(list).toContain('Project: Public API · 2 open tickets')
+  expect(list).toContain('- API-12 · Add rate limiting to login [In Progress]')
+  expect((log.store['tickets:/repo'] as any).project.id).toBe('API')
+  expect(await run('tickets jira none')).toContain('no project now')
+  expect((log.store['tickets:/repo'] as any).project).toBe(undefined)
+})
+
 test('what the servers answer is read leniently, and what is kept is checked', () => {
   // JSON inside words; a rich description as plain words; no site, no link
   expect(jiraTickets(jsonOf({ content: [{ type: 'text', text: `Found: ${JSON.stringify(issues)}` }], isError: false }), '')[0]).toEqual({ id: 'API-12', key: 'API-12', title: 'Add rate limiting to login', status: 'In Progress', url: '', source: 'jira', text: 'Limit login to five tries a minute.' })
