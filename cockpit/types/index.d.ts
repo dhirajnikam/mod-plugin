@@ -76,11 +76,12 @@ export type TicketSource = 'jira' | 'notion'
 // type: what kind of work item it is (Epic, Story, Task, Sub-task); parent: the key of the one it sits under (a
 // story's epic, a sub-task's story), with that one's title and type, which the list may not hold itself
 export type Ticket = { id: string; key: string; title: string; status: string; url: string; source: TicketSource; text?: string; type?: string; parent?: string; parentTitle?: string; parentType?: string }
+// who: the account the tracker says is signed in, so "mine" is never a guess
 // The Tickets tab. conn: each source's server as $.mcp.call takes it once connected, or why it is not, and for Jira
 // the site (cloud id and address). project, working and briefs are kept per repository in the store; the rest is read
 // again from the tracker
 export type Tickets = {
-  conn: Partial<Record<TicketSource, { server?: string; why?: string; site?: string; siteUrl?: string }>>
+  conn: Partial<Record<TicketSource, { server?: string; why?: string; site?: string; siteUrl?: string; who?: string }>>
   source: TicketSource
   projects: { id: string; name: string }[]
   // The project this repository is for

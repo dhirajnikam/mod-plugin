@@ -10,6 +10,7 @@ export const SERVERS: Record<TicketSource, string> = { jira: 'atlassian', notion
 export const SOURCES: [TicketSource, string][] = [['jira', 'Jira'], ['notion', 'Notion']]
 export const TOOLS = {
   sites: ['getAccessibleAtlassianResources'],
+  who: ['atlassianUserInfo', 'getJiraCurrentUser'],
   // The v2 server's name first, as that is the server plugin.json lists
   projects: ['listJiraProjects', 'getVisibleJiraProjects'],
   issues: ['searchJiraIssuesUsingJql'],
@@ -71,6 +72,11 @@ const clean = (x: unknown, n: number) => cut(plain(words(x)).replace(/\s+/g, ' '
 export function jiraSite(json: unknown) {
   const s = rowsOf(json).find(r => typeof r.id === 'string')
   return s ? { site: String(s.id), siteUrl: String(s.url ?? '').replace(/\/+$/, '') } : null
+}
+// The account signed in, by the name Jira gives it
+export function jiraWho(json: unknown) {
+  const o = isRow(json) ? json : {}
+  return clean(o.name ?? o.displayName ?? o.nickname ?? o.email ?? o.emailAddress, 60)
 }
 export const jiraProjects = (json: unknown) =>
   rowsOf(json).filter(r => typeof r.key === 'string' && r.key).map(r => ({ id: String(r.key), name: clean(r.name ?? r.key, 80) })).slice(0, 50)

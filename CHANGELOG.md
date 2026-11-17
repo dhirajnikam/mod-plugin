@@ -5,6 +5,13 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-17
+
+### Added
+- The Tickets tab names the account Jira says is signed in ("Signed in as …"), read again with every reading, and
+  an empty **Mine** says whose tickets it looked for and points at All open. A sign-in changed under a session used
+  to leave an unexplained "No open tickets".
+
 ## [0.15.0] - 2026-11-17
 
 ### Added
@@ -467,7 +474,8 @@ and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mode, judges for Claude's questions, tester subagents, agents, and a Git tab with several accounts.
 - `ui-template`, the earlier mod, and `design/`, the design Cockpit is built from.
 
-[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.15.0...main
+[Unreleased]: https://github.com/dhirajnikam/mod-plugin/compare/v0.15.1...main
+[0.15.1]: https://github.com/dhirajnikam/mod-plugin/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dhirajnikam/mod-plugin/compare/v0.12.2...v0.13.0

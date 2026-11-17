@@ -110,6 +110,8 @@ export function TicketsTab($: $, v: V) {
           </Box>
         </Box>
       )}
+      {/* Whose tickets Mine means: the account the tracker says is signed in */}
+      {!!c?.server && !!c.who && <Text color={t.dim} size="footnote" wrap="truncate-end">{`Signed in as ${c.who}`}</Text>}
       {!!tk.error && <Text color={t.bad} wrap="wrap">{tk.error}</Text>}
       {rows.length > 0 && (
         <Box flexDirection="column">
@@ -139,7 +141,7 @@ export function TicketsTab($: $, v: V) {
           ))(r.t))}
         </Box>
       )}
-      {!!c?.server && !!p && rows.length === 0 && !tk.error && <Text color={t.faint}>{busy ? 'Reading…' : s.ui.ticketAll || tk.source === 'notion' ? 'No open tickets.' : 'No open tickets assigned to you.'}</Text>}
+      {!!c?.server && !!p && rows.length === 0 && !tk.error && <Text color={t.faint}>{busy ? 'Reading…' : s.ui.ticketAll || tk.source === 'notion' ? 'No open tickets.' : `No open tickets assigned to ${c.who ?? 'you'}. All open lists everyone's.`}</Text>}
       <More v={v} id="fold-more-tickets" open={moreOpen} onPress={() => setUi($, ui => ({ collapsed: { ...ui.collapsed, 'tickets-more': !moreOpen } }))} />
       {moreOpen && (
         <Box flexDirection="column">
@@ -149,7 +151,7 @@ export function TicketsTab($: $, v: V) {
             return (
               <Box key={`tk-conn-${id}`} justifyContent="space-between" columnGap={sp(v, 1)}>
                 <Box flexShrink={1}>
-                  <Text color={x?.server ? t.text : t.dim} size="footnote" wrap="truncate-end">{`${label}: ${x?.server ? `${x.server}${x.siteUrl ? ` · ${x.siteUrl}` : ''}` : x?.why ? 'not connected' : 'not connected yet'}`}</Text>
+                  <Text color={x?.server ? t.text : t.dim} size="footnote" wrap="truncate-end">{`${label}: ${x?.server ? `${x.server}${x.siteUrl ? ` · ${x.siteUrl}` : ''}${x.who ? ` · as ${x.who}` : ''}` : x?.why ? 'not connected' : 'not connected yet'}`}</Text>
                 </Box>
                 {!!x && link(`tk-forget-${id}`, 'Forget', () => forget($, id), t.dim)}
               </Box>
