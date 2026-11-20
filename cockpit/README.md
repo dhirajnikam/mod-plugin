@@ -15,15 +15,15 @@ Requires Claude Code 2.1.275 or later. At the prompt of a Claude Code session:
 
 ## What it adds
 
-- [**Overview**](../docs/overview.md): progress by flow, checks, the agents at work as a neural view, context, decisions
-- [**Activity**](../docs/activity.md): a live feed, your codebase's features as a map, the impact of a change
-- [**Agents**](../docs/agents.md): pipelines, six experts, agents made from a description, trackers, connections, memory
-- [**Git**](../docs/git.md): commits written from the diff, commit modes, a git graph, accounts
-- [**Rules**](../docs/rules.md): hooks, permission rules and instructions, for the repository or for you
-- [**Autopilot**](../docs/autopilot.md): work on a goal until the judges agree it is done, or lead the product goal after goal
-- [**Judges**](../docs/judges.md) and [**flows**](../docs/flows.md): who answers Claude's questions, and how progress is counted
+- [**Overview**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/overview.md): progress by flow, checks, the agents at work as a neural view, context, decisions
+- [**Activity**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/activity.md): a live feed, your codebase's features as a map, the impact of a change
+- [**Agents**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/agents.md): pipelines, six experts, agents made from a description, trackers, connections, memory
+- [**Git**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/git.md): commits written from the diff, commit modes, a git graph, accounts
+- [**Rules**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/rules.md): hooks, permission rules and instructions, for the repository or for you
+- [**Autopilot**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/autopilot.md): work on a goal until the judges agree it is done, or lead the product goal after goal
+- [**Judges**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/judges.md) and [**flows**](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/flows.md): who answers Claude's questions, and how progress is counted
 
-Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit keeps, spends and turns on by default.
+Before you turn it on, read [Privacy and cost](https://github.com/dhirajnikam/mod-plugin/blob/main/docs/privacy.md): what Cockpit keeps, spends and turns on by default.
 
 ## Code
 
@@ -45,4 +45,4 @@ Before you turn it on, read [Privacy and cost](../docs/privacy.md): what Cockpit
 | `agents/*.md` | the six experts |
 
 The code is laid out by feature; where a feature has the pair, `x.ts` is its pure logic and `x-io.ts` its engine
-I/O; `x-tab.tsx` is its tab. To work on it, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+I/O; `x-tab.tsx` is its tab. To work on it, see [CONTRIBUTING.md](https://github.com/dhirajnikam/mod-plugin/blob/main/CONTRIBUTING.md).
